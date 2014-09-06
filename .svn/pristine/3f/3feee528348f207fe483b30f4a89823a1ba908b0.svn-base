@@ -1,0 +1,21 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*
+ * The necessary header files
+ */
+#include <io_sequence_example.hpp>
+#include <io_capture_example.hpp>
+
+int main(int argc, char* argv[])
+{
+    read_sequence();
+    write_sequence();
+    io_sequence();
+    
+#ifdef USE_SMARTFLOW
+    capture_ip();
+#endif
+}

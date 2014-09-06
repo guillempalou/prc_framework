@@ -1,0 +1,105 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//! \file bayer.cpp
+//!
+//! Implementation for Bayer convertion
+//!
+
+
+#include <bayer.hpp>
+
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace std;
+
+namespace imageplus
+{
+	namespace io
+	{
+		void convert_bayer ( const MultiArray<uint8,2>& bayer, ImageRGB<uint8>& rgb)
+		{
+			/*
+			 * Arrange a Multiarray structure (normally 1360x1024):
+			 * 
+			 * RGRG 
+			 * GBGB
+			 * RGRG
+			 * GBGB
+			 * 
+			 * to 3 Color Matrices of half size (normally 680x512)
+			 * 
+			 * RR GG BB
+			 * RR GG BB
+			 */
+			
+			ASSERT( (bayer.dims(0))/2 == rgb.size_x(), "incorrect x dims")
+			ASSERT( (bayer.dims(1))/2 == rgb.size_y(), "incorrect y dims")
+			
+			std::size_t size_x = rgb.size_x();
+			std::size_t size_y = rgb.size_y();
+			
+			uint8* r = rgb(0).data(); 
+			uint8* g = rgb(1).data();
+			uint8* b = rgb(2).data();
+			
+			const uint8* br  = bayer.data(); 
+			const uint8* bg1 = bayer.data()+1;
+			const uint8* bg2 = bayer.data()+  bayer.dims(0);
+			const uint8* bb  = bayer.data()+1+bayer.dims(0);
+			
+			
+			for (std::size_t y=0; y < size_y; ++y)
+			{			
+				for(std::size_t x=0; x < size_x; ++x)			
+				{
+					*r = *br;
+					*g = (*bg1+*bg2)/2; //why there is no overflow? is is tested!
+					*b = *bb;
+
+					++r;
+					++g;
+					++b;
+					
+					br +=2;
+					bg1+=2;
+					bg2+=2;
+					bb +=2;
+				}
+				/* Skip a complete row */
+				br +=bayer.dims(0);
+				bg1+=bayer.dims(0);
+				bg2+=bayer.dims(0);
+				bb +=bayer.dims(0);
+			}		
+		}
+		
+#if 0 // deprecated version: too slow for real-time
+		void convert_bayer ( const MultiArray<uint8,2>& bayer, ImageRGB<uint8>& rgb)
+        {
+            //Arrange a Multiarray structure  RGRGRG GBGBGB(1360x1024) to 3 Color Matrices (RGB 680x512) 
+            
+            ASSERT( (bayer.dims(0))/2 == rgb.size_x(), "incorrect x dims")
+            ASSERT( (bayer.dims(1))/2 == rgb.size_y(), "incorrect y dims")
+            
+            std::size_t size_x = bayer.dims(0);
+            std::size_t size_y = bayer.dims(1);
+            
+            for (std::size_t i=0, l=0; i<size_y; i+=2, ++l)
+            {           
+                for(std::size_t j=1, k=0; j<size_x; j+=2, ++k)          
+                {
+                    rgb(RED_CHANNEL)[k][l]      = bayer[j-1][i];
+                    rgb(BLUE_CHANNEL)[k][l]     = bayer[j][i+1];
+                    rgb(GREEN_CHANNEL)[k][l]    = (bayer[j][i] + bayer[j-1][i+1])/2;
+                }   
+            }       
+        }
+#endif
+
+	}
+}

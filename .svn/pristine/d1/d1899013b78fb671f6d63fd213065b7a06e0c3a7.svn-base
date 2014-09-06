@@ -1,0 +1,313 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file writeimage.cpp
+//!
+//!  Implementation of classes for writing images to disk
+//!
+
+#ifdef USE_IMAGEMAGICK
+
+#include <Magick++.h>
+#include <magick/image.h>
+
+#else
+
+/*
+ * To solve linking problems with new versions of libpng
+ * (from http://stackoverflow.com/questions/2442335/libpng-boostgil-png-infopp-null-not-found)
+ */
+#ifndef png_infopp_NULL
+#define png_infopp_NULL (png_infopp)NULL
+#endif
+
+#ifndef int_p_NULL
+#define int_p_NULL (int*)NULL
+#endif
+
+#include <boost/gil/extension/io/jpeg_dynamic_io.hpp>
+#include <boost/gil/extension/io/png_dynamic_io.hpp>
+#include <boost/gil/extension/io/tiff_dynamic_io.hpp>
+
+#endif
+
+#include <typeinfo>
+
+#include <imageplus/io/writeimage.hpp>
+#include <io_auxiliar.hpp>
+
+
+#include <boost/filesystem.hpp>
+
+
+imageplus::io::WriteImage::WriteImage() :
+        _filename( "" ), _format( imageplus::io::UNKNOWN_IMAGE_FORMAT )
+{
+}
+
+
+imageplus::io::WriteImage::WriteImage( const std::string& filename )
+{   
+    open(filename);
+}
+
+imageplus::io::WriteImage::~WriteImage()
+{
+}
+
+
+void imageplus::io::WriteImage::open( const std::string& filename )
+{
+    // TODO: Check if file exists?
+    
+    // set the filename and format (from filename's extension)
+    _filename = filename;
+    _format   = get_image_format( _filename );
+    
+    //throw exception if format is not supported
+    if(_format == UNKNOWN_IMAGE_FORMAT)
+    {
+        std::string extension = boost::filesystem::extension( _filename );
+        throw ImagePlusFileError( _filename, "Image format not supported (" + extension + ")" );
+    }
+}
+
+
+
+void imageplus::io::WriteImage::_write( const imageplus::ImageRGB<imageplus::uint8>& image ) const
+{   
+#ifndef USE_IMAGEMAGICK
+    
+    return _write_rgb<imageplus::uint8, boost::gil::rgb8c_planar_view_t > ( image );
+    
+#else
+
+    return _write_rgb< imageplus::uint8, Magick::CharPixel >(image);
+    
+#endif
+}
+
+void imageplus::io::WriteImage::_write( const imageplus::ImageYUV<imageplus::uint8>& image ) const
+{
+	ImageRGB<uint8> rgb = to_rgb(image);
+	_write(rgb);
+}
+
+void imageplus::io::WriteImage::_write( const imageplus::ImageGray<imageplus::uint8>& image ) const
+{
+#ifndef USE_IMAGEMAGICK
+    
+    return _write_gray< uint8,  boost::gil::gray8c_view_t,  boost::gil::gray8_pixel_t> ( image );
+    
+#else
+    
+    return _write_gray< uint8, Magick::CharPixel >(image);
+    
+#endif
+}
+
+void imageplus::io::WriteImage::_write( const imageplus::ImageGray<uint16>& image ) const
+{
+#ifndef USE_IMAGEMAGICK
+    
+    return _write_gray< uint16,  boost::gil::gray16c_view_t,  boost::gil::gray16_pixel_t> ( image );
+    
+#else
+    
+    return _write_gray< uint16, Magick::ShortPixel >(image);
+    
+#endif
+}
+
+void imageplus::io::WriteImage::_write( const imageplus::ImageRGB<imageplus::uint16>& image ) const
+{
+#ifndef USE_IMAGEMAGICK
+    
+    return _write_rgb< uint16, boost::gil::rgb16c_planar_view_t > ( image );
+    
+#else
+    
+    return _write_rgb< uint16, Magick::ShortPixel >(image);
+
+#endif
+}
+
+
+
+void imageplus::io::WriteImage::_write( const imageplus::ImagePartition<imageplus::uint32>& image ) const
+{
+    if( _format != MULT ) throw ImagePlusError("File format no supported to save a ImagePartition: use .prl");
+    
+    io::WriteMultiArray wm(_filename, PARTITION_RUNLENGTH);
+    wm << image(0);
+}
+
+void imageplus::io::WriteImage::_write( const imageplus::ImaVol<bool,1,2>& image ) const
+{
+    ImageGray<uint8> tmp = convert (image,255);
+    _write(tmp);
+}
+
+void imageplus::io::WriteImage::_write( const imageplus::MultiArray<imageplus::uint8,2>& image ) const
+{
+    if( _format != MULT ) throw ImagePlusError("File format no supported to save an ImageBayer: use .bay");
+    
+    io::WriteMultiArray wm(_filename, NONE);
+    wm << image;
+}
+
+
+
+
+#ifndef USE_IMAGEMAGICK
+template< typename T, typename BoostImageView >
+#else
+#if MagickLibVersion >= 0x640
+template<typename T, Magick::StorageType MagickPixelType >
+#else
+template<typename T, MagickLib::StorageType MagickPixelType >
+#endif
+#endif
+void imageplus::io::WriteImage::_write_rgb( const imageplus::ImageRGB<T>& image ) const
+{
+    
+#ifndef USE_IMAGEMAGICK 
+    
+    // get the data pointers
+    const T* r = image( RED_CHANNEL   ).data();
+    const T* g = image( GREEN_CHANNEL ).data();
+    const T* b = image( BLUE_CHANNEL  ).data();
+    
+    // create a boost::gil::view from raw data
+    BoostImageView boost_img_view = boost::gil::planar_rgb_view<const T*>(image.size_x(), image.size_y(), r, g, b , image.size_x()*sizeof(T));
+    
+    // write to disk
+    return _write_boost(T(), boost_img_view );
+    
+#else
+    
+    std::size_t bsize = image.size_x() * image.size_y() * 3;
+    T* data = new T[bsize];
+    //convert_to_packed_rgb(image, data);
+    export_to(image, data, bsize*sizeof(T), RGB);
+
+    Magick::Image magickImage ( image.size_x(), image.size_y(),
+                                "RGB",
+                                MagickPixelType, data );
+    delete[] data;
+
+    magickImage.classType(Magick::DirectClass);
+    // magickImage.compressType(MagickLib::NoCompression);
+    magickImage.quality(100);
+#if MagickLibVersion >= 0x657
+    magickImage.type(Magick::TrueColorType);
+    magickImage.colorSpace(Magick::RGBColorspace);
+#else
+    magickImage.type(MagickLib::TrueColorType);
+    magickImage.colorSpace(MagickLib::RGBColorspace);
+#endif
+
+    // Number of bits to represent type T (excluding the sign bit)
+    uint32 bits = std::numeric_limits<T>::digits;
+    // Add the sign bit if necessary
+    if (std::numeric_limits<T>::is_signed)
+    {
+        bits++;
+    }
+    magickImage.depth(bits);
+
+    return magickImage.write( _filename );
+        
+#endif
+    
+}
+
+#ifndef USE_IMAGEMAGICK
+template<typename T, typename BoostImageView, typename BoostPixelType >
+#else
+#if MagickLibVersion >= 0x640
+template<typename T, Magick::StorageType MagickPixelType >
+#else
+template<typename T, MagickLib::StorageType MagickPixelType >
+#endif
+#endif
+void imageplus::io::WriteImage::_write_gray( const imageplus::ImageGray<T>& image ) const
+{
+    
+#ifndef USE_IMAGEMAGICK
+    
+    // get the data pointer
+    const T* gray = image( GRAY_CHANNEL ).data();
+    
+    // create a boost::gil::view from raw data
+    BoostImageView boost_img_view = boost::gil::interleaved_view(image.size_x(), image.size_y(), (BoostPixelType*)gray , image.size_x()*sizeof(T));
+    
+    // write to disk
+    return _write_boost(T(), boost_img_view );
+    
+#else
+
+    Magick::Image magickImage( image.size_x(), image.size_y(),
+                               "I",
+                               MagickPixelType, image(0).data() );
+
+    magickImage.classType(Magick::DirectClass);
+    // magickImage.compressType(MagickLib::NoCompression);
+    magickImage.quality(100);
+#if MagickLibVersion >= 0x657
+    magickImage.type(Magick::GrayscaleType);
+    magickImage.colorSpace(Magick::GRAYColorspace);
+#else
+    magickImage.type(MagickLib::GrayscaleType);
+    magickImage.colorSpace(MagickLib::GRAYColorspace);
+#endif
+
+    // Number of bits to represent type T (excluding the sign bit)
+    uint32 bits = std::numeric_limits<T>::digits;
+    // Add the sign bit if necessary
+    if (std::numeric_limits<T>::is_signed)
+    {
+        bits++;
+    }
+    magickImage.depth(bits);
+
+    return magickImage.write( _filename );
+
+#endif
+    
+}
+
+
+#ifndef USE_IMAGEMAGICK
+
+template<typename T,typename BoostImageView>
+void imageplus::io::WriteImage::_write_boost(T val, BoostImageView& boost_img_view) const
+{
+    // write image view
+    switch (_format)
+    {
+    case JPEG:  return throw ImagePlusError("WriteImage::operator<< : JPEG format only supports 8 bits images.");
+    case PNG:   return boost::gil::png_write_view( _filename, boost_img_view );
+    case TIFF:  return boost::gil::tiff_write_view( _filename, boost_img_view );
+    default:    throw ImagePlusInternalError( std::string("Writing unsupported image format: ") + _filename + " (unknown extension)" );
+    }
+}
+
+template<typename BoostImageView>
+void imageplus::io::WriteImage::_write_boost(imageplus::uint8 val, BoostImageView& boost_img_view) const
+{
+    // write image view
+    switch (_format)
+    {
+    case JPEG:  return boost::gil::jpeg_write_view( _filename, boost_img_view, 100 );
+    case PNG:   return boost::gil::png_write_view ( _filename, boost_img_view );
+    case TIFF:  return boost::gil::tiff_write_view( _filename, boost_img_view );
+    default:    throw ImagePlusInternalError( std::string("Writing unsupported image format: ") + _filename + " (unknown extension)" );
+    }
+}
+
+#endif // !USE_IMAGEMAGICK
+

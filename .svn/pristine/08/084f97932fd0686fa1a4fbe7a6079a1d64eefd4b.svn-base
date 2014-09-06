@@ -1,0 +1,39 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file sobel_gradient.test
+ */ 
+
+#include <imageplus/filters/sobel_gradient.hpp>
+#include <imageplus/math.hpp>
+
+BOOST_AUTO_TEST_SUITE ( Sobel_Gradient_Suite );
+
+using namespace imageplus;
+using namespace filters;
+
+BOOST_AUTO_TEST_CASE( sobel_gradient_test )
+{
+    ImageGray<float64> gradient;
+    ImageGray<uint8> image_gray(3,3);
+    
+    image_gray[1][1] = 1;
+    sobel_gradient(image_gray, gradient);
+    
+    BOOST_CHECK_EQUAL(gradient[0][0], std::sqrt(2.0));
+    BOOST_CHECK_EQUAL(gradient[1][0], 2);
+    BOOST_CHECK_EQUAL(gradient[2][0], std::sqrt(2.0));
+    BOOST_CHECK_EQUAL(gradient[0][1], 2);
+    BOOST_CHECK_EQUAL(gradient[1][1], 0);
+    BOOST_CHECK_EQUAL(gradient[2][1], 2);
+    BOOST_CHECK_EQUAL(gradient[0][2], std::sqrt(2.0));
+    BOOST_CHECK_EQUAL(gradient[1][2], 2);
+    BOOST_CHECK_EQUAL(gradient[2][2], std::sqrt(2.0));
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+

@@ -1,0 +1,93 @@
+/*
+ * network_reliability.test
+ *
+ *  Created on: Apr 11, 2012
+ *      Author: gpalou
+ */
+
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file shortest_paths.test
+//!
+//!  Tests for the math operations on Graphs
+//!
+
+#include <imageplus/math/graphs/graph.hpp>
+#include <imageplus/math/graphs/graph_io.hpp>
+#include <imageplus/math/graphs/algorithms/network_reliability.hpp>
+
+BOOST_AUTO_TEST_SUITE ( test_reliability );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::graphs;
+
+BOOST_AUTO_TEST_CASE( reliability_upper_bound_test )
+{
+	typedef BoostGraph<> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	ReadGraph<Graph> rg;
+
+	rg.read(std::string(TEST_DATA_PATH_R) + "/math/graphs/test.graph", g, true);
+
+	ReliabilityAllPairsUpperBound<Graph> reliability;
+	reliability.calculate(g);
+
+	std::string file = std::string(TEST_DATA_PATH_R) + "/math/graphs/test_graph_reliability.txt";
+	std::ifstream ifs(file.c_str());
+	MultiArray<float64,2> d(g.num_nodes(), g.num_nodes());
+
+	for (uint64 i = 0; i < g.num_nodes(); i++) {
+		for (uint64 k = 0; k < g.num_nodes(); k++) {
+			ifs >> d[i][k];
+			BOOST_CHECK_CLOSE(reliability.reliability(i,k), d[i][k], 0.01);
+		}
+	}
+
+	//BOOST_CHECK_EQUAL(N,1);
+}
+
+BOOST_AUTO_TEST_CASE( reliability_real_test )
+{
+	typedef BoostGraph<> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	Node a = g.add_node();
+	Node b = g.add_node();
+	Node c = g.add_node();
+
+	Edge e13 = g.add_edge(a,c);
+	Edge e12 = g.add_edge(a,b);
+	Edge e231 = g.add_edge(b,c);
+	Edge e232 = g.add_edge(b,c);
+
+	float64 p13,p12,p231,p232;
+
+	g.edge_properties(e13).weight = p13 = rand() * 1.0 / RAND_MAX;
+	g.edge_properties(e12).weight = p12 = rand() * 1.0 / RAND_MAX;
+	g.edge_properties(e231).weight = p231 = rand() * 1.0 / RAND_MAX;
+	g.edge_properties(e232).weight = p232 = rand() * 1.0 / RAND_MAX;
+
+	ReliabilityPair<Graph> r;
+
+
+	float64 P = r.calculate(g,a,c);
+
+	float64 real = p13 + p12*p231 + p12*p232 - p13*p12*p231 - p13*p12*p232 - p12*p231*p232 + p13*p12*p231*p232;
+
+	BOOST_CHECK_CLOSE(real, P, 0.01);
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

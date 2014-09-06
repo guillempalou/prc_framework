@@ -1,0 +1,97 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file detector.hpp
+//!
+//!  Detector
+//!
+
+
+#ifndef IMAGEPLUS_SEMANTIC_DETECTOR_HPP
+#define IMAGEPLUS_SEMANTIC_DETECTOR_HPP
+
+
+#include <string>
+
+#include <imageplus/machine_learning/svm/svm_adaptors.hpp>
+
+#include <imageplus/semantic/annotation.hpp>
+#include <imageplus/semantic/annotatedsemanticclass.hpp>
+#include <imageplus/semantic/modelpart.hpp>
+#include <imageplus/semantic/models.hpp>
+#include <imageplus/semantic/observation.hpp>
+#include <imageplus/semantic/trainset.hpp>
+
+
+namespace imageplus {
+	namespace semantic {
+		//!
+		//! \brief Class for detecting instances of a semantic class.
+		//!
+		//! \author Pau Haro Negre
+		//!
+		//! \date 24-5-2011
+		//!
+		class Detector
+		{
+		public:
+
+			//! Type of detector labels for each input feature vector
+			typedef std::vector<float64> LabelsType;
+
+			 //! Type of detector input data (a set of feature vectors)
+	        typedef std::vector<Observation::FeatureVector> InputDataType;
+
+			//! Default constructor.
+			Detector() {};
+
+            //! \brief Constructor from models index file for the detection.
+            //!
+            //! \param[in] models_file Name of the XML file from which to load the models.
+            //! \param[in] output_dir  Name of the directory where to write the detection results.
+			//!
+			//! \throw ImagePlusError When the output directory does not exist.
+            explicit Detector(const std::string& models_file, const std::string& output_dir) throw (ImagePlusError);
+
+			//! Destructor.
+			~Detector() {};
+
+
+			//! Detect whether the images or regions are of the given semantic class.
+			//! Use the model of each visual descriptor to detect if the
+			//! images or regions are an instance of the given semantic class
+			//! and write an annotation for each detection results.
+			//!
+			//! \param[in] regions_file Filename of the file with the input images or regions
+			//! \param[in] sc_id		Semantic class id to detect, zero for all semantic classes
+			//!
+			//! \throw ImagePlusError When the semantic class is not in the ontology.
+			void detect(const std::string& regions_file, int sc_id) throw (ImagePlusError);
+
+		private:
+            //! Stores the file name of the models index file to use
+            std::string _models_file;
+
+            //! Stores the loaded models
+            Models<machine_learning::svm::SVM> _models;
+
+            //! Stores the directory where the results of the detection should be saved
+            std::string _output_dir;
+
+            //! Get the feature vector of the visual descriptor from the given descriptors XML file.
+            //!
+            //! \param[in] filename Visual descriptors XML file
+            //! \param[in] vd_name	Name of the visual descriptor for which the feature vector has to be obtained
+            //!
+            //! \return Feature vector of the visual descriptor
+			//!
+			//! \throw ImagePlusError When some error related to XML occurs
+            Observation::FeatureVector _read_descriptor(const std::string& filename, const std::string& vd_name) const throw (ImagePlusError);
+		};
+	}
+}
+
+#endif //IMAGEPLUS_SEMANTIC_DETECTOR_HPP

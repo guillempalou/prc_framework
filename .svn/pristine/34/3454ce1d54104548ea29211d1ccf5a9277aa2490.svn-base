@@ -1,0 +1,180 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//
+// - NAME of your tool
+//   - This is mandatory
+//   - Avoid the character '-', use always '_'
+// - GROUP where your tool belong (tools/GROUP directory)
+//   - This is optional
+//   - Comment the second definition to not group your tool
+//
+#define IMAGEPLUS_TOOL_CONFIG_NAME  seg2prl
+#define IMAGEPLUS_TOOL_CONFIG_GROUP converters
+
+//
+// Include tool_config.hpp header
+//
+// Note that it is mandatory to FIRST define the name (and group)
+// of your tool, and LATER on include this header.
+//
+#include <imageplus/toolbox/tool_config.hpp>
+
+//
+// ImagePlus headers
+//
+#include <imageplus/core.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+//
+// Standard headers
+//
+#include <iostream>
+#include <fstream>
+
+//
+// namespaces
+//
+using namespace std;
+using namespace imageplus;
+
+
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+
+    "Conversion from SEG to PRL\n";
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+    "This tool converts a segmentation image from Berkeley (.seg) to PRL.\n";
+
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+    // my arguments
+    string filename_in_seg;
+    string filename_out_prl;
+
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+    // Note that vectors can be initialized with some values.
+    //
+
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description
+    // and an optional abreviature
+    //
+
+
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description.
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_in_seg  , "Input image in SEG" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_out_prl , "Output file in PRL" );
+
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_in_seg  );
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_out_prl );
+
+
+//
+// This is the "main" function of your tool.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the exemple with "--help" to see your configuration.
+//
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{
+    std::ifstream in_file;
+
+    in_file.open(cfg.filename_in_seg.c_str(), std::ios::in);
+
+    if (!in_file.is_open())
+        throw ImagePlusError( "File '" + cfg.filename_in_seg + "' could not be opened" );
+
+    std::string in;
+    std::size_t height, width;
+
+    do
+    {
+        in_file >> in;
+        if (in=="width")
+        {
+            in_file >> width;
+        }
+
+        if (in=="height")
+        {
+            in_file >> height;
+        }
+    }
+    while(in!="data" && !(in_file.eof()));
+
+    if (width*height==0 || in_file.eof())
+    {
+        throw ImagePlusError( "File '" + cfg.filename_in_seg + "' corrupted, not all mandatory fields on header" );
+    }
+
+    ImagePartition<> part_out(width, height);
+
+    std::size_t segment, row, column_start, column_end;
+
+    std::size_t counter = 0;
+    do
+    {
+        in_file >> segment;
+        if(in_file.eof()) break;
+        in_file >> row;
+        in_file >> column_start;
+        in_file >> column_end;
+
+        for(std::size_t ii = column_start; ii<=column_end; ii++)
+        {
+            counter++;
+            part_out[ii][row] = segment;
+        }
+    }
+    while(true);
+
+    if (counter!=width*height)
+        throw ImagePlusError( "File '" + cfg.filename_in_seg + "' corrupted, not all pixels covered" );
+
+    io::WriteImage wi(cfg.filename_out_prl);
+    wi << part_out;
+
+    return 0;
+}
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_TOOL_CONFIG_END()

@@ -1,0 +1,691 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file localization.hpp
+//!
+#ifndef IMAGEPLUS_DESCRIPTORS_GEOMETRY_LOCALIZATION_HPP
+#define IMAGEPLUS_DESCRIPTORS_GEOMETRY_LOCALIZATION_HPP
+
+#include <imageplus/descriptors/geometry/auxiliar.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+#include <imageplus/core/bounding_box.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+
+#include <float.h>
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Class for visual descriptor that contains the center of the mass (centroid) of the region.
+        //!
+        //! \author Ekaterina Zaytseva <zaytseva@gps.tsc.upc.edu>
+        //! \author Jordi Pont <jordi.pont@upc.edu>
+        //!
+        //! \date 20-7-2009 
+        template<class PositionModel>
+        class Centroid : public DescriptorBase,
+                         public boost::array<float64,PositionModel::dimensions>
+        {
+        public:
+            //! The dimension of the Coord space
+            static const std::size_t dimensions = PositionModel::dimensions;
+            
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef boost::array<float64,dimensions>   vd_type;
+           
+            //! Type of coordinate
+            typedef PositionModel CoordType;
+
+            //!
+            //! \brief Default constructor
+            //!
+            Centroid() : DescriptorBase("Centroid",true), vd_type()
+            {
+            };
+            
+            //! \brief Calculates the center of mass of a region given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the region
+            //! \param[in] last : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {     
+                ASSERT(peer_descs!=0x0, "Centroid calculate: peer_descs must be non null");
+
+                Area desc_area = peer_descs->calculate(new Area(), first,  last);
+                CoordSum<CoordType> desc_coord_sum = peer_descs->calculate(new CoordSum<CoordType>(), first,  last);
+                   
+                if (desc_area != 0)
+                {
+                    for(std::size_t ii=0; ii<dimensions; ++ii)
+                    {
+                        (*this)[ii]= desc_coord_sum[ii]/(float64)desc_area;                        
+                    }
+                }
+            }
+                       
+            //! \brief Calculates recursively center of mass of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!    
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            {        
+                CoordSum<CoordType> desc_coord_sum = peer_descs->recursive_calculate(new CoordSum<CoordType>(), son1_descs, son2_descs);
+                Area segment_area = peer_descs->recursive_calculate(new Area(),  son1_descs,  son2_descs);
+
+                if (segment_area != 0) 
+                {
+                    for(std::size_t ii=0; ii<dimensions; ++ii)
+                    {
+                        (*this)[ii]= (float64)desc_coord_sum[ii]/(float64)segment_area;
+                    }
+                }
+            }
+        };
+        
+        
+        //!
+        //! \brief Localization Visual Descriptor (Centroid + Bounding Box)
+        //!
+        //! \todo Tests. (When the class to read Visual Descriptors is available, since it is just a wrapper for other descs)
+        //!
+        //! \author Jordi Pont <jpont@gps.tsc.upc.edu>
+        //!
+        //! \date 24-7-2009 
+        template<class PositionModel>
+        class Localization : public DescriptorBase
+        {
+        public:
+            //! Type of coordinate
+            typedef PositionModel CoordType;
+            
+            //!
+            //! \brief Default constructor
+            //!
+            Localization() : DescriptorBase("Localization",true)
+            {
+            };
+            
+            //! \brief Calculates the Localization of a region given a pair of iterators. 
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {     
+                _centroid = peer_descs->calculate(new Centroid<CoordType>()   , first,  last);
+                _bbox     = peer_descs->calculate(new BoundingBox<CoordType>(), first,  last);
+                if(peer_descs->global_desc()!=0x0)
+                {
+                    _im_bbox = peer_descs->global_desc()->calculate(new BoundingBox<CoordType>(), (*first).global_begin(), (*first).global_end());
+
+                    uint64 im_width  = _im_bbox.opposite()[0] - _im_bbox.origin()[0];
+                    uint64 im_height = _im_bbox.opposite()[1] - _im_bbox.origin()[1];
+
+                    _norm_centroid[0] = (float64)_centroid[0] / (float64)im_width;
+                    _norm_centroid[1] = (float64)_centroid[1] / (float64)im_height;
+
+                    _norm_bbox[0][0] = _bbox.origin()[0] / (float64)im_width;
+                    _norm_bbox[0][1] = _bbox.origin()[1] / (float64)im_height;
+                    _norm_bbox[1][0] = _bbox.opposite()[0] / (float64)im_width;
+                    _norm_bbox[1][1] = _bbox.opposite()[1] / (float64)im_height;
+                }
+            }
+                       
+            //! \brief Calculates the Localization of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            {        
+                _centroid = peer_descs->recursive_calculate(new Centroid<CoordType>() , son1_descs,  son2_descs);
+                _bbox     = peer_descs->recursive_calculate(new BoundingBox<CoordType>(), son1_descs,  son2_descs);
+                if(peer_descs->global_desc()!=0x0)
+                {
+                    _im_bbox = peer_descs->global_desc()->get(_im_bbox);
+                }
+    
+                uint64 im_width  = _im_bbox.opposite()[0] - _im_bbox.origin()[0];
+                uint64 im_height = _im_bbox.opposite()[1] - _im_bbox.origin()[1];
+    
+                _norm_centroid[0] = (float64)_centroid[0] / (float64)im_width;
+                _norm_centroid[1] = (float64)_centroid[1] / (float64)im_height;
+                
+                _norm_bbox[0][0] = _bbox.origin()[0] / (float64)im_width;
+                _norm_bbox[0][1] = _bbox.origin()[1] / (float64)im_height;
+                _norm_bbox[1][0] = _bbox.opposite()[0] / (float64)im_width;
+                _norm_bbox[1][1] = _bbox.opposite()[1] / (float64)im_height;
+            }
+           
+            //! \brief Returns the centroid of the region
+            //!
+            //! \return The centroid of the region
+            const Centroid<CoordType>& centroid() const
+            {
+                return _centroid;
+            }
+            
+            //! \brief Returns the bounding box of the region
+            //!
+            //! \return The bounding box of the region
+            const BoundingBox<CoordType>& bounding_box() const
+            {
+                return _bbox;
+            }        
+                       
+    #ifdef USE_XML   
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "LocalizationType";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem;
+                char append2[50];
+                
+                dataElem = doc->createElement(io::fromNative("Centroid").c_str());
+                sprintf (append2, "%f", _centroid[0]);
+                dataElem->setAttribute(io::fromNative("coordX").c_str(), io::fromNative(append2).c_str());
+                sprintf (append2, "%f", _centroid[1]);
+                dataElem->setAttribute(io::fromNative("coordY").c_str(), io::fromNative(append2).c_str());
+                vdElem->appendChild(dataElem);
+    
+                dataElem = doc->createElement(io::fromNative("Box").c_str());
+                sprintf (append2, "%u", (int)_bbox.origin()[0]);
+                dataElem->setAttribute(io::fromNative("minX").c_str(), io::fromNative(append2).c_str());
+                sprintf (append2, "%u", (int)_bbox.opposite()[0]);
+                dataElem->setAttribute(io::fromNative("maxX").c_str(), io::fromNative(append2).c_str());
+                sprintf (append2, "%u", (int)_bbox.origin()[1]);
+                dataElem->setAttribute(io::fromNative("minY").c_str(), io::fromNative(append2).c_str());
+                sprintf (append2, "%u", (int)_bbox.opposite()[1]);
+                dataElem->setAttribute(io::fromNative("maxY").c_str(), io::fromNative(append2).c_str());
+                vdElem->appendChild(dataElem);
+                
+                dataElem = doc->createElement(io::fromNative("CentroidNormalized").c_str());
+                sprintf (append2, "%f", _norm_centroid[0]);
+                dataElem->setAttribute(io::fromNative("coordX").c_str(), io::fromNative(append2).c_str());
+                sprintf (append2, "%f", _norm_centroid[1]);
+                dataElem->setAttribute(io::fromNative("coordY").c_str(), io::fromNative(append2).c_str());
+                vdElem->appendChild(dataElem);
+                
+                dataElem = doc->createElement(io::fromNative("BoxNormalized").c_str());
+                sprintf (append2, "%f", _norm_bbox[0][0]);
+                dataElem->setAttribute(io::fromNative("minX").c_str(), io::fromNative(append2).c_str());
+                sprintf (append2, "%f", _norm_bbox[1][0]);
+                dataElem->setAttribute(io::fromNative("maxX").c_str(), io::fromNative(append2).c_str());
+                sprintf (append2, "%f", _norm_bbox[0][1]);
+                dataElem->setAttribute(io::fromNative("minY").c_str(), io::fromNative(append2).c_str());
+                sprintf (append2, "%f", _norm_bbox[1][1]);
+                dataElem->setAttribute(io::fromNative("maxY").c_str(), io::fromNative(append2).c_str());
+                vdElem->appendChild(dataElem);
+               
+            }
+
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \returns true if the descriptor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "LocalizationType");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("LocalizationType not found");
+                }
+                else
+                {
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = io::xml_get_check_son(curr_node, "Centroid");
+                    XERCES_CPP_NAMESPACE::DOMNamedNodeMap *node_attr = curr_node2->getAttributes();
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("coordX"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lf", &_centroid[0]);
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("coordY"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lf", &_centroid[1]);
+                    
+                    curr_node2 = io::xml_get_check_son(curr_node, "Box");
+                    node_attr = curr_node2->getAttributes();
+                    CoordType origin, opposite;
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("minX"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lu", &origin[0]);
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("maxX"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lu", &opposite[0]);
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("minY"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lu", &origin[1]);
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("maxY"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lu", &opposite[1]);
+                    BoundingBox<CoordType> bbox(origin,opposite);
+                    _bbox = bbox;
+                    
+                    curr_node2 = io::xml_get_check_son(curr_node, "CentroidNormalized");
+                    node_attr = curr_node2->getAttributes();
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("coordX"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lf", &_norm_centroid[0]);
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("coordY"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lf", &_norm_centroid[1]);
+                    
+                    curr_node2 = io::xml_get_check_son(curr_node, "BoxNormalized");
+                    node_attr = curr_node2->getAttributes();
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("minX"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lf", &_norm_bbox[0][0]);
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("maxX"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lf", &_norm_bbox[1][0]);
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("minY"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lf", &_norm_bbox[0][1]);
+                    curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("maxY"));
+                    sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%lf", &_norm_bbox[1][1]);
+                    read = true;
+                }
+                return read;
+            }
+    #endif
+        private:
+    
+            //! Centroid
+            Centroid<CoordType> _centroid;
+            
+            //! BBox
+            BoundingBox<CoordType> _bbox;
+            
+            //! Image BBox
+            BoundingBox<CoordType> _im_bbox;
+            
+            //! Normalized centroid
+            Centroid<CoordType> _norm_centroid;
+            
+            //! Normalized bounding box
+            boost::array<Coord<float64,2>, PositionModel::dimensions> _norm_bbox;
+        };
+        
+                   
+        //!
+        //! \brief Class for visual descriptor that contains the orientation of the region, in radians, with respect the
+        //!        vertical and clockwise
+        //!
+        //! \author Ekaterina Zaytseva <zaytseva@gps.tsc.upc.edu>
+        //!
+        //! \date 20-7-2009 
+        template<class PositionModel>
+        class Orientation : public DescriptorBase
+        {
+        public:
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef float64  vd_type;
+            
+            //! Type of coordinate
+            typedef PositionModel CoordType;
+            
+            //!
+            //! \brief Default constructor
+            //!
+            Orientation() : DescriptorBase("Orientation",false)
+            {
+                _value = 0;
+                _moment_11 = 0;
+                _moment_20 = 0;
+                _moment_02 = 0;
+            };
+                      
+            //! \brief Calculates the orientation of a region given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the region
+            //! \param[in] last : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {     
+                Centroid<CoordType> desc_centroid = peer_descs->calculate(new Centroid<CoordType>(), first,  last);
+                float64 coord_x = 0, coord_y;
+
+                coord_x = desc_centroid[0];
+                coord_y = desc_centroid[1];
+                
+                //Calculation of the second-order moments
+                _moment_11 =  _moments(1,1, coord_x, coord_y, first, last );
+                _moment_20 =  _moments(2,0, coord_x, coord_y, first, last );
+                _moment_02 =  _moments(0,2, coord_x, coord_y, first, last );
+    
+                _value = -0.5* atan2(2*_moment_11, (_moment_20-_moment_02));
+                (_value == (float64)-0) ? _value = (float64)0 : _value; 
+            }
+                     
+            //! \brief Calculates recursively mean value of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            {        
+                //float64 coord_x = 0, coord_y = 0; // AGIL: these variables were set but not used, so they have been removed to avoid warnings in GCC-4.6
+
+                //const Centroid<CoordType>& desc_centroid = peer_descs->recursive_calculate(new Centroid<CoordType>(),  son1_descs,  son2_descs);
+                //coord_x = desc_centroid[0]; // AGIL: these variables were set but not used, so they have been removed to avoid warnings in GCC-4.6
+                //coord_y = desc_centroid[1]; // AGIL: these variables were set but not used, so they have been removed to avoid warnings in GCC-4.6
+
+                const Orientation& son1_ori = son1_descs.get(*this);
+                const Orientation& son2_ori = son2_descs.get(*this);
+               _moment_11 =  son1_ori.moment_11() + son2_ori.moment_11();
+               _moment_20 =  son1_ori.moment_20() + son2_ori.moment_20();
+               _moment_02 =  son1_ori.moment_02() + son2_ori.moment_02();
+
+                _value = -0.5*atan2(2*_moment_11,(_moment_20-_moment_02));
+                (_value == (float64) -0) ? _value = (float64)0 : _value;
+            }
+            
+            //! \brief Returns the orientation of the region
+            //!
+            //! \return The orientation of the region
+            //!  
+            operator const vd_type() const
+            {
+                return _value;
+            }
+            
+            //! \brief Returns moment_11 of the region
+            //!
+            //! \return The moment_11 of the region
+            //!  
+            const vd_type& moment_11() const
+            {
+                return _moment_11;
+            }
+            
+            //! \brief Returns moment_20 of the region
+            //!
+            //! \return The moment_20 of the region
+            //! 
+            const vd_type& moment_20() const
+            {
+                return _moment_20;
+            }
+            
+            //! \brief Returns moment_02 of the region
+            //!
+            //! \return The moment_02 of the region
+            //!
+            const vd_type& moment_02() const
+            {
+                return _moment_02;
+            }
+
+        private:
+             
+            //! Orientation of the region
+            vd_type _value;
+            
+            //! Value of moment_11 of the region
+            vd_type _moment_11;
+            
+            //! Value of moment_20 of the region
+            vd_type _moment_20;
+            
+            //! Value of moment_02 of the region
+            vd_type _moment_02;
+    
+            //!
+            //! \param[in] p : Power of moment by x
+            //! \param[in] q : Power of moment by y
+            //! \param[in] coord_x : X coordinate of the centroid
+            //! \param[in] coord_y : Y coordinate of the centroid
+            //! \param[in] first : Iterator to the beginning of the region
+            //! \param[in] last : Iterator to the end of the region
+            //!
+            //! \returns the second-order moment(p,q) of the region(only for 2D case).
+            //!
+            template<class IteratorModel>
+            float64 _moments(uint8 p, uint8 q, float64 coord_x, float64 coord_y, IteratorModel first, IteratorModel last)
+            {   
+                float64 diff_x, diff_y, curr_x, curr_y;
+                float64 res = 0;
+                
+                IteratorModel it=first;
+                
+                for(it=first; it!=last; ++it)
+                {
+                    curr_x = (float64) (*it).position()[0];
+                    curr_y = (float64) (*it).position()[1]; 
+                    diff_x = curr_x - coord_x;
+                    diff_y = curr_y - coord_y;
+    
+                    res = res + pow(diff_x, p)*pow(diff_y,q);
+                }
+                return res;
+                
+            }
+        }; 
+        
+        //! Structure consisting of the 4 bounding box vertices: Left-Top vertex, Left-Bottom vertex, Right-Top vertex and Right-Bottom vertex.
+        struct BBoxContainer 
+        {
+            //! Left-Top Vertex
+            boost::array<float64, 2>  LTVertex;
+            
+            //! Left-Bottom Vertex
+            boost::array<float64, 2>  LBVertex;
+            
+            //! Right-Top Vertex
+            boost::array<float64, 2>  RTVertex;
+            
+            //! Right-Bottom Vertex
+            boost::array<float64, 2>  RBVertex;                                  
+        };
+        
+        
+            
+        //!
+        //! \brief Class for visual descriptor that contains the coordinates of orientation bounding box of the  region.
+        //!
+        //! \author Ekaterina Zaytseva <zaytseva@gps.tsc.upc.edu>
+        //!
+        //! \todo Test properly
+        //! \date 20-7-2009 
+        template<class PositionModel>
+        class OrientedBoundingBox : public DescriptorBase,
+                                    public BBoxContainer
+        {
+        public:
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef struct BBoxContainer vd_type;
+            
+            //! Type of coordinate
+            typedef PositionModel CoordType;
+                     
+            //!
+            //! \brief Default constructor
+            //!
+            OrientedBoundingBox() : DescriptorBase("OrientedBoundingBox", false),
+                                    vd_type(), _occupation(0), _aspect_ratio(0)
+            {
+            };
+                     
+            //! \brief Calculates the coordinates of oriented bounding box of a region given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the region
+            //! \param[in] last : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+	        template<class IteratorModel>
+	        void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+	        {     
+	        	Orientation<CoordType> desc_orientation = peer_descs->calculate(new Orientation<CoordType>(), first,  last);
+	        	Centroid<CoordType> desc_center_mass = peer_descs->calculate(new Centroid<CoordType>(), first,  last);
+	        	Area area = peer_descs->calculate(new Area(), first,  last);
+	
+	        	// Orientation equals to  -orientation because of the fact that y value increse from top to bottom in the image                
+	        	float64 theta = -desc_orientation;
+	        	float64 center_x = desc_center_mass[0];
+	        	float64 center_y = desc_center_mass[1];
+	        	float64 a, b, curr_x = 0, curr_y = 0, a_min = FLT_MAX, a_max = 0, b_min = FLT_MAX, b_max = 0;
+	
+	        	for( ; first!=last; ++first)
+	        	{
+	        		curr_x = (float64) (*first).position()[0];
+	        		curr_y = (float64) (*first).position()[1]; 
+	
+	        		a = (curr_x - center_x) * cos(theta) + (curr_y - center_y) * sin(theta);
+	        		b = -(curr_x - center_x) * sin(theta) + ( curr_y- center_y) * cos(theta);
+
+	        		(a < a_min) ? a_min = a : a_min;
+	        		(a > a_max) ? a_max = a : a_max;
+	        		(b < b_min) ? b_min = b : b_min;
+	        		(b > b_max) ? b_max = b : b_max;
+	        	}
+
+	        	this->LBVertex[0] = center_x + a_min *cos(theta) - b_max *sin(theta);
+	        	this->LBVertex[1] = center_y + a_min *sin(theta) + b_max *cos(theta);
+
+	        	this->RTVertex[0] = center_x + a_max *cos(theta) - b_min *sin(theta);
+	        	this->RTVertex[1] = center_y + a_max *sin(theta) + b_min *cos(theta);
+
+	        	this->RBVertex[0] = center_x + a_max *cos(theta) - b_max *sin(theta);
+	        	this->RBVertex[1] = center_y + a_max *sin(theta) + b_max *cos(theta);
+
+	        	this->LTVertex[0] = center_x + a_min *cos(theta) - b_min *sin(theta);
+	        	this->LTVertex[1] = center_y + a_min *sin(theta) + b_min *cos(theta);
+	
+	        	float64 width = (std::abs(this->RTVertex[0]-this->LTVertex[0])+1)*(std::abs(this->RTVertex[0]-this->LTVertex[0])+1)+(std::abs(this->RTVertex[1]-this->LTVertex[1])+1)*(std::abs(this->RTVertex[1]-this->LTVertex[1])+1);
+	        	float64 height = (std::abs(this->LBVertex[0]-this->LTVertex[0])+1)*(std::abs(this->LBVertex[0]-this->LTVertex[0])+1)+(std::abs(this->LBVertex[1]-this->LTVertex[1])+1)*(std::abs(this->LBVertex[1]-this->LTVertex[1])+1);
+	        	width = std::sqrt(width);
+	        	height = std::sqrt(height);
+	        	_occupation = ((float64)area)/(width*height);
+	        	if(width<height)
+	        	{
+	        		_aspect_ratio = width / height;
+	        	}
+	        	else
+	        	{
+	        		_aspect_ratio = height / width;
+	        	}
+	        }
+
+
+#ifdef USE_XML    
+	        //! Returns the name of the descriptor to be written to the XML descriptors file
+	        //! \return Name of the identifier
+	        std::string xml_name() const
+	        {
+	        	return "ShapeBoxOrientedType";
+	        }
+	        
+	        //! Writes the value of the descriptor. 
+	        //! \param[in] doc: Pointer to the XML document we are writing 
+	        //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+	        void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+	        {
+	        	XERCES_CPP_NAMESPACE::DOMElement* dataElem, *dataElem2;
+	        	//            char append2[50];
+	        	XERCES_CPP_NAMESPACE::DOMText* textElem;
+	        	std::string append;
+	        	std::string space(" ");
+
+	        	dataElem = doc->createElement(io::fromNative("Polygon").c_str());
+	        	vdElem->appendChild(dataElem);
+	        	dataElem2 = doc->createElement(io::fromNative("Coords").c_str());
+	        	dataElem2->setAttribute(io::fromNative("mpeg7:dim").c_str(), io::fromNative("4 2").c_str());
+	        	append = append + boost::lexical_cast<std::string>((int)this->LTVertex[0]) + space;
+	        	append = append + boost::lexical_cast<std::string>((int)this->LTVertex[1]) + space;
+	        	append = append + boost::lexical_cast<std::string>((int)this->LBVertex[0]) + space;
+	        	append = append + boost::lexical_cast<std::string>((int)this->LBVertex[1]) + space;
+	        	append = append + boost::lexical_cast<std::string>((int)this->RTVertex[0]) + space;
+	        	append = append + boost::lexical_cast<std::string>((int)this->RTVertex[1]) + space;
+	        	append = append + boost::lexical_cast<std::string>((int)this->RBVertex[0]) + space;
+	        	append = append + boost::lexical_cast<std::string>((int)this->RBVertex[1]);
+
+	        	textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+	        	dataElem2->appendChild(textElem);
+	        	dataElem->appendChild(dataElem2);
+
+	        }
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \return true if the descriptor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son(vdNode, "SpatialLocator");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("SpatialLocator not found");
+                }
+                else
+                {
+                    curr_node = io::xml_get_check_son(curr_node, "Polygon");
+                    if (curr_node==0x0)
+                    {
+                        throw ImagePlusError("Polygon not found");
+                    }
+                    curr_node = io::xml_get_check_son_by_field(curr_node, "Coords","mpeg7:dim","4 2");
+                    if (curr_node==0x0)
+                    {
+                        throw ImagePlusError("Coords not found");
+                    }
+                    std::string text = io::xml_get_text_son(curr_node, curr_node);
+                    const char* text2 = text.c_str();
+                    uint32 j = 0;
+                    int pos = 0;
+                    boost::array<float64, 8> vertices;
+                    for( j = 0; j < 8; j++)
+                    {
+                        std::string value;
+                        value.push_back(text2[pos]);
+                        pos++;
+                        while(text2[pos]!=' ')
+                        {
+                            value.push_back(text2[pos]);
+                            pos++;
+                        }
+                        pos++;
+                        
+                        float64 val;
+                        sscanf(value.c_str(), "%lf", &val);
+                        vertices[j]=val;
+                    }
+                    this->LTVertex[0] = vertices[0];
+                    this->LTVertex[1] = vertices[1];
+                    this->LBVertex[0] = vertices[2];
+                    this->LBVertex[1] = vertices[3];
+                    this->RTVertex[0] = vertices[4];
+                    this->RTVertex[1] = vertices[5];
+                    this->RBVertex[0] = vertices[6];
+                    this->RBVertex[1] = vertices[7];
+                    read = true;
+                }
+                return read;
+            }
+#endif
+        
+        private:
+            
+            //! Occupation of the oriented bounding box
+            float64 _occupation;
+            
+            //! Aspect ratio of the oriented bounding box
+            float64 _aspect_ratio;
+        };
+    }
+}
+
+#endif
+

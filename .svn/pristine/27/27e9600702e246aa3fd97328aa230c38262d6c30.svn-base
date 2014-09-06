@@ -1,0 +1,274 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file read_sequence.hpp
+//!
+//!  Client to read a sequence from a the disc and create a flow
+//!
+//
+// FIRST of all you have to define:
+//
+// - The NAME of your tool
+//   - This is mandatory
+//   - Avoid the character '-', use always '_' 
+// - The GROUP where your tool belong
+//   - This is optional
+//   - Comment the second definition to not group your tool
+//
+#define IMAGEPLUS_CLIENT_CONFIG_NAME  read_sequence
+
+//
+// AFTER the previous definitions you can include the tool_config 
+// header and others
+//
+// Note that it is mandatory to first define the name (and group)
+// and later on include this header.
+//
+#include <imageplus/toolbox/client_config.hpp>
+
+#include <imageplus/io/readsequence.hpp>
+#include <imageplus/core/timestamp.hpp>
+
+//
+// This is not mandatory, but useful (in a tool!)
+//
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace std;
+
+//
+//
+// From now on you should use the IMAGEPLUS_CLIENT_CONFIG_* macros
+// for a better configuration.
+//
+// We have two parts:
+//
+// (1) Fill up the configuration and information of your tool:
+//
+// - Brief description of your tool
+// - Detailed descritption of your tool
+// - Parameters Configuration: 
+//   - Declararion of all your parameters
+//   - Default values for the parameters
+//   - Configuration: 
+//     - Select which paramteres are options, which flags and which arguments
+//     - Description for all the parameters
+//     - Optional abreviatures for options and flags 
+// - Call the "read" functions for all the parameters (DO NOT FORGET THIS!)
+//
+// (2) The code of "main" function of your tool
+//
+// You should use the IMAGEPLUS_CLIENT_CONFIG_* macros in the following 
+// order to do all the previous tasks: 
+//
+IMAGEPLUS_CLIENT_CONFIG_BRIEF()
+    
+    "Here you should write a brief description ofyour tool...\n";
+
+IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()
+
+    "This is the detailed description of your tool.           \n" +
+    "What it does, how, why...                                \n" +
+    "                                                         \n"+
+    "You can add blank lines as the previous and the next one.\n" +
+    "                                                         \n"+
+    "\tAlso indented lines like this...                       \n" +
+    "                                                         \n"+
+    "This information will be shown in the help message.      \n";
+
+
+IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()
+
+    //
+    // Here you have to declare all your configuration parameters:
+    // options, flags and arguments.
+
+
+	// my options
+	uint32 fps;
+	float32 scale;
+
+    uint64 first_frame;
+    uint64 last_frame;
+    
+    std::size_t width;
+    std::size_t height;
+    
+
+    // arguments
+    string filenames;
+	
+	// my flows
+	VideoOutputFlow video;
+	
+IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+    fps         =   25;
+	scale		= 	1;
+
+    first_frame =    0;
+    last_frame  = 10000;
+
+    width       =  768;
+    height      =  576;
+    
+IMAGEPLUS_CLIENT_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description 
+    // and an optional abreviature
+    //
+    CLIENT_CONFIG_OPTION( fps ,         "frames per seccond"           );
+    CLIENT_CONFIG_OPTION( first_frame , "starting frame number"        );
+    CLIENT_CONFIG_OPTION( last_frame  , "ending frame number"          );
+    CLIENT_CONFIG_OPTION( width       , "expected width of the image"  );
+    CLIENT_CONFIG_OPTION( height      , "expected height of the image" );
+    CLIENT_CONFIG_OPTION( scale      , "expected height of the image" );
+    
+IMAGEPLUS_CLIENT_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description 
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description. 
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments 
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //   
+    CLIENT_CONFIG_ARGUMENT( filenames     , "string with filenames of images in disk (printf style)" );
+
+
+IMAGEPLUS_CLIENT_CONFIG_FLOWS()
+
+    //
+    // Here you have to define your FLOWS
+    //
+	CLIENT_CONFIG_VIDEO_OUT(video);
+
+IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //  
+    IMAGEPLUS_CLIENT_CONFIG_READ( fps         );
+    IMAGEPLUS_CLIENT_CONFIG_READ( filenames   );
+    IMAGEPLUS_CLIENT_CONFIG_READ( first_frame );
+    IMAGEPLUS_CLIENT_CONFIG_READ( last_frame  );
+    IMAGEPLUS_CLIENT_CONFIG_READ( width       );
+    IMAGEPLUS_CLIENT_CONFIG_READ( height      );
+    IMAGEPLUS_CLIENT_CONFIG_READ( scale      );
+
+    
+    
+IMAGEPLUS_CLIENT_CONFIG_METADATAS()
+    
+    //
+    // Here you can get the metadatas from the input flows
+    // And you MUST set the metadata of your output flows
+    //
+    // Note that from now on you can access to the previously 
+    // defined config parameters with the "cfg" object.
+    // 
+
+    VideoMetadata video_metadata;
+    
+    // Define output metadata flow as RGB
+    video_metadata.imageFormat = SFC::VideoMetadata::packedRGB;
+    video_metadata.dataType    = SFC::VideoMetadata::type_8u;
+    video_metadata.frameRate   = cfg.fps;
+    video_metadata.width       = static_cast<long long unsigned int>(cfg.width / cfg.scale);
+    video_metadata.height      = static_cast<long long unsigned int>(cfg.height / cfg.scale);
+    strncpy(video_metadata.calibrationFile, "default", 255 );
+
+    cfg.video->setMetadata( video_metadata );
+
+        
+//
+// This is the "main" function of your client.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the client with "--help" to see your configuration.
+//
+IMAGEPLUS_CLIENT_CONFIG_MAIN()
+{
+    //
+    // Here you can declare and initialize the variables that
+    // will be used in the main loop
+    // 
+    ReadSequence     rseq (cfg.filenames, cfg.first_frame, cfg.last_frame);
+    ImageRGB<uint8>  rgb;
+
+    //size_t imageSize    = 768*576*3;
+    
+    //
+    // Also you should define pointers to the flow buffer
+    //
+    uint8* buffer; 
+    
+    std::size_t bsize = cfg.width*cfg.height*3;
+
+    CLIENT_CONFIG_WHILE_RUNNING() 
+    {
+        //
+        // This is the main loop of you client.
+        // You can think on it as a "while(running)" loop.
+        // It ends only when the SmartFlow server send the "kill" signal
+        // or if you execute "running=false"
+        //
+        
+        // Get the input data
+        rseq >> rgb;
+        Timestamp ts(rseq.last_frame_pointer());
+
+
+        //
+        // Get output buffer from the flow:
+        //
+        cfg.video->get_buffer(buffer);
+
+        //
+        // Fills up the output buffer
+        //
+        rgb.resize(static_cast<long unsigned int> (cfg.width/cfg.scale), static_cast<long unsigned int> (cfg.height/cfg.scale));
+        //rgb.export_to(buffer, cfg.width, cfg.height, RGB);
+        export_to(rgb, buffer, bsize, RGB);
+
+        
+        //
+        // Send and release the output buffer
+        //
+        send_buffer(cfg.video, ts);
+
+        //
+        // Follow the frame rate
+        //
+        usleep(1000000/cfg.fps);
+    }
+
+    // End client
+    return (0);
+}
+
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_CLIENT_CONFIG_END()

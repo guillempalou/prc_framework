@@ -1,0 +1,195 @@
+/*
+ * mumford_shah.cpp
+ *
+ *  Created on: Mar 7, 2013
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <imageplus/segmentation/io/partition2d_read.hpp>
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+#include <imageplus/graph_cuts/gco/GCoptimization.hpp>
+
+#include <imageplus/segmentation/partition/hierarchical_region_partition.hpp>
+
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <imageplus/descriptors/color/color_mean.hpp>
+
+#include <imageplus/math/statistics/k_means.hpp>
+
+#include <boost/filesystem.hpp>
+#include <iomanip>
+#include <iostream>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef ImageSignal<float64,3> 																		ImageType;
+
+typedef ImageType::coord_type																		coord2d;
+typedef ImageType::value_type																		rgb_type;
+
+typedef HierarchicalRegion<coord2d>																	Region2D;
+typedef segmentation::HierarchicalRegionPartition<Region2D>											BPT;
+typedef BPT::PartitionType																			PartitionType;
+
+uint64 global_reg;
+// get the mean color of each segment
+uint64 N = 0;
+std::map<uint64,uint64> 	idx;
+std::vector<uint64>			ridx;
+std::vector<math::Vector3D>   centers;
+BPT bpt;
+ImageType img;
+
+float64 factor = 0.0001;
+
+float64 perimeter_cost(int p1, int p2, int l1, int l2, void *extra_data) {
+	math::Matrix& perimeters = (*(math::Matrix*)extra_data);
+	return factor*(l1!=l2)*global_reg*perimeters(p1,p2);
+}
+
+float64 color_cost(int n, int l) {
+	float64 e = 0;
+	for (BPT::RegionType::iterator p = bpt(ridx[n]).begin(); p != bpt(ridx[n]).end(); ++p) {
+		math::Vector3D c;
+		c(0) = img(*p)(0); c(1) = img(*p)(1); c(2) = img(*p)(2);
+		e+=(c - centers[l]).squaredNorm();
+	}
+	//std::cout << "cost " << n << " " << l << " = " << e << std::endl;
+	return factor*e;
+}
+
+int main(int argc, char *argv[]) {
+
+	std::string image_path 			= argv[1];
+	std::string partition_path 		= argv[2];
+	std::string result_path 		= argv[3];
+
+	std::vector<float64> list;
+
+	for (int64 i = 4; i < argc; i++) {
+		std::string a = argv[i];
+		std::cout << a << " ";
+		std::istringstream is(a);
+		float64 n;
+		is >> n;
+		list.push_back(n); //*1000);
+	}
+
+	// create the necessary paths
+	boost::filesystem::path result_path_p(result_path);
+	boost::filesystem::create_directories(result_path_p);
+	img.read(image_path);
+
+	std::cout << "Reading " << partition_path << std::endl;
+	segmentation::PRLReader<PartitionType> 	prl_reader;
+   	PartitionType partition					= prl_reader.read_prl(partition_path);
+
+   	std::cout << "Converting" << std::endl;
+	ColorSpaceConverter<ImageType> converter;
+	converter.convert(img,ColorSpaceLAB);
+
+	bpt.init(partition);
+	partition = bpt.leaves_partition();
+
+	std::cout << "Getting statistics (mean and perimeters)" << std::endl;
+	// get color mean of each superpixel
+	for (PartitionType::iterator p = partition.begin(); p != partition.end(); ++p) {
+		uint64 l = (*p)(0);
+		if (idx.find(l) == idx.end()) {
+			idx[l] = N++;
+		ridx.push_back(l);}
+	}
+
+	std::vector<math::Vector3D> img_points(img.sizes().prod());
+	uint64 n = 0;
+	for (ImageType::iterator p = img.begin(); p != img.end(); ++p) {
+		math::Vector3D c;
+		c(0) = (*p)(0); c(1) = (*p)(1); c(2) = (*p)(2);
+		img_points[n++] = c;
+	}
+
+	std::cout << "Got colors" << std::endl;
+
+	//get the contour length of each pair of regions
+	math::Matrix perimeters(N,N); perimeters.fill(0);
+
+	typedef PartitionType::general_adjacency_iterator<Connectivity2D4>::type  adj_iterator;
+
+	for(PartitionType::iterator part_it = partition.begin(); part_it != partition.end(); ++part_it) {
+		adj_iterator adj		 	= partition.general_adjacency_begin<Connectivity2D4>(part_it.pos());
+		adj_iterator adj_end 		= partition.general_adjacency_end<Connectivity2D4>(part_it.pos());
+		uint64 label = (*part_it)(0);
+		for (; adj!=adj_end;++adj) {
+			uint64 label_adj = (*adj)(0);
+			if (label == label_adj) continue;
+			perimeters(idx[label],idx[label_adj])++;
+			perimeters(idx[label_adj],idx[label])++;
+		}
+	}
+
+	std::cout << "Got perimeters" << std::endl;
+	//get segmentations given different number of labels
+
+	// perform a k-means with (labels) centers to find the data costs
+	math::statistics::KMeansParameters kmeans_pars;
+	math::statistics::KMeans<math::Vector3D> kmeans(kmeans_pars);
+
+	std::cout << "Doing K-means" << std::endl;
+	uint64 Nmax = 50;
+	kmeans.calculate(img_points,Nmax);
+	centers = kmeans.centers();
+
+	for (uint64 i = 0; i < centers.size(); i++) {
+		std::cout << "Centers " << centers[i].transpose() << std::endl;
+	}
+
+	std::cout << "Optimizing" << std::endl;
+	for (uint64 r =0; r < list.size(); r++) {
+		global_reg = list[r];
+		// initial clustering of the partition
+		//graph cuts, iterate over the number of labels to see the minimum
+		std::vector<uint64> optim_labels(N);
+		float64 min_energy = 1e200;
+
+		std::cout << "With reg " << global_reg << std::endl;
+
+		graph_cuts::GCoptimizationGeneralGraph gc(N,Nmax);
+
+		// set perimeter cost to regions
+		for (uint64 i = 0; i < N; i++)
+			for (uint64 k = 0; k < N; k++)
+				if (perimeters(i,k)!=0) {
+					gc.setNeighbors(i,k);
+				}
+
+		gc.setDataCost(color_cost);
+		gc.setSmoothCost(perimeter_cost,(void*)&perimeters);
+
+		//optimize with 2 iterations
+		gc.expansion(5);
+
+		min_energy = gc.compute_energy();
+		std::cout << "solution with " << min_energy << std::endl;
+		for (uint64 i = 0; i < N; i++)
+			optim_labels[i] = gc.whatLabel(i);
+
+		//output partition
+		PartitionType optimum_p(partition.sizes());
+		for (PartitionType::iterator p = partition.begin(); p != partition.end(); ++p) {
+			optimum_p(p.pos())(0) = optim_labels[idx[(*p)(0)]];
+		}
+
+		std::ostringstream os;
+		os << r << ".png";
+		ImageType segmentation = segmentation::to_false_color<ImageType>(optimum_p);
+		segmentation.write(result_path_p.string() + "/" + os.str());
+	}
+}

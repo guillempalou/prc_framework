@@ -1,0 +1,819 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imavol_comparison.hpp
+//!
+//!  Methods to compare imavols
+//!
+
+#ifndef IMAGEPLUS_CORE_IMAVOL_COMPARISON_HPP
+#define IMAGEPLUS_CORE_IMAVOL_COMPARISON_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/imavol.hpp>
+
+
+namespace imageplus
+{
+    //!
+    //! \brief Test that two imavols are different objects. If imavols are the same, an exception is thrown
+    //!
+    //! \tparam T: type of the data 
+    //! \tparam N: number of channels in the image/volume 
+    //! \tparam D: number of dimensions (2 for images, 3 for volumes) 
+    //!
+    //! \param[in] input1 : First operand (imavol)
+    //! \param[in] input2 : Second operand (imavol)
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@gupc.edu>
+    //!
+    //! \date 03-03-2008
+    //!
+    template<typename T, std::size_t N, std::size_t D>
+    void notsame( const ImaVol<T,N,D>& input1, const ImaVol<T,N,D>& input2) throw (ImagePlusError);
+
+    //!
+    //! \brief Test that two imavols are compatible (same dimensionality). If not, an exception is thrown
+    //!
+    //! \tparam T: type of the data 
+    //! \tparam N: number of channels in the image/volume 
+    //! \tparam D: number of dimensions (2 for images, 3 for volumes) 
+    //!
+    //! \param[in] input1 : First operand (imavol)
+    //! \param[in] input2 : Second operand (imavol)
+    //!
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 03-03-2008
+    //!
+    template<typename T, std::size_t N, std::size_t D>
+    void compatible ( const ImaVol<T,N,D>& input1, const ImaVol<T,N,D>& input2) throw (ImagePlusError);
+
+    //!
+    //! \brief Element-by-element comparisons between two imavols, outputing the result on an imavol (inplace version). 
+    //!
+    //! Create an output imavol based on the element per element comparison of the imavols
+    //! In each case, if the condition is true, the value of the corresponding element in the output imavol
+    //! is set to the corresponding element value in 'tr'. If false, the value is set to the corresponding element value 
+    //! in 'fa'.\n
+    //! Several operators can be used in the comparison: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! This function gives the output value in an already allocated imavol passed by reference instead of using return value \n
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T1,2> ma2;
+    //!  ImaVol<T2,2> ma3;
+    //!  ImaVol<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma2, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= ma2 will be set in out1 to the values in ma3. The rest of positions will be
+    //!  // taken from ma4
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, ma2, ">=", ma3, ma4, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavols to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (imavol)
+    //! \param[in] ma2   : Second operand (imavol)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] tr    : Output when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //! \param[out] out  : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogii()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    void iv_compare(const ImaVol<T1,N1,D>& ma1, const ImaVol<T1,N1,D>& ma2, const int8 op[3], const ImaVol<T2,N2,D>& tr, const ImaVol<T2,N2,D>& fa, ImaVol<T2,N2,D>& out)  throw (ImagePlusError)
+    {
+        ASSERT (N1 == N2 || N1 == 1, "");
+
+        for (uint64 channel=0; channel < N2; ++channel)
+        {
+            if (N1 == N2)
+            {
+                ma_compare (ma1(channel), ma2(channel), op, tr(channel), fa(channel), out(channel));
+
+            }
+            else /* N1 == 1 */
+            {
+                ma_compare (ma1(0), ma2(0), op, tr(channel), fa(channel), out(channel));
+            }
+        }
+    }
+
+    //!
+    //! \brief Element-by-element comparisons between two imavols, outputing the result on an imavol
+    //!
+    //! Create an output imavol based on the element per element comparison of the imavols
+    //! In each case, if the condition is true, the value of the corresponding element in the output imavol
+    //! is set to the corresponding element value in 'tr'. If false, the value is set to the corresponding element value 
+    //! in 'fa'.\n
+    //! Several operators can be used in the comparison: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T1,2> ma2;
+    //!  ImaVol<T2,2> ma3;
+    //!  ImaVol<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma2, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= ma2 will be set in out1 to the values in ma3. The rest of positions will be
+    //!  // taken from ma4
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  out1 = ma_compare (ma1, ma2, ">=", ma3, ma4);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavols to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (imavol)
+    //! \param[in] ma2   : Second operand (imavol)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] tr    : Output when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //!
+    //! \return  : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogii()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    ImaVol<T2,N2,D> iv_compare(const ImaVol<T1,N1,D>& ma1, const ImaVol<T1,N1,D>& ma2, const int8 op[3], const ImaVol<T2,N2,D>& tr, const ImaVol<T2,N2,D>& fa)  throw (ImagePlusError)
+    {
+        std::vector< std::vector<uint64> > dimensions;
+        for (uint64 i=0; i < N2; ++i)
+        {
+            dimensions.push_back(tr(i).dims());
+        }
+        ImaVol<T2,N2,D> out(dimensions);
+
+        // Call in-place version
+        iv_compare (ma1, ma2, op, tr, fa, out);
+
+        return out;
+    }
+
+
+    //!
+    //! \brief Element-by-element comparisons between a imavol and a scalar, outputing the result on an imavol (inplace version). 
+    //!
+    //! Create an output imavol based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the corresponding element value in 'tr'. If false, the value is set to the corresponding element value 
+    //! in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! This function gives the output value in an already allocated multiarray passed by reference instead of using return value \n
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T2,2> ma3;
+    //!  ImaVol<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set in out1 to the values in ma3. The rest of positions will be
+    //!  // taken from ma4
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, (T1)5, ">=", ma3, ma4, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] tr    : Output when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //! \param[out] out  : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogsi()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    void iv_compare(const ImaVol<T1,N1,D>& ma1, T1 val, const int8 op[3], const ImaVol<T2,N2,D>& tr, const ImaVol<T2,N2,D>& fa, ImaVol<T2,N2,D>& out) throw (ImagePlusError)
+    {
+        ASSERT (N1 == N2 || N1 == 1, "");
+
+        for (uint64 channel=0; channel < N2; ++channel)
+        {
+            if (N1 == N2)
+            {
+                ma_compare (ma1(channel), val, op, tr(channel), fa(channel), out(channel));
+
+            }
+            else /* N1 == 1 */
+            {
+                ma_compare (ma1(0), val, op, tr(channel), fa(channel), out(channel));
+            }
+        }
+    }
+
+
+    //!
+    //! \brief Element-by-element comparisons between a imavol and a scalar, outputing the result on an imavol
+    //!
+    //! Create an output imavol based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the corresponding element value in 'tr'. If false, the value is set to the corresponding element value 
+    //! in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T2,2> ma3;
+    //!  ImaVol<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set in out1 to the values in ma3. The rest of positions will be
+    //!  // taken from ma4
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  out1 = ma_compare (ma1, (T1)5, ">=", ma3, ma4);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] tr    : Output when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //!
+    //! \return          : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogsi()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    ImaVol<T2,N2,D> iv_compare(const ImaVol<T1,N1,D>& ma1, T1 val, const int8 op[3], const ImaVol<T2,N2,D>& tr, const ImaVol<T2,N2,D>& fa) throw (ImagePlusError)
+    {
+        std::vector< std::vector<uint64> > dimensions;
+        for (uint64 i=0; i < N2; ++i)
+        {
+            dimensions.push_back(tr(i).dims());
+        }
+        ImaVol<T2,N2,D> out(dimensions);
+
+        // Call in-place version
+        iv_compare (ma1,val, op, tr, fa, out);
+
+        return out;
+    }
+
+
+    //!
+    //! \brief Element-by-element comparisons between a imavol and a scalar, outputing the result on an imavol (inplace version). 
+    //!
+    //! Create an output imavol based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value 'trv'. If false, the value is set to the corresponding element value in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! This function gives the output value in an already allocated multiarray passed by reference instead of using return value \n
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set in out1 to 10. The rest of positions will be taken from ma4
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, (T1)5, ">=", (T2)10, ma4, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output (scalar) when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //! \param[out] out  : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogss()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    void iv_compare(const ImaVol<T1,N1,D>& ma1, T1 val, const int8 op[3], T2 trv, const ImaVol<T2,N2,D>& fa, ImaVol<T2,N2,D>& out) throw (ImagePlusError)
+    {
+        ASSERT (N1 == N2 || N1 == 1, "");
+
+        for (uint64 channel=0; channel < N2; ++channel)
+        {
+            if (N1 == N2)
+            {
+                ma_compare (ma1(channel), val, op, trv, fa(channel), out(channel));
+            }
+            else /* N1 == 1 */
+            {
+                ma_compare (ma1(0), val, op, trv, fa(channel), out(channel));
+            }
+        }
+    }
+
+
+
+    //!
+    //! \brief Element-by-element comparisons between a imavol and a scalar, outputing the result on an imavol.
+    //!
+    //! Create an output imavol based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value 'trv'. If false, the value is set to the corresponding element value in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set in out1 to 10. The rest of positions will be taken from ma4
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  out1 = ma_compare (ma1, (T1)5, ">=", (T2)10, ma4);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output (scalar) when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //!
+    //! \return          : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogss()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    ImaVol<T2,N2,D> iv_compare(const ImaVol<T1,N1,D>& ma1, T1 val, const int8 op[3], T2 trv, const ImaVol<T2,N2,D>& fa) throw (ImagePlusError)
+    {
+        std::vector< std::vector<uint64> > dimensions;
+        for (uint64 i=0; i < N2; ++i)
+        {
+            dimensions.push_back(fa(i).dims());
+        }
+        ImaVol<T2,N2,D> out(dimensions);
+
+        // Call in-place version
+        iv_compare (ma1,val, op, trv, fa, out);
+
+        return out;
+    }
+
+
+
+    //!
+    //! \brief Element-by-element comparisons between two imavols , outputing the result on an imavol (inplace version). 
+    //!
+    //! Create an output imavol based on the element per element comparison of the two multiarrays
+    //! In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value 'trv'. If false, the value is set to the corresponding element value in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! This function gives the output value in an already allocated multiarray passed by reference instead of using return value \n
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T1,2> ma2;
+    //!  ImaVol<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma2, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= ma2 will be set to 10. The rest of positions will be taken from ma4
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, ma2, ">=", (T2)10, ma4, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] ma2   : Second operand (multiarray)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output (scalar) when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //! \param[out] out  : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogis()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    void iv_compare(const ImaVol<T1,N1,D>& ma1, const ImaVol<T1,N1,D>& ma2, const int8 op[3], T2 trv, const ImaVol<T2,N2,D>& fa, ImaVol<T2,N2,D>& out) throw (ImagePlusError)
+    {
+        ASSERT (N1 == N2 || N1 == 1, "");
+
+        for (uint64 channel=0; channel < N2; ++channel)
+        {
+            if (N1 == N2)
+            {
+                ma_compare (ma1(channel), ma2(channel), op, trv, fa(channel), out(channel));
+            }
+            else /* N1 == 1 */
+            {
+                ma_compare (ma1(0), ma2(0), op, trv, fa(channel), out(channel));
+            }
+        }
+    }
+
+    //!
+    //! \brief Element-by-element comparisons between two imavols , outputing the result on an imavol.
+    //!
+    //! Create an output imavol based on the element per element comparison of the two multiarrays
+    //! In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value 'trv'. If false, the value is set to the corresponding element value in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T1,2> ma2;
+    //!  ImaVol<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma2, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= ma2 will be set to 10. The rest of positions will be taken from ma4
+    //!  // taken from ma4
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  out1 = ma_compare (ma1, ma2, ">=", (T2)10, ma4);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] ma2   : Second operand (multiarray)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output (scalar) when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //!
+    //! \return          : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogis()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    ImaVol<T2,N2,D> iv_compare(const ImaVol<T1,N1,D>& ma1, const ImaVol<T1,N1,D>& ma2, const int8 op[3], T2 trv, const ImaVol<T2,N2,D>& fa) throw (ImagePlusError)
+    {
+        std::vector< std::vector<uint64> > dimensions;
+        for (uint64 i=0; i < N2; ++i)
+        {
+            dimensions.push_back(fa(i).dims());
+        }
+        ImaVol<T2,N2,D> out(dimensions);
+
+        // Call in-place version
+        iv_compare (ma1, ma2, op, trv, fa, out);
+
+        return out;
+    }
+
+
+
+
+    //!
+    //! \brief Element-by-element comparisons between two imavols , outputing the result on an imavol (inplace version). 
+    //!
+    //! Create an output imavol based on the element per element comparison of the two multiarrays
+    //! In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value 'trv'. If false, the element is set to 'fav'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! This function gives the output value in an already allocated multiarray passed by reference instead of using return value \n
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T1,2> ma2;
+    //!  
+    //!  // Fill ma1, ma2 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= ma2 will be set in out1 to the value 10. The rest of positions will be set to 7
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, ma2, ">=", (T2)10, (T2)7, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] ma2   : Second operand (multiarray)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output (scalar) when the codition is true
+    //! \param[in] fav   : Output (scalar) when the codition is false
+    //! \param[out] out  : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function xxxx
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    void iv_compare(const ImaVol<T1,N1,D>& ma1, const ImaVol<T1,N1,D>& ma2, const int8 op[3], T2 trv, T2 fav, ImaVol<T2,N2,D>& out)  throw (ImagePlusError)
+    {
+        ASSERT (N1 == N2 || N1 == 1, "");
+
+        for (uint64 channel=0; channel < N2; ++channel)
+        {
+            if (N1 == N2)
+            {
+                ma_compare (ma1(channel), ma2(channel), op, trv, fav, out(channel));
+            }
+            else /* (N1 == 1) */
+            {
+                ma_compare (ma1(0),       ma2(0),       op, trv, fav, out(channel));
+            }
+        }
+    }
+
+    //!
+    //! \brief Element-by-element comparisons between two imavols , outputing the result on an imavol. 
+    //!
+    //! Create an output imavol based on the element per element comparison of the two multiarrays
+    //! In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value 'trv'. If false, the element is set to 'fav'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  ImaVol<T1,2> ma2;
+    //!  
+    //!  // Fill ma1, ma2 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= ma2 will be set in out1 to the value 10. The rest of positions will be set to 7
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  out1 = ma_compare (ma1, ma2, ">=", (T2)10, (T2)7);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] ma2   : Second operand (multiarray)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output (scalar) when the codition is true
+    //! \param[in] fav   : Output (scalar) when the codition is false
+    //!
+    //! \return          : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function xxxx
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    ImaVol<T2,N2,D> iv_compare(const ImaVol<T1,N1,D>& ma1, const ImaVol<T1,N1,D>& ma2, const int8 op[3], T2 trv, T2 fav) throw (ImagePlusError)
+    {
+        std::vector< std::vector<uint64> > dimensions;
+        for (uint64 i=0; i < N2; ++i)
+        {
+            dimensions.push_back(ma1(0).dims());
+        }
+        ImaVol<T2,N2,D> out(dimensions);
+    
+        // Call in-place version
+        iv_compare (ma1, ma2, op, trv, fav, out);
+    
+        return out;
+    }
+
+
+
+
+    //!
+    //! \brief Element-by-element comparisons between an imavol and a scalar, outputing the result on an imavol (inplace version). 
+    //!
+    //! Create an output imavol based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value 'trv'. If false, the element is set to 'fav'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! This function gives the output value in an already allocated multiarray passed by reference instead of using return value \n
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  
+    //!  // Fill ma1 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set in out1 to the value 10. The rest of positions will be set to 7
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, (T1)5, ">=", (T2)10, (T2)7, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output (scalar) when the codition is true
+    //! \param[in] fav   : Output (scalar) when the codition is false
+    //! \param[out] out  : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function xxxx
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    void iv_compare(const ImaVol<T1,N1,D>& ma1, T1 val, const int8 op[3], T2 trv, T2 fav, ImaVol<T2,N2,D>& out)  throw (ImagePlusError)
+    {
+        ASSERT (N1 == N2 || N1 == 1, "");
+
+        for (uint64 channel=0; channel < N2; ++channel)
+        {
+            if (N1 == N2)
+            {
+                ma_compare (ma1(channel), val, op, trv, fav, out(channel));
+            }
+            else /* (N1 == 1) */
+            {
+                ma_compare (ma1(0),       val, op, trv, fav, out(channel));
+            }
+        }
+    }
+
+    //!
+    //! \brief Element-by-element comparisons between an imavol and a scalar, outputing the result on an imavol. 
+    //!
+    //! Create an output imavol based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value 'trv'. If false, the element is set to 'fav'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! Example:
+    //! \code
+    //!  ImaVol<T1,2> ma1;
+    //!  
+    //!  // Fill ma1 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set in out1 to the value 10. The rest of positions will be set to 7
+    //!  ImaVol<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, (T1)5, ">=", (T2)10, (T2)7, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data of the imavol and scalar to be compared
+    //! \tparam T2 : Type of the data of the output imavol
+    //! \tparam D  : Number of dimensions of the imavols
+    //! \tparam N1 : Number of channels of comparison imavols
+    //! \tparam N2 : Number of channels of output imavol
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output (scalar) when the codition is true
+    //! \param[in] fav   : Output (scalar) when the codition is false
+    //!
+    //! \return          : Output imavol
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input imavols have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function xxxx
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D, std::size_t N1, std::size_t N2>
+    ImaVol<T2,N2,D> iv_compare(const ImaVol<T1,N1,D>& ma1, T1 val, const int8 op[3], T2 trv, T2 fav)  throw (ImagePlusError)
+    {
+        std::vector< std::vector<uint64> > dimensions;
+        for (uint64 i=0; i < N2; ++i)
+        {
+            dimensions.push_back(ma1(0).dims());
+        }
+        ImaVol<T2,N2,D> out(dimensions);
+    
+        // Call in-place version
+        iv_compare (ma1,val, op, trv, fav, out);
+    
+        return out;
+    }
+}
+
+
+#endif

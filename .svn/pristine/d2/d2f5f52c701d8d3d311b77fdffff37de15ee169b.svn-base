@@ -1,0 +1,308 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file multiarray_arithmetics.test
+//!
+
+#include <iostream>
+#include <imageplus/core.hpp>
+
+BOOST_AUTO_TEST_SUITE ( multiarray_arithmetics_suite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64, int8, int16, int32, int64, float32, float64 > DataTypes;
+
+// Tests for the 4 operators +, -, * and /
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_sum, T, DataTypes )
+{	
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> ma1(size);
+    MultiArray<T,1> ma2(size);
+    MultiArray<T,1> ma_res(size);
+    
+    ma1 = 1;  ma2 = 2;
+    ma_res = ma1 + ma2;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 3);	
+    }
+    
+    ma_res = val + ma2;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 12);	
+    }
+
+    ma_res = ma1 + val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 11);	
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_substract, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> ma1(size);
+    MultiArray<T,1> ma2(size);
+    MultiArray<T,1> ma_res(size);
+    
+    ma1 = 1;  ma2 = 20;
+    ma_res = ma2 - ma1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 19);	
+    }
+    
+    ma_res = val - ma1;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 9);	
+    }
+
+    ma_res = ma2 - val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 10);	
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_product, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> ma1(size);
+    MultiArray<T,1> ma2(size);
+    MultiArray<T,1> ma_res(size);
+    
+    ma1 = 1;  ma2 = 10;
+    ma_res = ma2 * ma1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 10);	
+    }
+    
+    ma_res = val * ma1;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 10);	
+    }
+
+    ma_res = ma2 * val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 100);	
+    }
+    
+    val = 0;
+    
+    ma_res = ma2 * val;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 0);	
+    }
+    
+    // Operator with bools
+    MultiArray<bool,1> ma3(size);
+    ma3[0] = true; ma3[1] = false;
+    
+    ma_res = ma2 * ma3;
+    
+    BOOST_CHECK(ma_res[0] == 10);
+    BOOST_CHECK(ma_res[1] == 0);
+    
+    ma_res = ma3 * ma2;
+    
+    BOOST_CHECK(ma_res[0] == 10);
+    BOOST_CHECK(ma_res[1] == 0);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_division, T, DataTypes )
+{
+    uint64 size = 2;
+    
+    MultiArray<T,1> ma1(size);
+    MultiArray<T,1> ma2(size);
+    MultiArray<T,1> ma_res(size);
+    
+    ma1 = 2;  ma2 = 20;
+    ma_res = ma2 / ma1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 10);	
+    }
+}
+
+// Tests for the 4 operators methods: sum, substract, product and division
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_method_sum, T, DataTypes )
+{	
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> ma1(size);
+    MultiArray<T,1> ma2(size);
+    MultiArray<T,1> ma_res(size);
+    
+    ma1 = 1;  ma2 = 2;
+    sum( ma1, ma2, ma_res ); // ma_res = ma1 + ma2;
+        
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 3);	
+    }
+    
+    sum( val, ma2, ma_res ); // ma_res = val + ma2;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 12);	
+    }
+
+    sum( ma1, val, ma_res ); // ma_res = ma1 + val;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 11);	
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_method_substract, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> ma1(size);
+    MultiArray<T,1> ma2(size);
+    MultiArray<T,1> ma_res(size);
+    
+    ma1 = 1;  ma2 = 20;
+    substract( ma2, ma1, ma_res ); // ma_res = ma2 - ma1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 19);	
+    }
+    
+    substract( val, ma1, ma_res ); // ma_res = val - ma1;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 9);	
+    }
+
+    substract( ma2, val, ma_res ); // ma_res = ma2 - val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 10);	
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_method_product, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> ma1(size);
+    MultiArray<T,1> ma2(size);
+    MultiArray<T,1> ma_res(size);
+    
+    ma1 = 1;  ma2 = 10;
+    product( ma2, ma1, ma_res ); // ma_res = ma2 * ma1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 10);	
+    }
+    
+    product( val, ma1, ma_res ); // ma_res = val * ma1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 10);	
+    }
+
+    product( ma2, val, ma_res ); //ma_res = ma2 * val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 100);	
+    }
+    
+    val = 0;
+    
+    product( ma2, val, ma_res ); // ma_res = ma2 * val;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 0);	
+    }
+    
+    // Product with bools
+    MultiArray<bool,1> ma3(size);
+    ma3[0] = true; ma3[1] = false;
+    
+    product( ma2, ma3, ma_res ); // ma_res = ma2 * ma3<bool>;
+    
+    BOOST_CHECK(ma_res[0] == 10);
+    BOOST_CHECK(ma_res[1] == 0);
+    
+    product( ma3, ma2, ma_res ); // ma_res = ma3<bool> * ma2;
+    
+    BOOST_CHECK(ma_res[0] == 10);
+    BOOST_CHECK(ma_res[1] == 0);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_method_division, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> ma1(size);
+    MultiArray<T,1> ma2(size);
+    MultiArray<T,1> ma_res(size);
+    
+    ma1 = 2;  ma2 = 20;
+    division( ma2, ma1, ma_res ); // ma_res = ma2 / ma1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 10);	
+    }
+    
+    division( val, ma1, ma_res ); // ma_res = val / ma1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 5);	
+    }
+
+    division( ma2, val, ma_res ); //ma_res = ma2 / val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ma_res[i] == 2);	
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

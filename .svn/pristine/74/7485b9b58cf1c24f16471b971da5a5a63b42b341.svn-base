@@ -1,0 +1,168 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file region_texture.hpp
+ *
+ * Methods for region-based texture coding
+ */
+
+#ifndef IMAGEPLUS_CODING_TEXTURE_REGION_TEXTURE_HPP
+#define IMAGEPLUS_CODING_TEXTURE_REGION_TEXTURE_HPP
+
+#include <imageplus/core.hpp>
+
+namespace imageplus 
+{
+namespace coding
+{
+namespace texture
+{
+    //!
+    //! \brief Class to store the texture of a region in a texture image
+    //!
+    //! \tparam     image_type : Type of data in the image
+    //! \tparam   num_channels : Number of colour channels of the image
+    //! \tparam partition_type : Type of data in the partition
+    //!
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    class RegionTexture
+    {
+    public:
+
+        //!
+        //! \brief Default constructor
+        //!
+        RegionTexture ();
+
+        //!
+        //! \brief Constructor with a texture image
+        //!
+        //! \param[in]     ori : Original texture image
+        //! \param[in]   label : Partition image
+        //! \param[in]  numreg : Partition number to create class RegionTexture
+        //!
+        RegionTexture( const Image<image_type,num_channels>& ori,
+                       const ImagePartition<partition_type>& label,
+                       partition_type                        numreg );
+
+        //!
+        //! \brief Updates info in RegionTexture
+        //!
+        //! \param[in]     ori : Original texture image
+        //! \param[in]   label : Partition image
+        //! \param[in]  numreg : Partition number to create class RegionTexture
+        //!
+        void extract_region( const Image<image_type,num_channels>& ori,
+                             const ImagePartition<partition_type>& label,
+                             partition_type                        numreg );
+
+        //!
+        //! \brief Copies info from the RegionTexture to the image
+        //!
+        //! \param[in]   label : Partition image
+        //! \param[out]    ori : Texture image
+        //!
+        void save_region( const ImagePartition<partition_type>& label,
+                          Image<image_type,num_channels>&       ori ) const;
+
+        //!
+        //! \brief Access to size_x
+        //!
+        //! \return size X of the bounding box including the Regiontexture
+        //!
+        uint64 side_x() const;
+
+        //!
+        //! \brief Access to size_y
+        //!
+        //! \return size Y of the bounding box including the Regiontexture
+        //!
+        uint64 side_y() const;
+
+        //!
+        //! \brief Partition number
+        //!
+        //! \return the partition number corresponding to the region in the RegionTexture class
+        //!
+        partition_type num_region() const;
+
+        //!
+        //! \brief Access to size of the region in pixels
+        //!
+        //! \return Size of the region in pixels
+        //!
+        uint64 size() const;
+
+        //!
+        //! \brief Overload of operator()
+        //!
+        //! \param[in]  n : channel number
+        //!
+        //! \return RegionTexture of channel n
+        //!
+        const MultiArray<float64,2>& operator()( uint64 n ) const;
+
+        //!
+        //! \brief Overload of operator()
+        //!
+        //! \param[in]  n : channel number
+        //!
+        //! \return RegionTexture of channel n
+        //!
+        MultiArray<float64,2>& operator()( uint64 n );
+
+    private:
+
+        //! Stores the partition number corresponding to the region stored in the class
+        partition_type 	       _num_region;
+
+        //! Bounding box which includes the RegionTexture
+        BBox2D                 _bbox;
+
+        //! MultiArray vector with texture data of the region
+        std::vector< MultiArray<float64,2> > _mat;
+
+    };
+
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    uint64 RegionTexture<image_type,num_channels,partition_type>::side_x() const
+    {
+        return _bbox.side_x();
+    }
+
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    uint64 RegionTexture<image_type,num_channels,partition_type>::side_y() const
+    {
+        return _bbox.side_y();
+    }
+
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    partition_type RegionTexture<image_type,num_channels,partition_type>::num_region() const
+    {
+        return _num_region;
+    }
+
+    // Acces to data channels
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    const MultiArray<float64,2>& RegionTexture<image_type,num_channels,partition_type>::operator()( uint64 n ) const
+    {
+        ASSERT(n < _mat.size(), "RegionTexture<image_type,num_channels,partition_type>::operator(): Value out of range");
+        return (this->_mat[n]);
+    }
+
+    // Acces to data channels
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    MultiArray<float64,2>& RegionTexture<image_type,num_channels,partition_type>::operator()( uint64 n )
+    {
+        ASSERT(n < _mat.size(), "RegionTexture<image_type,num_channels,partition_type>::operator(): Value out of range");
+        return (this->_mat[n]);
+    }
+
+} // ns texture
+} // ns coding
+} // ns imageoplus
+
+#endif // IMAGEPLUS_CODING_TEXTURE_REGION_TEXTURE_HPP

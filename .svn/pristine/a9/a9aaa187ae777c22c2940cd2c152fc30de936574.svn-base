@@ -1,0 +1,134 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file readbitstream.hpp
+//!
+//!  Class for reading streams of bits from disk
+//!
+
+#ifndef IMAGEPLUS_IO_READBITSTREAM_HPP
+#define IMAGEPLUS_IO_READBITSTREAM_HPP
+
+#include <fstream>
+#include <string>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/io_types.hpp>
+
+namespace imageplus
+{
+    namespace io
+    {
+        //!
+        //! \brief Class for reading bitstreams from disk
+        //!
+        //! The read function returns a uint64 with the asked bits in the low significance part. 
+        //!
+        //! Usage:
+        //! \code
+        //!    ReadBitStream readBS;
+        //!    readBS.open("test.b");
+        //!
+        //!    uint8  n_bits_to_read = 4;
+        //!    uint64 read_value = readBS.read(n_bits_to_write);
+        //!    readBS.close();
+        //! \endcode
+        //!
+        //! \author Jordi Pont Tuset <jpont@gps.tsc.upc.edu>
+        //!
+        //! \date 30-12-2008
+        //!
+        //! \todo Use boost::dynamic_bitset to handle the sets of bits?
+        //!
+        class ReadBitStream
+        {
+            public:
+
+                //!
+                //! \brief Default Constructor
+                //!
+                ReadBitStream();
+
+                //!
+                //! \brief Constructor from file name
+                //!
+                //! \param[in] filename : File name
+                //!
+                explicit ReadBitStream( const std::string& filename );
+
+                //!
+                //! \brief Destructor
+                //!
+                ~ReadBitStream();
+
+                //!
+                //! \brief Open a file
+                //!
+                //! \param[in] filename : File name
+                //!
+                void open( const std::string& filename );
+
+                //!
+                //! \brief Close the bitstream
+                //!
+                void close( );
+                
+                //!
+                //! \brief Move the pointer (next to be read) to a specified number of bits (absolute position)
+                //!
+                //! \param[in] position : Number of bits to be moved
+                //!
+                void seekg( uint64 position );
+
+                //!
+                //! \brief Returns the absolute position of the pointer (next to be read) in bits
+                //!
+                //! \return Absolute position of the pointer in bits
+                //!
+                uint64 tellg( );
+                
+                //!
+                //! \brief Returns the number of bits until the end of the stream
+                //!
+                //! \return Number of bits remaining in the bitstream
+                //!
+                uint64 remaining_size( );
+
+
+                //!
+                //! \brief Reads the specified number of bits from the file and moves the internal pointer
+                //!
+                //! \param[in] n_bits_to_read: Number of bits from to be read from the file
+                //! \return Number read from disk (the upper bits in the uint64 are 0)
+                //!
+                uint64 read( uint8 n_bits_to_read );
+                
+                //!
+                //! \brief Reads the specified number of bits from the file without moving the internal pointer
+                //!
+                //! \param[in] n_bits_to_read: Number of bits from to be read from the file
+                //! \return Number read from disk (the upper bits in the uint64 are 0)
+                //!
+                uint64 read_ahead( uint8 n_bits_to_read );
+                
+            private:
+
+                //! Stores the file name in disk
+                std::string _filename;
+                
+                //! Input filestream to read from disk
+                std::ifstream _fp;
+
+                //! Stores the current buffer byte
+                uint8 _buffer;
+                
+                //! Stores the current number of bits left to read in the buffer
+                uint8 _bits_left;
+        };
+    } // namespace io
+} //namespace imageplus
+
+#endif

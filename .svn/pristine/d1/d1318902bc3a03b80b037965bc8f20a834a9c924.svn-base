@@ -1,0 +1,180 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file quantization_auxiliar.cpp
+//!
+//!  Add brief description of the file here
+//!
+
+
+#include <texture/quantization_auxiliar.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+
+namespace mn = imageplus::math::numeric;
+
+
+namespace imageplus
+{
+namespace coding
+{
+namespace texture
+{
+
+    //!
+    //! \brief Quantifies the coefficients in A according to a quantization table
+    //!
+    //! \param[in] quant   : Quantization parameter (bits = 8 - quant)
+    //! \param[in] Qtable  : Quantization table
+    //! \param[in/out] A   : Coefficients to quantize. Is a vector with one multiarray of coefficients per color channel.
+    //! \param[out] coeffs : Buffers of quantized coeffs (one per color channel)
+    //!
+    template<std::size_t nchannels>
+    void _quantify_coeffs( int32                                       quant,
+                           const std::vector< MultiArray<float64,2> >& Qtable,
+                           std::vector< MultiArray<float64,1> >&       A,
+                           QRegionCoeffs<nchannels>&                   coeffs )
+    {
+        // Number of color channels
+        const uint64 num_channels = Qtable.size();
+
+        ASSERT( num_channels == nchannels , "Number of channels in QRegionCoeffs must match number of channels in Qtable");
+
+        //const int64 MAX_SIGNED   =  127;
+        //const int64 MIN_SIGNED   = -127;
+        const int64 MAX_UNSIGNED =  ( 1 << (8 - quant) ) - 1 ;
+        const int64 MIN_UNSIGNED =    1;
+        const int64 MIDDLE = ( 1 << (8 - quant - 1) ) - 1;
+
+        for (uint64 chan = 0; chan < num_channels; chan++)
+        {
+            const uint64 dim  = Qtable[chan].num_elements();
+
+            const float64*  pQt = Qtable[chan].data();
+            float64*        pA  = A[chan].data();
+
+            /* Transfer the coef. into the buffer and quantize them */
+            for (uint64 i=0; i < dim; i++)
+            {
+
+                int64 value = mn::mnint<int64>(pA[i] / pQt[i] );
+                if (i == 0)
+                {
+                    value = std::max (std::min(value,MAX_UNSIGNED), MIN_UNSIGNED);
+                    pA[i] =  pQt[i] * (float64)value;
+                } else {
+                    value = std::max (std::min(value + MIDDLE,MAX_UNSIGNED), MIN_UNSIGNED);
+                    pA[i] =  pQt[i] * (float64)(value - MIDDLE);
+                }
+                coeffs[chan][i] = value;
+            }
+        }
+    }
+
+    //!
+    //! \brief Dequantifies the coefficients according to a quantization table
+    // !
+    //! \param[in]  coeffs : Buffers of quantized coeffs (one per color channel)
+    //! \param[in]  Qtable : Quantization table
+    //! \param[out] A      : Coefficients to quantize. Is a vector with one multiarray of coefficients per color channel.
+    //!
+    template<std::size_t nchannels>
+    void _dequantify_coeffs( const QRegionCoeffs<nchannels>&             coeffs,
+                             const std::vector< MultiArray<float64,2> >& Qtable,
+                             std::vector< MultiArray<float64,1> >&       A )
+    {
+        // Number of color channels
+        const uint64 num_channels = Qtable.size();
+
+        ASSERT( num_channels == nchannels , "Number of channels in QRegionCoeffs must match number of channels in Qtable");
+
+        for (uint64 chan = 0; chan < num_channels; chan++)
+        {
+            const uint64 dim  = Qtable[chan].num_elements();
+
+            const float64*  pQt = Qtable[chan].data();
+            float64*      pA  = A[chan].data();
+
+            /* Transfer the coef. into the buffer and quantize them */
+            for (uint64 i = 0; i < dim; i++)
+            {
+                int64 value = ( i==0 ) ? coeffs[chan][i] : coeffs[chan][i] - 127;
+                pA[i] = pQt[i] * (float64)value;
+            }
+        }
+    }
+
+    //!
+    //! \brief Fill the quantization table
+    //!
+    //! The DC coefficient [0][0] is set to qdc and the rest of coefficients are set to qac
+    //!
+    //! \param[in/out] Qtable : Quantization table
+    //! \param[in] qdc : Value for DC coeffcient
+    //! \param[in] qac : Value for AC coefficients
+    //!
+    void _fill_qtable (MultiArray<float64,2>& Qtable, float64 qdc, float64 qac)
+    {
+        Qtable = qac;
+
+        Qtable[0][0] = qdc;
+    }
+
+    //!
+    //! \brief Fill the quantization table
+    //!
+    //! The DC coefficient [0] is set to qdc and the rest of coefficients are set to qac
+    //!
+    //! \param[in/out] Qtable : Quantization table
+    //! \param[in] qdc : Value for DC coeffcient
+    //! \param[in] qac : Value for AC coefficients
+    //!
+    void _fill_qtable (MultiArray<float64,1>& Qtable, float64 qdc, float64 qac)
+    {
+        Qtable = qac;
+
+        Qtable[0] = qdc;
+    }
+
+} // ns texture
+} // ns coding
+} // ns imageplus
+
+
+/*
+ * Instantiations
+ */
+namespace imageplus
+{
+namespace coding
+{
+namespace texture
+{
+
+    template
+    void _quantify_coeffs (int32 quant,
+                           const std::vector< MultiArray<float64,2> >& Qtable,
+                           std::vector< MultiArray<float64,1> >& A,
+                           QRegionCoeffs<1>& coeffs);
+
+    template
+    void _quantify_coeffs (int32 quant,
+                           const std::vector< MultiArray<float64,2> >& Qtable,
+                           std::vector< MultiArray<float64,1> >& A,
+                           QRegionCoeffs<3>& coeffs);
+
+    template
+    void _dequantify_coeffs (const QRegionCoeffs<1>& coeffs,
+                             const std::vector< MultiArray<float64,2> >& Qtable,
+                             std::vector< MultiArray<float64,1> >& A);
+
+    template
+    void _dequantify_coeffs (const QRegionCoeffs<3>& coeffs,
+                             const std::vector< MultiArray<float64,2> >& Qtable,
+                             std::vector< MultiArray<float64,1> >& A);
+
+} // ns texture
+} // ns coding
+} // ns imageplus

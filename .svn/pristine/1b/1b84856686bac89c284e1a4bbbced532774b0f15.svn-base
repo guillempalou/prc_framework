@@ -1,0 +1,49 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file coord_check.hpp
+//!
+//!  Functions to check coordinates
+//! 
+
+#ifndef IMAGEPLUS_CORE_COORD_CHECKHPP
+#define IMAGEPLUS_CORE_COORD_CHECK_HPP
+
+namespace imageplus
+{
+
+    //!
+    //! \brief Check if a given coordinate is inside a MultiArray
+    //!
+    //! \tparam T : Type of the data (must be an integer type)
+    //! \tparam D : Number of dimensions (2 for image coordinates, 3 for volume coordinates, etc)
+    //!
+    //! \param[in] cc  : Coordinate to check
+    //! \param[in] ma  : Multiarray where t
+    //!
+    //! \return True if the coordinate is a valid position inside the multiarray, false otherwise.
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 05-05-2010
+    //!
+    template<typename T, std::size_t D>
+    bool check_coordinate(const Coord<int64,D>& cc, const MultiArray<T,D>& ma)
+    {
+        for (uint64 i=0; i < D; ++i)
+        {
+            if (cc[i] < 0 || cc[i] >= static_cast<int64>(ma.dims(i)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+}
+
+#endif
+

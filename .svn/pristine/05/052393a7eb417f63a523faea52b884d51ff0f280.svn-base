@@ -1,0 +1,264 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//! \file readyuv.cpp
+//!
+//! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+//!
+//! \date 01-02-2008
+//!
+//! Implementation for reading YUV sequence files (with dat file)
+//!
+
+#include <fstream>
+#include <readyuv.hpp>
+
+#include <cstring>
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+
+void imageplus::io::read_dat_info(const std::string& datfile,
+                                  uint64& sizex,
+                                  uint64& sizey,
+                                  uint64& totalframes,
+                                  float64& fps,
+                                  SeqFormat& format,
+                                  std::string& comment) throw (ImagePlusError,ImagePlusFileNotFound)
+{
+    std::ifstream fp;
+    fp.open( datfile.c_str(), std::ios::in );
+    if (fp.is_open())
+    {
+        int64 formatnumber;
+
+        // Read all data
+        fp >> sizex >> sizey >> totalframes >> fps >> formatnumber;
+
+        char commentstr[501]; commentstr[0] = '\0';
+        fp.getline(commentstr,500);
+        if ( strlen(commentstr) > 1 )
+        {
+            comment.assign(&commentstr[1]);  // in write_dat_info a space is put before the comment
+        }
+        else
+        {
+            comment.assign("");
+        }
+ 
+        // Transform formatnumber to the corresponding enum
+        switch (formatnumber)
+        {
+
+            case 400:
+                format = YUV400P;
+                break;
+
+            case 420:
+                format = YUV420P;
+                break;
+
+            case 444:
+                format = YUV444P;
+                break;
+
+            default:
+                throw ImagePlusError( "Unknown format in dat file" );
+                break;
+
+        }
+
+        // Close dat file
+        fp.close();
+
+    }
+    else
+    {
+        throw ImagePlusFileNotFound(datfile);
+    }
+
+}
+
+ImageGray<uint8> imageplus::io::read_frame_yuv400(const std::string& filename,
+                                                  uint64 frame,
+                                                  uint64 sizex,
+                                                  uint64 sizey) throw (ImagePlusError,ImagePlusFileNotFound)
+{
+    uint64 yuvframesize = sizex*sizey;
+    ImageGray<uint8> image(sizex,sizey);
+
+    std::fstream fp;
+    fp.open( filename.c_str(), std::ios::in | std::ios::binary);
+    if (fp.is_open())
+    {
+
+        // Move _framecont in stream
+        fp.seekg(frame*yuvframesize, std::ios::beg);
+
+        // Alloc data
+        uint8* data = new uint8[sizex*sizey];
+
+        // Read Data
+        if ( !fp.read((char*)data,sizex*sizey) )
+        {
+            // End of file found
+            delete []data;
+            fp.close();
+            throw ImagePlusError("End of file found.");
+        }
+        fp.close();
+
+        // Copy data into image
+        for (uint64 pnt = 0, y = 0; y < sizey; y++)
+        {
+            for (uint64 x = 0; x < sizex; x++, pnt++)
+            {
+                image(GRAY_CHANNEL)[x][y] = data[pnt];
+            }
+        }
+
+        // Free data
+        delete []data;
+
+    }
+    else
+    {
+        throw ImagePlusFileNotFound(filename);
+    }
+
+    return image;
+}
+
+
+ImageYUV420<uint8> imageplus::io::read_frame_yuv420(const std::string& filename,
+                                                    uint64 frame,
+                                                    uint64 sizex,
+                                                    uint64 sizey) throw (ImagePlusError,ImagePlusFileNotFound)
+{
+    uint64 yuvframesize = static_cast<uint64>(1.5*sizex*sizey);
+    ImageYUV420<uint8> image(sizex,sizey);
+
+    std::fstream fp;
+    fp.open( filename.c_str(), std::ios::in | std::ios::binary);
+    if (fp.is_open())
+    {
+
+        // Move _framecont in stream
+        fp.seekg(frame*yuvframesize, std::ios::beg);
+
+        // Alloc data for y and uv images
+        uint8* data = new uint8[sizex*sizey];
+
+        // Read Data for Y image
+        if ( !fp.read((char*)data,sizex*sizey) )
+        {
+            // End of file found
+            delete []data;
+            fp.close();
+            throw ImagePlusError("End of file found.");
+        }
+        for (uint64 pnt = 0, y = 0; y < sizey; y++)
+        {
+            for (uint64 x = 0; x < sizex; x++, pnt++)
+            {
+                image(Y_CHANNEL)[x][y] = data[pnt];
+            }
+        }
+
+        // Read Data for UV image
+        for (uint64 c = 1; c < 3; c++)
+        {
+
+            if ( !fp.read((char*)data,sizex*sizey/4) )
+            {
+                // End of file found
+                delete []data;
+                fp.close();
+                throw ImagePlusError("End of file found.");
+            }
+            for (uint64 pnt = 0, y = 0; y < sizey/2; y++)
+            {
+                for (uint64 x = 0; x < sizex/2; x++, pnt++)
+                {
+                    image(c)[x][y] = data[pnt];
+                }
+            }
+
+        }
+
+        fp.close();
+
+        // Free data
+        delete []data;
+
+    }
+    else
+    {
+        throw ImagePlusFileNotFound(filename);
+    }
+
+    return image;
+}
+
+
+ImageYUV<uint8> imageplus::io::read_frame_yuv444(const std::string& filename,
+                                                 uint64 frame,
+                                                 uint64 sizex,
+                                                 uint64 sizey) throw (ImagePlusError,ImagePlusFileNotFound)
+{
+    uint64 yuvframesize = 3*sizex*sizey;
+    ImageYUV<uint8> image(sizex,sizey);
+
+    std::fstream fp;
+    fp.open( filename.c_str(), std::ios::in | std::ios::binary);
+    if (fp.is_open())
+    {
+
+        // Move _framecont in stream
+        fp.seekg(frame*yuvframesize, std::ios::beg);
+
+        // Alloc data for images
+        uint8* data = new uint8[sizex*sizey];
+
+        for (uint64 c = 0; c < 3; c++)
+        {
+
+            // Read Data for c channel
+            if ( !fp.read((char*)data,sizex*sizey) )
+            {
+                // End of file found
+                delete []data;
+                fp.close();
+                throw ImagePlusError( "End of file found.");
+            }
+
+            // Copy to image data
+            for (uint64 pnt = 0, y = 0; y < sizey; y++)
+            {
+                for (uint64 x = 0; x < sizex; x++, pnt++)
+                {
+                    image(c)[x][y] = data[pnt];
+                }
+            }
+
+        }
+
+        fp.close();
+
+        // Free data
+        delete []data;
+
+    }
+    else
+    {
+        throw ImagePlusFileNotFound(filename);
+    }
+
+    return image;
+}
+

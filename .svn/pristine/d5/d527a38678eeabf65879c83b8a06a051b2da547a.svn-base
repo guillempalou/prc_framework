@@ -1,0 +1,50 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file imavol_logical.test
+//!
+//! Tests for imavol logical operator 
+//!
+
+#include <imageplus/core/imavol_logical.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( ImaVolLogicalSuite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64, int8, int16, int32, int64, float64 > DataTypes;
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_equal, T, DataTypes )
+{
+	ImaVol<T,1,2> iv1(10,10);
+	ImaVol<T,1,2> iv2(10,10);
+	ImaVol<T,1,2> iv3(10,10);
+
+    T val1 = static_cast<T>(10);
+	
+    iv1  = val1;
+    iv2  = val1;
+    iv3  = iv1;
+
+	BOOST_CHECK( iv1 == iv2 );	
+	BOOST_CHECK( iv1 == iv3 );	
+	BOOST_CHECK( iv2 == iv3 );	
+
+	ImaVol<T, 3, 2> ivb1(10,10);
+	ImaVol<T, 3, 2> ivb2(10,10);
+	ImaVol<T, 3, 2> ivb3(10,10);
+
+    ivb1  = val1;
+    ivb2  = val1;
+    ivb3  = ivb1;
+
+	BOOST_CHECK( ivb1 == ivb2 );	
+	BOOST_CHECK( ivb1 == ivb3 );	
+	BOOST_CHECK( ivb2 == ivb3 );
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

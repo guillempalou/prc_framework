@@ -1,0 +1,225 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file edge_histogram.test
+//!
+//! Tests for edge histogram descriptor
+//!
+#include <imageplus/descriptors/texture/edge_histogram.hpp>
+
+#include <imageplus/core/imagepartition.hpp>
+#include <imageplus/core/imagergb.hpp>
+#include <imageplus/core/coord2d.hpp>
+#include <imageplus/core/partition.hpp>
+#include <imageplus/core/region_contour.hpp>
+#include <imageplus/core/partition_functions.hpp>
+
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+#include <imageplus/io/readwritepartition.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( Descriptors_Edge_Histogram_Suite );
+
+using namespace imageplus;
+using namespace descriptors;
+using namespace io;
+
+#ifdef USE_XML
+using namespace XERCES_CPP_NAMESPACE;
+#endif
+
+BOOST_AUTO_TEST_CASE( EdgeHistogram_test)
+{    
+    ImageGray<uint8> image(16,16);
+    
+    image[0][0]=100;
+    image[4][0]=25;
+    image[5][0]=100;
+    image[0][1]=100;
+    image[2][1]=100;
+    image[5][1]=25;
+    image[6][1]=100;
+    image[7][1]=100;
+    image[0][2]=100;
+    image[1][2]=100;
+    image[2][2]=100;
+    image[3][2]=25;
+    image[4][2]=100;
+    image[5][2]=100;
+    image[6][2]=100;
+    image[7][2]=100;
+    image[2][3]=25;
+    
+
+    ImagePartition<> im_partition(16,16);
+    for(uint64 i =0; i<8; i++)
+    {
+        for(uint64 j = 0; j<8; j++)
+        {
+            im_partition[i][j]=1;
+            im_partition[i+8][j+8]=2;
+        }
+    }
+    
+    typedef ImageGray<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    
+    partition_type my_partition(im_partition);
+    merge_regions(0,1,3,my_partition);
+    merge_regions(2,3,4,my_partition);
+    
+    EdgeHistogram<ImageGray<uint8> > desc;
+    desc = calc_descriptor(new EdgeHistogram<ImageGray<uint8> >(), image, my_partition[4]);
+    
+    std::vector<float64> histogram;
+    histogram.resize(80);
+    histogram[0] = 5;
+    histogram[1] = 4;
+    histogram[2] = 7;
+    histogram[4] = 4;
+    histogram[6] = 7;
+    histogram[8] = 7;
+    
+    BOOST_CHECK(desc.value()==histogram);
+    
+    desc = calc_descriptor(new EdgeHistogram<ImageGray<uint8> >(), image, my_partition[1]);
+    
+    histogram.assign(80,0);
+    histogram[0]=7;
+    histogram[9]=7;
+    histogram[13]=7;
+    histogram[16]=7;
+    histogram[21]=7;
+    histogram[27]=7;
+    histogram[31]=7;
+    histogram[36]=7;
+
+    BOOST_CHECK(desc.value()==histogram);
+
+    for(uint64 ii=0; ii<8;ii++)
+    {
+        for(uint64 jj=0; jj<8; jj++)
+        {
+            image[ii+8][jj+8]=image[ii][jj];
+        }
+    }
+
+    desc = calc_descriptor(new EdgeHistogram<ImageGray<uint8> >(), image, my_partition[2]);
+
+    BOOST_CHECK(desc.value()==histogram);
+
+}
+
+BOOST_AUTO_TEST_CASE( EdgeHistogram_apple_region_test)
+{
+#ifdef USE_XML
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+
+    partition_type my_part;
+    io::ReadWritePartition rwpart(std::string(TEST_DATA_PATH_R) + "/descriptors/stripes_small-bpt.xml", CHECK_IMAGE_PART, "xml");
+    ImageRGB<uint8> image;
+    rwpart.read(my_part, image);
+
+    EdgeHistogram<ImageRGB<uint8> >& eh = calc_descriptor(new EdgeHistogram<ImageRGB<uint8> >(),  image, my_part[98]);
+
+    //The bins of the first subimage have been manually checked
+    BOOST_CHECK(eh.value_nq()[0]==0);
+    BOOST_CHECK(eh.value_nq()[1]==9./72);
+    BOOST_CHECK(eh.value_nq()[2]==0);
+    BOOST_CHECK(eh.value_nq()[3]==0);
+    BOOST_CHECK(eh.value_nq()[4]==4./72);
+    BOOST_CHECK(eh.value()[0]==0);
+    BOOST_CHECK(eh.value()[1]==2);
+    BOOST_CHECK(eh.value()[2]==0);
+    BOOST_CHECK(eh.value()[3]==0);
+    BOOST_CHECK(eh.value()[4]==1);
+
+    BOOST_CHECK(eh.value()[5]==0);
+    BOOST_CHECK(eh.value()[6]==2);
+    BOOST_CHECK(eh.value()[7]==0);
+    BOOST_CHECK(eh.value()[8]==0);
+    BOOST_CHECK(eh.value()[9]==0);
+    BOOST_CHECK(eh.value()[10]==0);
+    BOOST_CHECK(eh.value()[11]==2);
+    BOOST_CHECK(eh.value()[12]==0);
+    BOOST_CHECK(eh.value()[13]==0);
+    BOOST_CHECK(eh.value()[14]==0);
+    BOOST_CHECK(eh.value()[15]==0);
+    BOOST_CHECK(eh.value()[16]==1);
+    BOOST_CHECK(eh.value()[17]==0);
+    BOOST_CHECK(eh.value()[18]==0);
+    BOOST_CHECK(eh.value()[19]==0);
+    BOOST_CHECK(eh.value()[20]==0);
+    BOOST_CHECK(eh.value()[21]==1);
+    BOOST_CHECK(eh.value()[22]==0);
+    BOOST_CHECK(eh.value()[23]==0);
+    BOOST_CHECK(eh.value()[24]==0);
+    BOOST_CHECK(eh.value()[25]==0);
+    BOOST_CHECK(eh.value()[26]==1);
+    BOOST_CHECK(eh.value()[27]==0);
+    BOOST_CHECK(eh.value()[28]==0);
+    BOOST_CHECK(eh.value()[29]==0);
+    BOOST_CHECK(eh.value()[30]==0);
+    BOOST_CHECK(eh.value()[31]==1);
+    BOOST_CHECK(eh.value()[32]==0);
+    BOOST_CHECK(eh.value()[33]==0);
+    BOOST_CHECK(eh.value()[34]==0);
+    BOOST_CHECK(eh.value()[35]==0);
+    BOOST_CHECK(eh.value()[36]==1);
+    BOOST_CHECK(eh.value()[37]==0);
+    BOOST_CHECK(eh.value()[38]==0);
+    BOOST_CHECK(eh.value()[39]==1);
+    BOOST_CHECK(eh.value()[40]==0);
+    BOOST_CHECK(eh.value()[41]==1);
+    BOOST_CHECK(eh.value()[42]==0);
+    BOOST_CHECK(eh.value()[43]==0);
+    BOOST_CHECK(eh.value()[44]==0);
+    BOOST_CHECK(eh.value()[45]==0);
+    BOOST_CHECK(eh.value()[46]==1);
+    BOOST_CHECK(eh.value()[47]==0);
+    BOOST_CHECK(eh.value()[48]==0);
+    BOOST_CHECK(eh.value()[49]==0);
+    BOOST_CHECK(eh.value()[50]==0);
+    BOOST_CHECK(eh.value()[51]==1);
+    BOOST_CHECK(eh.value()[52]==0);
+    BOOST_CHECK(eh.value()[53]==0);
+    BOOST_CHECK(eh.value()[54]==0);
+    BOOST_CHECK(eh.value()[55]==0);
+    BOOST_CHECK(eh.value()[56]==2);
+    BOOST_CHECK(eh.value()[57]==0);
+    BOOST_CHECK(eh.value()[58]==0);
+    BOOST_CHECK(eh.value()[59]==0);
+    BOOST_CHECK(eh.value()[60]==0);
+    BOOST_CHECK(eh.value()[61]==1);
+    BOOST_CHECK(eh.value()[62]==0);
+    BOOST_CHECK(eh.value()[63]==0);
+    BOOST_CHECK(eh.value()[64]==1);
+    BOOST_CHECK(eh.value()[65]==0);
+    BOOST_CHECK(eh.value()[66]==1);
+    BOOST_CHECK(eh.value()[67]==0);
+    BOOST_CHECK(eh.value()[68]==0);
+    BOOST_CHECK(eh.value()[69]==0);
+    BOOST_CHECK(eh.value()[70]==0);
+    BOOST_CHECK(eh.value()[71]==2);
+    BOOST_CHECK(eh.value()[72]==0);
+    BOOST_CHECK(eh.value()[73]==0);
+    BOOST_CHECK(eh.value()[74]==0);
+    BOOST_CHECK(eh.value()[75]==0);
+    BOOST_CHECK(eh.value()[76]==2);
+    BOOST_CHECK(eh.value()[77]==0);
+    BOOST_CHECK(eh.value()[78]==0);
+    BOOST_CHECK(eh.value()[79]==0);
+
+#endif
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+

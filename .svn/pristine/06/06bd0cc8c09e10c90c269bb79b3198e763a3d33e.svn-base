@@ -1,0 +1,109 @@
+/*
+ * signal_unit.cpp
+ *
+ *  Created on: Jul 19, 2012
+ *      Author: guillem
+ */
+
+#include <imageplus/core/signal.hpp>
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <iostream>
+
+using namespace imageplus;
+
+int main() {
+
+	typedef ImageSignal<float64,3> ImageType;
+	typedef VideoSignal<float64,3> VideoType;
+
+	typedef ImageType::coord_type coord2d;
+	typedef VideoType::coord_type coord3d;
+
+	ImageType image(ImageType::coord_type(10,10));
+	VideoType video(VideoType::coord_type(5,5,5));
+
+	image(5,5) = ImageType::value_type(101,102,103);
+	video(2,3,4) = VideoType::value_type(10,11,12);
+
+	std::cout << "Values of the signal " << std::endl;
+	std::cout << image(5,5).transpose() << std::endl;
+	std::cout << video(2,3,4).transpose() << std::endl;
+
+	std::cout << "Image adjacency iterators (5,5), 4-conn:" << std::endl;
+	for (ImageType::adjacency_iterator p = image.adjacency_begin(coord2d(5,5)); p != image.adjacency_end(coord2d(5,5)); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Image adjacency iterators (0,0), 4-conn:" << std::endl;
+	for (ImageType::adjacency_iterator p = image.adjacency_begin(coord2d(0,0)); p != image.adjacency_end(coord2d(0,0)); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Image adjacency iterators (9,9), 4-conn:" << std::endl;
+	for (ImageType::adjacency_iterator p = image.adjacency_begin(coord2d(9,9)); p != image.adjacency_end(coord2d(9,9)); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Video adjacency iterators (2,3,4), 6-conn:" << std::endl;
+	for (VideoType::adjacency_iterator p = video.adjacency_begin(coord3d(2,3,4)); p != video.adjacency_end(coord3d(2,3,4)); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Image adjacency iterators (5,5), 8-conn:" << std::endl;
+	for (ImageType::general_adjacency_iterator<Connectivity2D8>::type p = image.general_adjacency_begin<Connectivity2D8>(coord2d(5,5)); p != image.general_adjacency_end<Connectivity2D8>(coord2d(5,5)); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Video adjacency iterators (2,3,4), 26-conn:" << std::endl;
+	for (VideoType::general_adjacency_iterator<Connectivity3D26>::type p = video.general_adjacency_begin<Connectivity3D26>(coord3d(2,3,4)); p != video.general_adjacency_end<Connectivity3D26>(coord3d(2,3,4)); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Image global iterator 10x10" << std::endl;
+	for (ImageType::iterator p = image.begin(); p != image.end(); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Image global iterator 10x10 chaning order" << std::endl;
+	ImageType::coord_type order2(1,0);
+	for (ImageType::iterator p = image.begin(order2); p != image.end(); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Video global iterator 5x5x5" << std::endl;
+	for (VideoType::iterator p = video.begin(); p != video.end(); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Video global iterator 5x5x5 changing order" << std::endl;
+	VideoType::coord_type order3(2,0,1);
+	for (VideoType::iterator p = video.begin(order3); p != video.end(); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Video frame 2 iterator 5x5" << std::endl;
+	for (VideoType::frame_iterator p = video.frame_begin(2); p != video.frame_end(2); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Video frame range 2-4 iterator 5x5" << std::endl;
+	for (VideoType::frame_iterator p = video.frame_range_begin(2,4); p != video.frame_range_end(2,4); ++p) {
+		std::cout << "(" << p.pos().transpose() << ") ";
+	}
+	std::cout << std::endl << std::endl;
+
+	return 0;
+}
+

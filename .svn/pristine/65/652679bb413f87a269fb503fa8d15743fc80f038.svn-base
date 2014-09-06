@@ -1,0 +1,92 @@
+/*
+ * BPTPruner.hpp
+ *
+ *  Created on: Oct 17, 2011
+ *      Author: guillem
+ */
+
+#ifndef BPTPRUNER_HPP_
+#define BPTPRUNER_HPP_
+
+#include <set>
+#include <algorithm>
+
+namespace imageplus {
+	namespace bpt {
+
+	//! Base class for all the BPT pruners
+	//! \param BPT: BPT type
+	//! \param ImageModel: Image type
+	template<class BPT, class ImageModel>
+	class BPTPruner {
+	public:
+		//! Regions IDs type
+		typedef std::set<uint64> RegionsIDs;
+
+		//! Default constructor
+		BPTPruner(bool prune_tree) {
+			_prune_tree = prune_tree;
+		}
+
+		//! Constructor with a given set of regions to prune
+		BPTPruner(RegionsIDs regions, bool prune_tree) : _regions(regions) {
+			_prune_tree = prune_tree;
+		}
+
+		//! Functions that finds the regions to prune. subclasses must implement this method
+		//! \param[in] bpt: tree
+		//! \param[in] img: image
+		//! \param[in] reg_id: id of the root to begin to count (normally the root of the tree)
+		virtual const RegionsIDs& find_pruned_regions(BPT& bpt, ImageModel& img, uint64 reg_id, uint64 region_objective) = 0;
+
+		//! Functions that finds the regions to prune from the root
+		//! \param[in] bpt: tree
+		//! \param[in] img: image
+		const RegionsIDs& find_pruned_regions(BPT& bpt, ImageModel& img) {
+			return find_pruned_regions(bpt,regions,bpt.max_label(),1);
+		}
+
+		//! Functions that finds and prunes the regions
+		//! \param[in] bpt: tree
+		//! \param[in] img: image
+		void prune_bpt(BPT& bpt, ImageModel& img) {
+			prune_bpt(bpt,img,bpt.max_label());
+		}
+
+		//! Functions that finds and prunes the regions
+		//! \param[in] bpt: tree
+		//! \param[in] img: image
+		//! \param[in] reg_id: id of the root to begin to count (normally the root of the tree)
+		void prune_bpt(BPT& bpt, ImageModel& img, uint64 reg_id, uint64 num_of_regions = 0) {
+
+			if (_regions.size() == 0) {
+				_regions = find_pruned_regions(bpt, img, reg_id,num_of_regions);
+			}
+
+			//std::cout << "Pruning to " << _regions.size() << " regions " << std::endl;
+			if (_prune_tree)
+				for (RegionsIDs::iterator r = _regions.begin(); r != _regions.end(); ++r) {
+					bpt.prune(*r);
+				}
+		}
+
+		//! regions to prune
+		//! \return regions (the leaves of the pruned bpt)
+		const RegionsIDs& regions() {return _regions;}
+
+		//! desctructor
+		~BPTPruner() {}
+
+	protected:
+
+		//! regions to prune
+		RegionsIDs _regions;
+
+		//! prune the tree (true) or retrieve regions only (false)
+		bool _prune_tree;
+	};
+
+	}
+}
+
+#endif /* BPTPRUNER_HPP_ */

@@ -1,0 +1,869 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file readwritepartition.hpp
+//!
+//!  Classes for reading and writing Binary Partition Trees (Partition) to disk, along with its descriptors
+//!
+
+
+#ifndef IMAGEPLUS_IO_READWRITEPARTITION_HPP
+#define IMAGEPLUS_IO_READWRITEPARTITION_HPP
+
+#include <string>
+#include <boost/filesystem.hpp>
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+#include <imageplus/io/io_types.hpp>
+
+
+
+#ifdef USE_XML
+#include <imageplus/io/xml_auxiliar.hpp>
+#endif
+
+
+namespace imageplus
+{
+    namespace io
+    {
+        //!
+        //! \brief Class for reading and writing Partition to disk files, in XML format and usually having a BPT
+        //!
+        //! \todo Update documentation
+        //!
+        //! Usage:
+        //! \code
+        //!    ReadWritePartition my_part1, my_part2;
+        //!    ...
+        //!    io::ReadWritePartition rwPart("foo.xml");
+        //!
+        //!    rwPart << my_part1;   // Write to disk
+        //!    rwPart >> my_part2;   // Read from disk
+        //! \endcode
+        //!
+        //! \author Jordi Pont Tuset <jordi.pont@upc.edu>
+        //!
+        //! \date 13-5-2009
+        //!
+        class ReadWritePartition
+        {
+        public:
+
+            //!
+            //! \brief Default constructor
+            //!
+            ReadWritePartition();
+
+            //!
+            //! \brief Constructor from file name and URIs. If any of the URIs is equal to "-", the corresponding field is not written to file.
+            //!
+            //! \param[in] filename   : Name of the file to store/read the MergingSequence
+            //! \param[in] mode       : Mode of writing the Partition (PartitionWriteMode):
+            //! 							- CHECK_IMAGE_PART: It checks that the image and leaves partition are written to disk
+            //! 							- DO_NOT_CHECK_IMAGE_PART: It does not perform any check 
+            //! 							- WRITE_IMAGE_PART: It writes the image and leaves partition to file
+            //! \param[in] given_extension	: File format useful when the filename has non extension.
+            //! 
+            //! \throw ImagePlusError: When the file extension is not correct, or the XML library is not used and the extension is XML
+            //!
+            //! \note The format of the output file is chosen depending on the file extension (.xml or .txt)   
+            explicit ReadWritePartition(const std::string& filename, PartitionWriteMode mode = CHECK_IMAGE_PART, const std::string& given_extension = "") throw (ImagePlusError);
+
+
+            //!
+            //! \brief Constructor from file name and URIs. If any of the URIs is equal to "-", the corresponding field is not written to file.
+            //!
+            //! \param[in] filename   : Name of the file to store/read the MergingSequence
+            //! \param[in] uri_names  : Name of the locations to be put in the header (e.g. "ImageFile")
+            //! \param[in] uri_values : Value of the locations to be put in the header (e.g. "/mnt/seq/i3media/example.jpg")
+            //! \param[in] mode       : Mode of writing the Partition (PartitionWriteMode):
+            //! 							- CHECK_IMAGE_PART: It checks that the image and leaves partition are written to disk
+            //! 							- DO_NOT_CHECK_IMAGE_PART: It does not perform any check 
+            //! 							- WRITE_IMAGE_PART: It writes the image and leaves partition to file
+            //! \param[in] given_extension	: File format useful when the filename has non extension.
+            //!
+            //! \throw ImagePlusError: When the file extension is not correct, or the XML library is not used and the extension is XML
+            //!
+            //! \note The format of the output file is chosen depending on the file extension (.xml or .txt)   
+            explicit ReadWritePartition(const std::string& filename, const std::vector<std::string>& uri_names, const std::vector<std::string>& uri_values, PartitionWriteMode mode = CHECK_IMAGE_PART, const std::string& given_extension = "") throw (ImagePlusError);
+
+
+            //!
+            //! \brief Destructor
+            //!
+            ~ReadWritePartition();
+
+            //!
+            //! \brief Set MergingSequence file name and related URIs
+            //!
+            //! \param[in] filename   : Name of the file to store the output BPT
+            //! \param[in] mode       : Mode of writing the Partition (PartitionWriteMode):
+            //! 							- CHECK_IMAGE_PART: It checks that the image and leaves partition are written to disk
+            //! 							- DO_NOT_CHECK_IMAGE_PART: It does not perform any check 
+            //! 							- WRITE_IMAGE_PART: It writes the image and leaves partition to file
+            //! \param[in] given_extension	: File format useful when the filename has non extension.
+            //!
+            //! \throw ImagePlusError: When the file extension is not correct, or the XML library is not used and the extension is XML
+            //!
+            //! \note The format of the output file is chosen depending on the file extension (.xml or .txt)   
+            void open( const std::string& filename, PartitionWriteMode mode = CHECK_IMAGE_PART, const std::string& given_extension = "" ) throw (ImagePlusError);
+
+
+            //!
+            //! \brief Set MergingSequence file name and related URIs
+            //!
+            //! \param[in] filename   : Name of the file to store the output BPT
+            //! \param[in] uri_names  : Name of the locations to be put in the header (e.g. "ImageFile")
+            //! \param[in] uri_values : Value of the locations to be put in the header (e.g. "/mnt/seq/i3media/example.jpg")
+            //! \param[in] mode       : Mode of writing the Partition (PartitionWriteMode):
+            //! 							- CHECK_IMAGE_PART: It checks that the image and leaves partition are written to disk
+            //! 							- DO_NOT_CHECK_IMAGE_PART: It does not perform any check 
+            //! 							- WRITE_IMAGE_PART: It writes the image and leaves partition to file
+            //! \param[in] given_extension	: File format useful when the filename has non extension.
+            //!
+            //! \throw ImagePlusError: When the file extension is not correct, or the XML library is not used and the extension is XML
+            //!
+            //! \note The format of the output file is chosen depending on the file extension (.xml or .txt)   
+            void open( const std::string& filename, const std::vector<std::string>& uri_names, const std::vector<std::string>& uri_values, PartitionWriteMode mode = CHECK_IMAGE_PART, const std::string& given_extension = "") throw (ImagePlusError);
+
+
+            //!
+            //! \brief Operator to write 
+            //!
+            //! \throw ImagePlusError: When no file is opened yet, or some error related to XML
+            //!
+            //! \param[in] partition : Partition to be written to disk
+            //!
+            template< class PartitionModel>
+            void write(PartitionModel& partition) const throw (ImagePlusError)
+            {
+                if(_filename == "")
+                {
+                    throw ImagePlusError( "ReadWritePartition: Writing before opening any file." );
+                }
+
+                std::string uri_image="-";
+                std::string uri_part ="-";
+                for(std::size_t ii=0; ii<_uri_names.size(); ++ii)
+                {
+                    if(_uri_names[ii]=="ImageFile")
+                        uri_image = _uri_values[ii];
+                    if(_uri_names[ii]=="PartitionSearchFile")
+                        uri_part = _uri_values[ii];
+                }
+
+                io::WriteImage wi;
+                boost::filesystem::path part_path;
+                switch (_write_mode)
+                {
+                    case CHECK_IMAGE_PART:
+                        if(uri_part=="-")
+                            throw(ImagePlusError("ReadWritePartition: PartitionSearchFile value must be specified"));
+
+                        part_path = boost::filesystem::path(uri_part);
+                        if(!part_path.is_complete()) // Partition path is relative to the position of the XML file
+                            part_path = _filename_branch / uri_part;
+
+                        if(!boost::filesystem::exists(part_path))
+                            throw(ImagePlusError("ReadWritePartition: PartitionSearchFile not found: check whether it is reachable or write in DO_NOT_CHECK_IMAGE_PART mode."));
+                        break;
+
+                    case DO_NOT_CHECK_IMAGE_PART:
+                        break;
+
+                    case WRITE_IMAGE_PART:
+                        if(uri_part=="-")
+                            throw(ImagePlusError("ReadWritePartition: PartitionSearchFile value must be specified"));
+
+                        part_path = boost::filesystem::path(uri_part);
+                        if(!part_path.is_complete()) // Partition path is relative to the position of the XML file
+                            part_path = _filename_branch / uri_part;
+
+                        // Write partition
+                        wi.open(part_path.string());
+                        wi << partition.leaves_partition();
+                        break;
+                    default:
+                        throw(ImagePlusError("ReadWritePartition: unknown PartitionWriteMode"));
+                }
+
+                _write(partition, uri_part, uri_image);
+            }
+
+            //!
+            //! \brief Operator to write 
+            //!
+            //! \throw ImagePlusError: When no file is opened yet, or some error related to XML
+            //!
+            //! \param[in] partition : Partition to be written to disk
+            //! \param image : Image associated to the partition
+            //!
+            template<class PartitionModel, class InputModel>
+            void write(PartitionModel& partition, const InputModel& image) const throw (ImagePlusError)
+            {
+                if(_filename == "")
+                {
+                    throw ImagePlusError( "ReadWritePartition: Writing before opening any file." );
+                }
+
+                std::string uri_image="-";
+                std::string uri_part ="-";
+                for(std::size_t ii=0; ii<_uri_names.size(); ++ii)
+                {
+                    if(_uri_names[ii]=="ImageFile")
+                        uri_image = _uri_values[ii];
+                    if(_uri_names[ii]=="PartitionSearchFile")
+                        uri_part = _uri_values[ii];
+                }
+
+                boost::filesystem::path im_path, part_path;
+                io::WriteImage wi;
+                switch (_write_mode)
+                {
+                    case CHECK_IMAGE_PART:
+                        if(uri_image=="-")
+                            throw(ImagePlusError("ReadWritePartition: ImageFile value must be specified"));
+                        if(uri_part=="-")
+                            throw(ImagePlusError("ReadWritePartition: PartitionSearchFile value must be specified"));
+
+                        im_path = boost::filesystem::path(uri_image);
+                        if(!im_path.is_complete()) // Image path is relative to the position of the XML file
+                            im_path = _filename_branch / uri_image;
+
+                        part_path = boost::filesystem::path(uri_part);
+                        if(!part_path.is_complete()) // Partition path is relative to the position of the XML file
+                            part_path = _filename_branch / uri_part;
+
+                        if(!boost::filesystem::exists(im_path))
+                            throw(ImagePlusError("ReadWritePartition: ImageFile not found: check whether it is reachable or write in DO_NOT_CHECK_IMAGE_PART mode."));
+                        if(!boost::filesystem::exists(part_path))
+                            throw(ImagePlusError("ReadWritePartition: PartitionSearchFile not found: check whether it is reachable or write in DO_NOT_CHECK_IMAGE_PART mode."));
+                        break;
+
+                    case DO_NOT_CHECK_IMAGE_PART:
+                        break;
+
+                    case WRITE_IMAGE_PART:
+                        if(uri_image=="-")
+                            throw(ImagePlusError("ReadWritePartition: ImageFile value must be specified"));
+                        if(uri_part=="-")
+                            throw(ImagePlusError("ReadWritePartition: PartitionSearchFile value must be specified"));
+
+                        im_path = boost::filesystem::path(uri_image);
+                        if(!im_path.is_complete()) // Image path is relative to the position of the XML file
+                            im_path = _filename_branch / uri_image;
+
+                        part_path = boost::filesystem::path(uri_part);
+                        if(!part_path.is_complete()) // Partition path is relative to the position of the XML file
+                            part_path = _filename_branch / uri_part;
+
+                        // Write image and partition
+                        wi.open(im_path.string());
+                        wi << image;
+                        wi.open(part_path.string());
+                        wi << partition.leaves_partition();
+                        break;
+                    default:
+                        throw(ImagePlusError("ReadWritePartition: unknown PartitionWriteMode"));
+                }
+
+                _write(partition, uri_part, uri_image);
+            }
+
+            //!
+            //! \brief Operator to read 
+            //!
+            //! \throw ImagePlusError: When no file is opened yet, or the file is not found, or some error related to XML
+            //!
+            //! \param[in] partition : Partition to be read from disk
+            //! \param image : Image associated to the partition
+            //!
+            template<class PartitionModel, class InputModel>
+            void read(PartitionModel& partition, InputModel& image) throw (ImagePlusError)
+            {
+                if(_filename == "")
+                {
+                    throw ImagePlusError( "ReadWritePartition: Reading before opening any file." );
+                }
+
+                if(_extension==".xml")
+                {
+#ifdef USE_XML     
+                    typedef typename PartitionModel::ImagePartitionType::data_type IndexType;
+                    IndexType num_father, num_son1, num_son2;
+
+                    XERCES_CPP_NAMESPACE::DOMDocument* doc;
+                    XERCES_CPP_NAMESPACE::DOMBuilder* parser;
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node = xml_init(_filename, doc, parser);
+
+                    //Check that the name of the node is "Mpeg7"
+                    if(strcmp(toNative(curr_node->getNodeName()).c_str(),"Mpeg7") != 0)
+                        throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+
+                    // Check that there is a sequence of sons named:
+                    // "Description/MultimediaContent/Image/CreationInformation"
+                    // and returns a pointer to it
+                    curr_node = xml_get_check_son(curr_node, "Description");
+                    curr_node = xml_get_check_son(curr_node, "MultimediaContent");
+                    XERCES_CPP_NAMESPACE::DOMNode*  image_node = xml_get_check_son(curr_node, "Image");
+                    curr_node = xml_get_check_son(image_node, "CreationInformation");
+
+                    // Get ImageFile
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = xml_get_check_son_by_field(curr_node, "RelatedMaterial", "id", "ImageFile");
+                    if (curr_node2==0x0)
+                        throw ImagePlusError("XML reading: ImageFile field not found (expected in Description/MultimediaContent/Image/CreationInformation)");
+
+                    curr_node2 = xml_get_check_son(curr_node2, "MediaLocator");
+                    curr_node2 = xml_get_check_son(curr_node2, "MediaUri");
+
+                    std::string image_file = xml_get_text_son(curr_node2);
+
+                    _uri_names.resize(0);
+                    _uri_names.push_back("ImageFile");
+                    _uri_values.resize(0);
+                    _uri_values.push_back(image_file);
+                    
+                    boost::filesystem::path image_path(image_file);
+
+                    io::ReadImage ri;
+                    if(image_path.is_complete()) //Image path is complete
+                    {
+                        ri.open(image_file);
+                    }   
+                    else // Image path is relative to the position of the XML file
+                    {
+                        image_path = _filename_branch / image_file;
+                        ri.open(image_path.string());
+                    }
+
+                    ri >> image;
+
+                    // Get PartitionSearchFile
+                    curr_node2 = xml_get_check_son_by_field(curr_node, "RelatedMaterial", "id", "PartitionSearchFile");
+                    if (curr_node2==0x0)
+                        throw ImagePlusError("XML reading: PartitionSearchFile field not found (expected in Description/MultimediaContent/Image/CreationInformation)");
+
+                    // check whether it is a relative path or not
+
+                    curr_node2 = xml_get_check_son(curr_node2, "MediaLocator");
+                    curr_node2 = xml_get_check_son(curr_node2, "MediaUri");
+
+                    std::string partition_file = xml_get_text_son(curr_node2);
+
+                    typename PartitionModel::ImagePartitionType base_part;
+
+                    boost::filesystem::path part_path(partition_file);
+
+                    _uri_names.push_back("PartitionSearchFile");
+                    _uri_values.push_back(partition_file);
+                    
+                    if(part_path.is_complete()) //Partition path is complete
+                    {
+                        ri.open(partition_file);
+                    }   
+                    else // Partition path is relative to the position of the XML file
+                    {
+                        part_path = _filename_branch / partition_file;
+                        ri.open(part_path.string());
+                    }
+
+                    ri >> base_part;
+                    partition.leaves_partition(base_part);
+
+                    // Get sequence of mergings
+                    curr_node = xml_get_check_son(image_node, "SpatialDecomposition");
+
+                    XERCES_CPP_NAMESPACE::DOMNodeList *child_list = curr_node->getChildNodes();
+
+                    std::size_t num_children = child_list->getLength();
+
+                    for(std::size_t ii=0; ii<num_children; ii++ )
+                    {
+                        curr_node = child_list->item(ii);
+                        if(curr_node->getNodeType() == XERCES_CPP_NAMESPACE::DOMNode::ELEMENT_NODE)
+                        {
+                            if(curr_node->hasChildNodes())
+                            {
+                                XERCES_CPP_NAMESPACE::DOMNamedNodeMap *node_attr = curr_node->getAttributes();
+                                curr_node2 = node_attr->getNamedItem(fromNative("id").c_str());
+                                sscanf(toNative(curr_node2->getNodeValue()).c_str(), "Region%u", &num_father);
+
+                                curr_node = xml_get_check_son(curr_node, "SpatialDecomposition");
+
+                                XERCES_CPP_NAMESPACE::DOMNodeList *child_list2 = curr_node->getChildNodes();
+                                std::size_t num_children2 = child_list2->getLength();
+
+                                std::size_t num_sons_found = 0;
+                                std::size_t jj=0;
+
+                                do
+                                {
+                                    curr_node = child_list2->item(jj);
+                                    if(curr_node->getNodeType() == XERCES_CPP_NAMESPACE::DOMNode::ELEMENT_NODE)
+                                    {
+                                        if(strcmp(toNative(curr_node->getNodeName()).c_str(), "StillRegionRef") == 0)
+                                        {
+                                            node_attr = curr_node->getAttributes();
+                                            curr_node2 = node_attr->getNamedItem(fromNative("idref").c_str());
+                                            if(num_sons_found == 0)
+                                                sscanf(toNative(curr_node2->getNodeValue()).c_str(), "Region%u", &num_son1);
+                                            else
+                                                sscanf(toNative(curr_node2->getNodeValue()).c_str(), "Region%u", &num_son2);
+
+                                            num_sons_found++;
+                                        }
+                                    }
+
+                                    jj++;
+                                }
+                                while(jj<num_children2 && num_sons_found<2);
+
+                                if(num_sons_found<2)
+                                    throw ImagePlusError("There is a region description that is not correct.");
+
+                                merge_regions(num_son1, num_son2, num_father, partition);
+                            }
+                            else
+                            {
+                                //ASSERT that the region was in the base partition
+                            }
+                        }
+                    }
+                    
+                    parser->release();
+                    XERCES_CPP_NAMESPACE::XMLPlatformUtils::Terminate();
+#else
+                    throw ImagePlusError( "ReadWritePartition: You must use the XML library (USE_XML=true) to read/write BPTs in XML" );
+#endif
+                }
+                else if(_extension==".txt")
+                {
+                    std::ifstream in_file;
+                    in_file.open( _filename.c_str(), std::ios::in);
+                    if(!in_file.is_open())
+                    {
+                        throw ImagePlusError( "ReadWritePartition: The file '"+  _filename + "' could not be opened"); 
+                    }
+                    
+                    std::string partition_file;
+                    in_file >> partition_file;
+                    boost::filesystem::path part_path(partition_file);
+
+                    _uri_names.resize(0);
+                    _uri_names.push_back("PartitionSearchFile");
+                    _uri_values.resize(0);
+                    _uri_values.push_back(partition_file);
+                    
+                    // Read leaves partition
+                    io::ReadImage ri;
+                    typename PartitionModel::ImagePartitionType base_part;
+                    if(part_path.is_complete()) //Partition path is complete
+                    {
+                        ri.open(partition_file);
+                    }   
+                    else // Partition path is relative to the position of the XML file
+                    {
+                        part_path = _filename_branch / partition_file;
+                        ri.open(part_path.string());
+                    }
+                    ri >> base_part;
+                    partition.leaves_partition(base_part);
+
+                    // Read image
+                    std::string image_file;
+                    in_file >> image_file;
+                    
+                    _uri_names.push_back("ImageFile");
+                    _uri_values.push_back(image_file);
+                    
+                    boost::filesystem::path image_path(image_file);
+                    if(image_path.is_complete()) //Image path is complete
+                    {
+                        ri.open(image_file);
+                    }   
+                    else // Image path is relative to the position of the file
+                    {
+                        image_path = _filename_branch / image_file;
+                        ri.open(image_path.string());
+                    }
+
+                    ri >> image;
+
+                    // Reading the fusions (The file must contain groups of three integers, otherwise,
+                    //  the behaviour is undefined)
+                    typedef typename PartitionModel::ImagePartitionType::data_type IndexType;
+                    IndexType num_father, num_son1, num_son2;
+                    in_file >> num_son1;
+                    while(!in_file.eof())
+                    { 
+                        in_file >> num_son2;
+                        in_file >> num_father;
+                        merge_regions(num_son1, num_son2, num_father, partition);
+                        in_file >> num_son1;
+                    }
+
+                    in_file.close();
+                }
+            }
+
+
+
+            //!
+            //! \brief Operator to read 
+            //!
+            //! \throw ImagePlusError: When no file is opened yet, or the file is not found, or some error related to XML
+            //!
+            //! \param[in] partition : Partition to be read from disk
+            template<class PartitionModel>
+            void read(PartitionModel& partition) throw (ImagePlusError)
+            {
+                if(_filename == "")
+                {
+                    throw ImagePlusError( "ReadWritePartition: Reading before opening any file." );
+                }
+                if(_extension==".xml")
+                {
+#ifdef USE_XML     
+                    typedef typename PartitionModel::ImagePartitionType::data_type IndexType;
+                    IndexType num_father, num_son1, num_son2;
+
+                    XERCES_CPP_NAMESPACE::DOMDocument* doc;
+                    XERCES_CPP_NAMESPACE::DOMBuilder* parser;
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node = xml_init(_filename, doc, parser);
+
+                    //Check that the name of the node is "Mpeg7"
+                    if(strcmp(toNative(curr_node->getNodeName()).c_str(),"Mpeg7") != 0)
+                        throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+
+                    // Check that there is a sequence of sons named:
+                    // "Description/MultimediaContent/Image/CreationInformation"
+                    // and returns a pointer to it
+                    curr_node = xml_get_check_son(curr_node, "Description");
+                    curr_node = xml_get_check_son(curr_node, "MultimediaContent");
+                    XERCES_CPP_NAMESPACE::DOMNode*  image_node = xml_get_check_son(curr_node, "Image");
+                    curr_node = xml_get_check_son(image_node, "CreationInformation");
+
+                    // Get ImageFile
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = xml_get_check_son_by_field(curr_node, "RelatedMaterial", "id", "ImageFile");
+                    if (curr_node2==0x0)
+                        throw ImagePlusError("XML reading: ImageFile field not found (expected in Description/MultimediaContent/Image/CreationInformation)");
+
+                    curr_node2 = xml_get_check_son(curr_node2, "MediaLocator");
+                    curr_node2 = xml_get_check_son(curr_node2, "MediaUri");
+
+                    // Get PartitionSearchFile
+                    curr_node2 = xml_get_check_son_by_field(curr_node, "RelatedMaterial", "id", "PartitionSearchFile");
+                    if (curr_node2==0x0)
+                        throw ImagePlusError("XML reading: PartitionSearchFile field not found (expected in Description/MultimediaContent/Image/CreationInformation)");
+
+                    // check whether it is a relative path or not
+
+                    curr_node2 = xml_get_check_son(curr_node2, "MediaLocator");
+                    curr_node2 = xml_get_check_son(curr_node2, "MediaUri");
+
+                    std::string partition_file = xml_get_text_son(curr_node2);
+
+                    _uri_names.resize(0);
+                    _uri_names.push_back("PartitionSearchFile");
+                    _uri_values.resize(0);
+                    _uri_values.push_back(partition_file);
+                    
+                    typename PartitionModel::ImagePartitionType base_part;
+
+                    boost::filesystem::path part_path(partition_file);
+
+                    io::ReadImage ri;
+                    if(part_path.is_complete()) //Partition path is complete
+                    {
+                        ri.open(partition_file);
+                    }   
+                    else // Partition path is relative to the position of the XML file
+                    {
+                        part_path = _filename_branch / partition_file;
+                        ri.open(part_path.string());
+                    }
+
+                    ri >> base_part;
+                    partition.leaves_partition(base_part);
+
+                    // Get sequence of mergings
+                    curr_node = xml_get_check_son(image_node, "SpatialDecomposition");
+
+                    XERCES_CPP_NAMESPACE::DOMNodeList *child_list = curr_node->getChildNodes();
+
+                    std::size_t num_children = child_list->getLength();
+
+                    for(std::size_t ii=0; ii<num_children; ii++ )
+                    {
+                        curr_node = child_list->item(ii);
+                        if(curr_node->getNodeType() == XERCES_CPP_NAMESPACE::DOMNode::ELEMENT_NODE)
+                        {
+                            if(curr_node->hasChildNodes())
+                            {
+                                XERCES_CPP_NAMESPACE::DOMNamedNodeMap *node_attr = curr_node->getAttributes();
+                                curr_node2 = node_attr->getNamedItem(fromNative("id").c_str());
+                                sscanf(toNative(curr_node2->getNodeValue()).c_str(), "Region%u", &num_father);
+
+                                curr_node = xml_get_check_son(curr_node, "SpatialDecomposition");
+
+                                XERCES_CPP_NAMESPACE::DOMNodeList *child_list2 = curr_node->getChildNodes();
+                                std::size_t num_children2 = child_list2->getLength();
+
+                                std::size_t num_sons_found = 0;
+                                std::size_t jj=0;
+
+                                do
+                                {
+                                    curr_node = child_list2->item(jj);
+                                    if(curr_node->getNodeType() == XERCES_CPP_NAMESPACE::DOMNode::ELEMENT_NODE)
+                                    {
+                                        if(strcmp(toNative(curr_node->getNodeName()).c_str(), "StillRegionRef") == 0)
+                                        {
+                                            node_attr = curr_node->getAttributes();
+                                            curr_node2 = node_attr->getNamedItem(fromNative("idref").c_str());
+                                            if(num_sons_found == 0)
+                                                sscanf(toNative(curr_node2->getNodeValue()).c_str(), "Region%u", &num_son1);
+                                            else
+                                                sscanf(toNative(curr_node2->getNodeValue()).c_str(), "Region%u", &num_son2);
+
+                                            num_sons_found++;
+                                        }
+                                    }
+
+                                    jj++;
+                                }
+                                while(jj<num_children2 && num_sons_found<2);
+
+                                if(num_sons_found<2)
+                                    throw ImagePlusError("There is a region description that is not correct.");
+
+                                merge_regions(num_son1, num_son2, num_father, partition);
+                            }
+                            else
+                            {
+                                //ASSERT that the region was in the base partition
+                            }
+                        }
+                    }
+                    parser->release();
+                    XERCES_CPP_NAMESPACE::XMLPlatformUtils::Terminate();
+#else
+                    throw ImagePlusError( "ReadWritePartition: You must use the XML library (USE_XML=true) to read/write BPTs" );
+#endif
+                }
+                else if(_extension==".txt")
+                {
+                    std::ifstream in_file;
+                    in_file.open( _filename.c_str(), std::ios::in);
+                    if(!in_file.is_open())
+                    {
+                        throw ImagePlusError( "ReadWritePartition: The file '"+  _filename + "' could not be opened"); 
+                    }
+                    
+                    std::string partition_file;
+                    in_file >> partition_file;
+                    boost::filesystem::path part_path(partition_file);
+
+                    _uri_names.resize(0);
+                    _uri_names.push_back("PartitionSearchFile");
+                    _uri_values.resize(0);
+                    _uri_values.push_back(partition_file);
+                    
+                    // Read leaves partition
+                    io::ReadImage ri;
+                    typename PartitionModel::ImagePartitionType base_part;
+                    if(part_path.is_complete()) //Partition path is complete
+                    {
+                        ri.open(partition_file);
+                    }   
+                    else // Partition path is relative to the position of the XML file
+                    {
+                        part_path = _filename_branch / partition_file;
+                        ri.open(part_path.string());
+                    }
+                    ri >> base_part;
+                    partition.leaves_partition(base_part);
+
+                    // Do not read image but read image path (can be "-")
+                    std::string image_file;
+                    in_file >> image_file;
+                    
+                    _uri_names.push_back("ImageFile");
+                    _uri_values.push_back(image_file);
+
+                    // Reading the fusions (The file must contain groups of three integers, otherwise,
+                    //  the behaviour is undefined)
+                    typedef typename PartitionModel::ImagePartitionType::data_type IndexType;
+                    IndexType num_father, num_son1, num_son2;
+                    in_file >> num_son1;
+                    while(!in_file.eof())
+                    { 
+                        in_file >> num_son2;
+                        in_file >> num_father;
+                        merge_regions(num_son1, num_son2, num_father, partition);
+                        in_file >> num_son1;
+                    }
+
+                    in_file.close();
+                }
+            }
+
+        private:
+            //! Mode of writing (see doc for explanation)
+            PartitionWriteMode _write_mode;
+
+            //! Stores the file name of the bpt to write
+            std::string _filename;
+
+            //! Stores the filename extension
+            std::string _extension;
+
+            //! Stores the filename extension
+            std::string _given_extension;
+            
+            //! Stores the branch of the filename (directory to be written)
+            boost::filesystem::path _filename_branch;
+
+            //! Stores the file name of the regions descriptors of the BPT
+            std::vector<float64> _significance;
+
+            //! Name of the locations to be put in the header (e.g. "ImageFile")
+            std::vector<std::string> _uri_names;
+
+            //! Value of the locations to be put in the header (e.g. "/mnt/seq/i3media/example.jpg")
+            std::vector<std::string> _uri_values;
+
+            //! Private common method to open
+            void _open() throw (ImagePlusError);
+            
+            //! Private common method to write
+            //! \param[in] partition: Partition to be written
+            //! \param[in] part_path: Path to write the partition
+            //! \param[in] im_path  : Path to write the image
+            template< class PartitionModel>
+            void _write(PartitionModel& partition, const std::string& part_path, const std::string& im_path) const
+            {
+                if(_extension==".xml")
+                {
+#ifdef USE_XML
+                    XERCES_CPP_NAMESPACE::DOMImplementation* impl;
+                    std::string append;
+
+                    try
+                    {
+                        XERCES_CPP_NAMESPACE::XMLPlatformUtils::Initialize();
+                    }
+                    catch(const XERCES_CPP_NAMESPACE::XMLException& toCatch)
+                    {
+                        char* message = NULL;
+                        sprintf( message, "XML reading exception message is: '%s'",  toNative(toCatch.getMessage()).c_str());
+                        throw ImagePlusError( message );
+                    }
+
+                    impl =  XERCES_CPP_NAMESPACE::DOMImplementationRegistry::getDOMImplementation(fromNative("Core").c_str());
+
+                    if (impl != NULL)
+                    {
+                        XERCES_CPP_NAMESPACE::DOMDocument* doc = impl->createDocument(
+                                                                                      0,                              // root element namespace URI.
+                                                                                      fromNative("Mpeg7").c_str(),  // root element name
+                                                                                      0);
+                        XERCES_CPP_NAMESPACE::DOMElement* imaElem = bpt_xml_write_header(doc, _uri_names, _uri_values);
+
+                        XERCES_CPP_NAMESPACE::DOMElement*  spatialElem = doc->createElement(fromNative("SpatialDecomposition").c_str());
+                        spatialElem->setAttribute(fromNative("id").c_str(), fromNative("BinaryPartitionTree").c_str());
+                        spatialElem->setAttribute(fromNative("gap").c_str(), fromNative("false").c_str());
+                        spatialElem->setAttribute(fromNative("overlap").c_str(), fromNative("true").c_str());
+                        imaElem->appendChild(spatialElem);
+
+                        XERCES_CPP_NAMESPACE::DOMElement*  stillElem;
+
+                        std::size_t num_regions = partition.num_regions();
+                        std::size_t ii=0;
+
+                        // Print leaf regions
+                        typename PartitionModel::const_leaves_iterator leaf_it = partition.begin();
+                        for(; leaf_it!=partition.end(); ++leaf_it)
+                        {
+                            append = "Region";
+                            append = append + boost::lexical_cast<std::string>((*leaf_it).label());
+                            stillElem = doc->createElement(fromNative("StillRegion").c_str());
+                            stillElem->setAttribute(fromNative("id").c_str(), fromNative(append.c_str()).c_str());
+                            spatialElem->appendChild(stillElem);
+                            ii++;
+                        }
+
+                        std::size_t num_mergings = num_regions-ii;
+
+                        // The significance of the mergings that are not in _significance are set to 0
+                        std::size_t n_significance = _significance.size();
+                        if(n_significance>num_mergings)
+                        {
+                            n_significance = num_mergings;
+                        }
+
+                        // Print non-leaf regions
+                        typename PartitionModel::const_non_leaves_iterator non_leaf_it = partition.begin();
+                        std::size_t jj=0;
+                        for(; jj<n_significance; jj++, ii++, ++non_leaf_it)
+                        {
+                            bpt_xml_write_fusion(doc, spatialElem, (*non_leaf_it).label(), (*non_leaf_it).parts()[0]->label(), (*non_leaf_it).parts()[1]->label(), jj+1, _significance[jj]);
+                        }
+                        for(; jj<num_mergings; jj++, ii++, ++non_leaf_it)
+                        {  
+                            bpt_xml_write_fusion(doc, spatialElem, (*non_leaf_it).label(), (*non_leaf_it).parts()[0]->label(), (*non_leaf_it).parts()[1]->label(), jj+1, 0);
+                        }   
+
+                        append = boost::lexical_cast<std::string>(num_regions);
+                        spatialElem->setAttribute(fromNative("size").c_str(), fromNative(append.c_str()).c_str());
+
+                        xml_write(doc, _filename);
+
+                        doc->release();
+
+                    }
+                    else
+                    {
+                        throw ImagePlusError("An error occurred while writing the XML tree.");
+                    }
+
+                    XERCES_CPP_NAMESPACE::XMLPlatformUtils::Terminate();
+#else
+                    throw ImagePlusError( "ReadWritePartition: You must use the XML library (USE_XML=true) to read/write BPTs" );
+#endif
+                }
+                else if(_extension==".txt")
+                {
+                    std::ofstream out_file;
+                    out_file.open( _filename.c_str(), std::ios::out);
+
+                    out_file << part_path << std::endl;
+                    out_file << im_path << std::endl;
+
+                    typename PartitionModel::const_non_leaves_iterator it = partition.begin();
+                    typename PartitionModel::const_non_leaves_iterator it_end = partition.end();
+                    for(; it!=it_end; ++it)
+                    {
+                        out_file << (*it).parts()[0]->label() << "\t"
+                                 << (*it).parts()[1]->label() << "\t"
+                                 << (*it).label() << std::endl;
+                    }
+                    out_file.close();
+                }
+                else
+                {
+                    throw ImagePlusError( "ReadWritePartition: File type '" + _extension + "' not supported" );
+                }
+            }
+        };
+
+    } // namespace io
+
+} //namespace imageplus
+
+#endif

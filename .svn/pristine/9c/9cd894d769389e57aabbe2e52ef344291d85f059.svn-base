@@ -1,0 +1,25 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file openni_check.cpp
+ *
+ * This file is used as a context check for the build system.
+ * It is compiled, linked and executed to check if local environment is
+ * ready for building the software.
+ *
+ * \author: Albert Gil, UPC <albert.gil@upc.edu>
+ */
+
+#include <XnCppWrapper.h>
+
+int main(int argc, char** argv)
+{
+    xn::Context        context;
+    context.Init();
+    context.Shutdown();
+
+    return 0;
+}

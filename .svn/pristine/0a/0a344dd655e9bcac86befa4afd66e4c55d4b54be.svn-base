@@ -1,0 +1,78 @@
+/*
+ * trajectory_evaluation.cpp
+ *
+ *  Created on: Feb 6, 2013
+ *      Author: gpalou
+ */
+
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/optical_flow/flow_io.hpp>
+#include <imageplus/optical_flow/trajectory_tracking.hpp>
+
+#include <imageplus/motion_segmentation/trajectory_error/trajectory_error.hpp>
+
+#include <boost/filesystem.hpp>
+#include <imageplus/toolbox/tictoc.hpp>
+
+#include <iostream>
+#include <iomanip>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef VideoSignal<float64,3> 																						VideoType;
+typedef VideoSignal<float64,3>::ImageType																			FrameType;
+typedef VideoSignal<float64,2>																						OpticalFlowType;
+typedef OpticalFlowType::ImageType																					OpticalFlowFrame;
+
+typedef VideoType::coord_type 																						coord3d;
+
+// The vector is of the same type
+typedef VideoType::value_type																						lab_type;
+typedef VideoType::value_type																						rgb_type;
+
+typedef segmentation::Partition<uint64, 3>																			PartitionType;
+
+int main(int argc, char* argv[]) {
+
+	std::string path = argv[1];
+	std::string groundtruth = argv[2];
+	std::string result_file = argv[3];
+
+	// create the necessary paths
+	//boost::filesystem::path result_path(result);
+	//boost::filesystem::create_directory(result_path);
+
+	PartitionType trajectory_partition;
+
+	trajectory_partition.read_partition(path);
+
+	motion_segmentation::TrajectoryClusteringError<PartitionType> trajectory_error;
+
+	trajectory_error.compute_error(trajectory_partition, groundtruth, result_file);
+
+	if (argc > 4) {
+		std::string path = argv[4];
+		boost::filesystem::create_directories(path);
+
+		std::vector<ImageSignal<float64,3> > imgs = trajectory_error.assignments();
+		for (uint64 i = 0; i < imgs.size(); i++) {
+			std::ostringstream os; os << i << ".png";
+			std::string rpath = path + "/" + os.str();
+			std::cout << "writing " << rpath << std::endl;
+			imgs[i].write(rpath);
+		}
+	}
+}

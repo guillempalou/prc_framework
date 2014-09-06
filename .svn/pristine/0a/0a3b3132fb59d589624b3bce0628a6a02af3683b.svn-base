@@ -1,0 +1,289 @@
+/*
+ * learning_bpt.cpp
+ *
+ *  Created on: Jan 11, 2013
+ *      Author: gpalou
+ */
+
+#define IL_STD
+
+#include <imageplus/core/colorspace_converter.hpp>
+#include <imageplus/segmentation/slic/slic.hpp>
+#include <imageplus/segmentation/measures/boundary_recall.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/bpt/metric_learning/learning_metric_bpt.hpp>
+#include <imageplus/bpt/metric_learning/learning_metric.hpp>
+#include <imageplus/bpt/metric_learning/metric_model.hpp>
+
+#include <imageplus/bpt/models/channel_mean_distance.hpp>
+
+#include <imageplus/bpt/binary_partition_tree.hpp>
+
+using namespace imageplus;
+#define uint64 imageplus::uint64
+
+const uint64 NUM_CONSTRAINTS_PER_LEVEL  = 200;
+const uint64 NUM_MODELS					= 3;
+const uint64 DIMENSIONS					= 3;
+
+typedef ImageSignal<float64,3> 																		ImageType;
+typedef ImageType::value_type																		lab_type;
+
+typedef bpt::LearningMetricBPT<ImageType>															LearningBPTAlgorithm;
+typedef LearningBPTAlgorithm::BPT																	LearningBPT;
+
+typedef bpt::BinaryPartitionTree<ImageType>															BPTAlgorithm;
+typedef BPTAlgorithm::BPT																			BPT;
+
+typedef BPTAlgorithm::PartitionType																	PartitionType;
+
+typedef bpt::MetricModel<DIMENSIONS,ImageType, BPT> 												BPTModelType;
+typedef BPTModelType::Parameters																	MetricModelParameters;
+typedef BPTModelType::DistanceModelType																DistanceModelType;
+typedef BPTModelType::DistanceModels																DistanceModels;
+
+typedef bpt::ChannelMeanDistanceModel<ImageType, BPT>												ChannelMeanModel;
+
+
+PartitionType preprocess_image(ImageType& img) {
+	ColorSpaceConverter<ImageType> converter;
+
+	segmentation::SLIC slic;
+
+	//std::cout << "SLIC" << " " << img.sizes().transpose() << std::endl;
+	PartitionType partition =  slic.segment_with_superpixel_number(img,1000,1);
+
+	// The SLIC algorithm does not convert to CIE Lab the original data
+	//std::cout << "colorspace" << std::endl;
+	converter.convert(img, ColorSpaceLAB);
+	//std::cout << "done" << std::endl;
+
+	return partition;
+}
+
+DistanceModels create_model_vector() {
+	DistanceModels d(NUM_MODELS);
+
+	d[0] = new ChannelMeanModel(ChannelMeanModel::Parameters(0,58));
+	d[1] = new ChannelMeanModel(ChannelMeanModel::Parameters(1,20));
+	d[2] = new ChannelMeanModel(ChannelMeanModel::Parameters(2,38));
+
+	return d;
+}
+
+void delete_model_vector(DistanceModels& d) {
+	for (uint64 i = 0; i < NUM_MODELS; i++)
+		delete d[i];
+}
+
+void perform_bpt_with_metric(std::string img_path, std::string bpt_path, MetricModelParameters& metric_pars) {
+
+	ImageType img;
+	img.read(img_path);
+
+	PartitionType partition = preprocess_image(img);
+
+	BPTAlgorithm::Parameters bpt_pars;
+	bpt_pars.debug = true;
+	bpt_pars.step = 1;
+	bpt_pars.update_roots_partition = false;
+
+	BPTAlgorithm bpt(bpt_pars);
+
+	bpt.init(img, partition);
+
+	bpt.create<BPTModelType>(img, metric_pars);
+
+	BPT& bpt_tree = bpt.bpt();
+
+	boost::filesystem::path	result_path(bpt_path);
+	boost::filesystem::create_directories(result_path);
+
+	bpt_tree.save_to_files(bpt_path + "/leaves.sgm", bpt_path + "/mergings.txt");
+	bpt_tree.save_prl("", bpt_path + "/initial_partition.prl", bpt_path + "/mergings_prl.txt");
+}
+
+bpt::MetricOptimizationStruct<DIMENSIONS> perform_bpt_with_groundtruth(std::string img_path, std::string path, PartitionType& gt, MetricModelParameters& metric_pars) {
+
+	ImageType img;
+	img.read(img_path);
+
+	PartitionType partition = preprocess_image(img);
+
+	ImageType partition_image = segmentation::to_false_color<ImageType>(partition);
+	partition_image.write(path + "/initial_partition.png");
+
+	LearningBPTAlgorithm::Parameters bpt_pars;
+	bpt_pars.debug = true;
+	bpt_pars.step = 1;
+	bpt_pars.update_roots_partition = false;
+	bpt_pars.num_constraints_per_level = NUM_CONSTRAINTS_PER_LEVEL;
+
+	LearningBPTAlgorithm bpt_metric(bpt_pars);
+
+	bpt_metric.init(img, partition);
+
+	/*************************************************************/
+
+	partition = bpt_metric.bpt().leaves_partition();
+
+	//assign each superpixel to a region
+	PartitionType::iterator p = partition.begin();
+	PartitionType::iterator end = partition.end();
+	std::map<uint64, uint64> assignment;
+	std::map<uint64, std::map<uint64, uint64> > intersect;
+
+	for (; p != end; ++p) {
+		PartitionType::coord_type pos = p.pos();
+		intersect[partition(pos)(0)][gt(pos)(0)] +=1;
+	}
+	for (std::map<uint64, std::map<uint64, uint64> >::iterator r1 = intersect.begin(); r1 != intersect.end(); ++r1) {
+		uint64 assigned = r1->second.begin()->first;
+		assignment[r1->first] = assigned;
+		for (std::map<uint64,uint64>::iterator r2 = r1->second.begin(); r2 != r1->second.end(); ++r2) {
+			if (intersect[r1->first][assigned] < r2->second) {
+					assignment[r1->first] = r2->first;
+			}
+		}
+	}
+
+	bpt_metric.set_gt_assignments(assignment);
+
+
+	/*************************************************************/
+
+
+	bpt_metric.create<BPTModelType>(img, metric_pars);
+
+	return bpt_metric.optimization_struct();
+}
+
+void image_train(std::string path_img, std::string path_gt, std::string path_result, bpt::MetricOptimizationParameters& pars) {
+
+	math::Matrix A			= math::Matrix::Identity(DIMENSIONS,DIMENSIONS);
+	DistanceModels models 	= create_model_vector();
+
+	MetricModelParameters metric_pars;
+
+	metric_pars.A = A;
+	metric_pars.models = models;
+
+	// Perform the BPT with groundtruth once and optimize weights for each image
+	bpt::MetricOptimizationStruct<DIMENSIONS> opts;
+
+	std::string path_image  	= path_img;
+	std::string path_image_gt	= path_gt;
+
+	boost::filesystem::create_directories(path_result + "/euclid");
+
+	ImageType partition_img;
+	partition_img.read(path_image_gt);
+
+	PartitionType part = segmentation::to_partition<PartitionType>(partition_img);
+
+	perform_bpt_with_metric(path_image, path_result + "/euclid", metric_pars);
+
+	opts = perform_bpt_with_groundtruth(path_image, path_result, part, metric_pars);
+
+	opts.save(path_result + "/triplets.dat");
+
+	delete_model_vector(models);
+}
+
+
+void test_image(std::string path_img, std::string path_metric, std::string path_result) {
+
+	boost::filesystem::path	result_path(path_result);
+	boost::filesystem::create_directories(result_path);
+
+	DistanceModels models 	= create_model_vector();
+
+	MetricModelParameters metric_pars;
+
+	std::ifstream ifs(path_metric.c_str());
+	uint64 N;
+	ifs >> N;
+
+	math::Matrix A(N,N);
+
+	for (uint64 i =0; i < N; i++)
+		for (uint64 k = 0; k < N; k++)
+			ifs >> A(i,k);
+
+	metric_pars.A = A;
+	metric_pars.models = models;
+
+	std::cout << "Performing bpt" << std::endl;
+	perform_bpt_with_metric(path_img, path_result, metric_pars);
+
+	delete_model_vector(models);
+}
+
+int main(int argc, char *argv[]) {
+
+	std::string algorithm_method	= argv[1];
+
+	if (algorithm_method == "train") {
+		bpt::MetricOptimizationParameters metric_pars;
+
+		metric_pars.C = 1;
+
+		std::string path_image			= argv[2];
+		std::string path_result 		= argv[3];
+		std::string path_groundtruth 	= argv[4];
+		//std::string path_pars			= argv[5];
+		image_train(path_image, path_groundtruth, path_result, metric_pars);
+	}
+
+	if (algorithm_method == "test") {
+
+		std::string path_img			= argv[2];
+		std::string path_metric 		= argv[3];
+		std::string path_result 		= argv[4];
+		test_image(path_img, path_metric, path_result);
+	}
+
+	/*if (algorithm_method == "val") {
+		std::string path_img		= argv[2];
+		std::string path_kernel 		= argv[3];
+		std::string path_result 		= argv[3];
+		test(path_img, path_kernel, path_result);
+	}*/
+
+	//std::cout << "Descriptors: " << std::endl;
+	//std::cout << opt..region_descriptors << std::endl;
+
+	//uint64 N = incompatibilities.triplets.rows();
+
+	//std::cout << "------------------------" << std::endl;
+
+	/*std::cout << "Conditions :" << std::endl;
+			for (uint64 i = 0; i < N; i++) {
+				uint64 ri = incompatibilities.triplets(i,0);
+				uint64 rj = incompatibilities.triplets(i,1);
+				uint64 rk = incompatibilities.triplets(i,2);
+
+				Eigen::Matrix<float64, 1, D> xi = incompatibilities.region_descriptors.row(ri);
+				Eigen::Matrix<float64, 1, D> xj = incompatibilities.region_descriptors.row(rj);
+				Eigen::Matrix<float64, 1, D> xk = incompatibilities.region_descriptors.row(rk);
+
+				float64 dij = distance(xi, xj, incompatibilities.region_descriptors, now_opt.kernel_w, sigma);
+				float64 dik = distance(xi, xk, incompatibilities.region_descriptors, now_opt.kernel_w, sigma);
+
+				std::cout << "(" << xi << ") (" << xj << ") (" << xk << ")" << " -- " << dij << " :: " << dik << " -- " << (dij < dik) << std::endl;
+			}
+
+			std::cout << "------------------------" << std::endl;
+			std::cout << "Kernel: " << now_opt.kernel_w.transpose() << std::endl;
+			std::string dist = path_result + "/distance.txt";
+			std::ofstream ofs(dist.c_str());
+			for (uint64 i = 0; i <= 100; i++) {
+				for (uint64 k = 0; k <= 100; k++) {
+					Eigen::Matrix<float64, 1, D> a; a(0)=i;
+					Eigen::Matrix<float64, 1, D> b; b(0)=k;
+					ofs << distance(a,b, incompatibilities.region_descriptors, now_opt.kernel_w, sigma) << " ";
+				}
+				ofs << std::endl;
+			}*/
+}

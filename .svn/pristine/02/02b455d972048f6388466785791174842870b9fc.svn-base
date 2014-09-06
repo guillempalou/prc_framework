@@ -1,0 +1,163 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file coord3d.test
+ */  
+
+#include <imageplus/core/coord3d.hpp>
+#include <imageplus/core/array_arithmetic.hpp>
+
+BOOST_AUTO_TEST_SUITE ( suite_coord3d );
+
+using namespace imageplus;
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64, int8, int16, int32, int64 > Coord3DTypes; 
+
+    
+BOOST_AUTO_TEST_CASE_TEMPLATE( test_coord3d_basic, T, Coord3DTypes )
+{
+    /*
+     * Default constructor
+     */
+    Coord3D<T> c1;
+    
+    BOOST_CHECK(c1.dims() == 3);
+    BOOST_CHECK(c1[0] == 0);
+    BOOST_CHECK(c1[1] == 0);
+    BOOST_CHECK(c1[2] == 0);
+    
+    /*
+     * Init test data
+     */
+    c1[0] = 3;
+    c1[1] = 55;
+    c1[2] = 72;
+    
+    /*
+     * Copy constructor
+     */
+    Coord3D<T> c2 = c1;
+    BOOST_CHECK(c2 == c1);
+    BOOST_CHECK(c2.dims() == c1.dims());
+    BOOST_CHECK(c2[0] == c1[0]);
+    BOOST_CHECK(c2[1] == c1[1]);
+    BOOST_CHECK(c2[2] == c1[2]);
+    BOOST_CHECK(c2[0] == 3); 
+    BOOST_CHECK(c2[1] == 55); 
+    BOOST_CHECK(c2[2] == 72);
+    
+    /*
+     * Copy constructor from a different data type
+     */
+    Coord3D<int64> c3 = c1;
+    BOOST_CHECK(c3 == c1);
+    BOOST_CHECK(c3.dims() == c1.dims());
+    
+    BOOST_CHECK(c3[0] == int64(c1[0])); // cast necessary for signed/unsigned comparations
+    BOOST_CHECK(c3[1] == int64(c1[1])); // cast necessary for signed/unsigned comparations
+    BOOST_CHECK(c3[2] == int64(c1[2])); // cast necessary for signed/unsigned comparations
+    
+    BOOST_CHECK(c3[0] == 3);
+    BOOST_CHECK(c3[1] == 55);
+    BOOST_CHECK(c3[2] == 72);
+    
+    /*
+     * Specific constructors and specific access methods
+     */
+    Coord3D<T> c3d(4,5,6);
+    
+    BOOST_CHECK(c3d.x() == 4);
+    BOOST_CHECK(c3d.y() == 5);
+    BOOST_CHECK(c3d.z() == 6);
+
+    /*
+     * Assignement operator
+     */
+    BOOST_CHECK(c3d != c3); // just to be sure... 
+    c3d=c3;
+    BOOST_CHECK(c3d == c3);
+    
+    /*
+     * Specific set methods
+     */
+    c3d.set(40,50,60);
+
+    BOOST_CHECK(c3d.x() == 40);
+    BOOST_CHECK(c3d.y() == 50);
+    BOOST_CHECK(c3d.z() == 60);
+    
+    c3d.x() = 45;
+    c3d.y() = 55;
+    c3d.z() = 65;
+    
+    BOOST_CHECK(c3d.x() == 45);
+    BOOST_CHECK(c3d.y() == 55);
+    BOOST_CHECK(c3d.z() == 65);
+    
+    BOOST_CHECK(c3d.x() == c3d[0]);
+    BOOST_CHECK(c3d.y() == c3d[1]);
+    BOOST_CHECK(c3d.z() == c3d[2]);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( test_coord3d_arithmetic, T, Coord3DTypes )
+{
+    /*
+     * Init data
+     */
+    Coord3D<T>    c1;
+    Coord3D<int8> c2;
+    Coord3D<T>    out;
+    for(std::size_t ii=0; ii<3; ++ii)
+    {
+        c1[ii] = ii;
+        c2[ii] = ii;
+    }
+    
+    /*
+     * Addition and substraction
+     */
+    out = c1+c2;
+    for(std::size_t ii=0; ii<3; ++ii)
+    {
+        BOOST_CHECK( out[ii] == T(2*ii));
+    }
+    
+    out -= c1;
+    for(std::size_t ii=0; ii<3; ++ii)
+    {
+        BOOST_CHECK( out[ii] == T(ii));
+    }
+
+    /*
+     * Substraction
+     */
+    out = c1-c2;
+    for(std::size_t ii=0; ii<3; ++ii)
+    {
+        BOOST_CHECK( out[ii] == 0);
+    }
+    
+    out += c1;
+    for(std::size_t ii=0; ii<3; ++ii)
+    {
+        BOOST_CHECK( out[ii] == T(ii));
+    }
+}
+
+#ifndef NDEBUG
+BOOST_AUTO_TEST_CASE_TEMPLATE( test_coord3d_assert_exceptions, T, Coord3DTypes  )
+{
+    /*
+     * Test to just check some assert (in debug mode)
+     */
+    Coord3D<T> c2;
+            
+    BOOST_CHECK_THROW(c2.set(2)  , ImagePlusInternalError);
+    BOOST_CHECK_THROW(c2.set(2,3), ImagePlusInternalError);
+}
+#endif //NDEBUG
+
+BOOST_AUTO_TEST_SUITE_END ();

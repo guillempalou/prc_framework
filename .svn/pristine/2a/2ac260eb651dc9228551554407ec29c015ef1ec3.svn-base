@@ -1,0 +1,24 @@
+/*! \page started Getting Started
+
+\section toc Table of Contents
+
+- \ref cplusplus
+- \subpage structure
+- \subpage core
+
+
+\section cplusplus The C++ Language
+
+Before starting to use ImagePlus, you need to know some non-basic C++ features like:
+
+- Iterators
+- Operators overloading
+- Namespaces
+- Templates
+
+Also you need to know the main ideas related to the two main programming styles with C++:
+
+- Object Oriented Programming: encapsulation, inheritance and overloading.
+- Generic Programming: concepts and models.
+
+*/

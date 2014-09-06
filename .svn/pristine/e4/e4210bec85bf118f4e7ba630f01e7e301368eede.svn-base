@@ -1,0 +1,42 @@
+/*
+ * image_test.cpp
+ *
+ *  Created on: Sep 5, 2012
+ *      Author: guillem
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+using namespace imageplus;
+
+int main() {
+
+	typedef ImageSignal<float64,3> 			ImageType;
+	typedef ImageType::coord_type 			coord2d;
+	typedef ImageType::value_type			bgr_type;
+	typedef ImageType::value_type			lab_type;
+
+	ImageType img;
+	img.read("/Users/guillem/Pictures/earth_south.png");
+
+	ColorSpaceConverter<ImageType> converter;
+
+	converter.convert(img,ColorSpaceLAB);
+
+	lab_type color(81,-34+128,50+128);
+	for (uint64 x = 100; x <= 300; ++x) {
+		img(x,100) = color;
+		img(x,200) = color;
+	}
+
+	for (uint64 y = 100; y <= 200; ++y) {
+		img(100,y) = color;
+		img(300,y) = color;
+	}
+
+	converter.convert(img,ColorSpaceRGB);
+
+	img.write("/Users/guillem/Documents/Doctorat/test.png");
+}

@@ -1,0 +1,141 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imageyiq.cpp
+//!
+//! \author Antonella Battisti
+//! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+//!
+//!  Implementation for ImageYIQ class
+//!
+
+#include <imageplus/core/check_size.hpp>
+
+#include <imageplus/core/imageyiq.hpp>
+
+using namespace imageplus;
+
+
+template<typename T>
+ImageYIQ<T>::ImageYIQ()
+        : Image<T,3>()
+{
+}
+
+
+template<typename T>
+ImageYIQ<T>::ImageYIQ(uint64 x, uint64 y)
+        : Image<T,3>(x,y)
+{
+}
+
+
+template<typename T>
+ImageYIQ<T>::ImageYIQ(const ImaVol<T,3,2>& copy)
+        : Image<T,3>(copy)
+{
+    check_size_yiq(copy);
+}
+
+
+template<typename T>
+ImageYIQ<T>::ImageYIQ(const Image<T,3>& copy)
+        : Image<T,3>(copy)
+{
+    check_size_yiq(copy);
+}
+
+
+template<typename T>
+ImageYIQ<T>::ImageYIQ(const ImageYIQ<T>& copy)
+        : Image<T,3>(copy)
+{
+#ifndef NDEBUG
+    check_size_yiq(copy);
+#endif
+}
+
+
+template<typename T>
+ImageYIQ<T>::ImageYIQ(const std::vector< std::vector<uint64> >& dims)
+        : Image<T,3>(dims)
+{
+    if ( (dims[0][0] != dims[1][0]) || (dims[0][1] != dims[1][1]) )
+    {
+        throw ImagePlusError("U channel dimensions must be equal to Y channel dimensions");
+    }
+
+    if ( (dims[0][0] != dims[2][0]) || (dims[0][1] != dims[2][1]) )
+    {
+        throw ImagePlusError("V channel dimensions must be equal to Y channel dimensions");
+    }
+}
+
+
+template<typename T>
+ImageYIQ<T>::~ImageYIQ()
+{
+}
+
+
+template<typename T>
+ImageYIQ<T>& ImageYIQ<T>::operator=( const ImaVol<T,3,2>& copy )
+{
+    check_size_yiq(copy);
+
+    (*this).Image<T,3>::operator=( copy );
+
+    return *this;
+}
+
+
+template<typename T>
+ImageYIQ<T>& ImageYIQ<T>::operator=( const Image<T,3>& copy )
+{
+    check_size_yiq(copy);
+
+    (*this).Image<T,3>::operator=( copy );
+
+    return *this;
+}
+
+
+template<typename T>
+ImageYIQ<T>& ImageYIQ<T>::operator=( const ImageYIQ<T>& copy )
+{
+#ifndef NDEBUG
+    check_size_yiq(copy);
+#endif
+
+    (*this).Image<T,3>::operator=( copy );
+
+    return *this;
+}
+
+
+template<typename T>
+const T& ImageYIQ<T>::operator=(const T& val)
+{
+    (*this).Image<T,3>::operator=( val );
+
+    return val;
+}
+
+
+
+// ImageYIQ instantiations
+namespace imageplus
+{
+    template class ImageYIQ<uint8>;
+    template class ImageYIQ<uint16>;
+    template class ImageYIQ<uint32>;
+    template class ImageYIQ<uint64>;
+    template class ImageYIQ<int8>;
+    template class ImageYIQ<int16>;
+    template class ImageYIQ<int32>;
+    template class ImageYIQ<int64>;
+    template class ImageYIQ<float64>;
+}

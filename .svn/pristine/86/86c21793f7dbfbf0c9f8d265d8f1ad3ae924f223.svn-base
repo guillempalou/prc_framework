@@ -1,0 +1,256 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+/*!
+ * 
+ * \file capture.cpp
+ * 
+ * \brief .
+ *
+ *
+ *  \author Albert Gil
+ */
+
+#ifdef USE_VIDEO4LINUX
+
+
+#define IMAGEPLUS_CLIENT_CONFIG_NAME  capture
+
+#include <imageplus/toolbox/client_config.hpp>
+
+#include <imageplus/io/capturev4l2.hpp>
+#include <imageplus/core/timestamp.hpp>
+
+//
+// Used namespaces
+//
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace std;
+
+
+IMAGEPLUS_CLIENT_CONFIG_BRIEF()
+    
+    "This client captures images from a camera and send them to a flow\n";
+
+IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()
+
+    "This client captures images from a camera and send them to a flow.    \n" +
+    "                                                                      \n" +
+    "Timestamp is obtained from system time.                               \n" +
+    "Captures follow video4linux/hardware default frame rate. It is 25 fps \n" +
+    "The program uses Video4Linux to access the hardware.                  \n" +
+    "You need read permission on the devices /dev/video*                   \n";
+
+IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()
+
+    // options
+    string       device_name;
+    uint16       use_every_N_frames;
+    string       calibration_file;
+    std::size_t  width;
+    std::size_t  height;
+
+    // flags
+    
+    // arguments
+    
+    // flows
+    VideoOutputFlow video;
+    DataOutputFlow  ts;
+
+    
+IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+    device_name        = "/dev/video0";
+    use_every_N_frames = 1;
+    calibration_file   = "no_file";
+    width              = 768;
+    height             = 576;
+
+    
+IMAGEPLUS_CLIENT_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description 
+    // and an optional abreviature
+    //
+    CLIENT_CONFIG_OPTION_ABV( device_name        , "device to connect"      , 'd' );
+    CLIENT_CONFIG_OPTION_ABV( use_every_N_frames , "to discard N frames"    , 'N' );
+    CLIENT_CONFIG_OPTION_ABV( calibration_file   , "the calibration file"   , 'c' );
+    CLIENT_CONFIG_OPTION_ABV( width              , "image width"            , 'w' );
+    CLIENT_CONFIG_OPTION_ABV( height             , "image height"           , 'h' );
+
+    
+IMAGEPLUS_CLIENT_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description 
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description. 
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments 
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //   
+
+IMAGEPLUS_CLIENT_CONFIG_FLOWS()
+
+    //
+    // Here you have to define your FLOWS
+    //
+    CLIENT_CONFIG_VIDEO_OUT( video );
+    CLIENT_CONFIG_DATA_OUT ( ts, Timestamp );
+
+IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //  
+    IMAGEPLUS_CLIENT_CONFIG_READ( device_name        );
+    IMAGEPLUS_CLIENT_CONFIG_READ( use_every_N_frames );
+    IMAGEPLUS_CLIENT_CONFIG_READ( calibration_file   );
+    IMAGEPLUS_CLIENT_CONFIG_READ( width              );
+    IMAGEPLUS_CLIENT_CONFIG_READ( height             );
+    
+IMAGEPLUS_CLIENT_CONFIG_METADATAS()
+    
+    //
+    // Here you can get the metadatas from the input flows
+    // And you MUST set the metadata of your output flows
+    //
+    // Note that from now on you can access to the previously 
+    // defined config parameters with the "cfg" object.
+    // 
+
+    VideoMetadata video_metadata;
+    
+    // Define output metadata flow as RGB
+    video_metadata.imageFormat = SFC::VideoMetadata::packedRGB;
+    video_metadata.dataType    = SFC::VideoMetadata::type_8u;
+    video_metadata.frameRate   = 25/cfg.use_every_N_frames;
+    video_metadata.width       = cfg.width;
+    video_metadata.height      = cfg.height;
+    strncpy(video_metadata.calibrationFile, cfg.calibration_file.c_str(), 255 );
+
+    cfg.video->setMetadata( video_metadata );
+        
+//
+// This is the "main" function of your client.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the client with "--help" to see your configuration.
+//
+IMAGEPLUS_CLIENT_CONFIG_MAIN()
+{
+    //
+    // Here you can declare and initialize the variables that
+    // will be used in the main loop
+    // 
+	std::size_t     frame_counter = 1;
+    CaptureV4L2     cap ( cfg.device_name, cfg.width, cfg.height, 25, V4L2_PIX_FMT_RGB32 );
+    ImageRGB<uint8> rgb ( cfg.width, cfg.height);
+    std::size_t     frame_number = 0;
+    std::size_t     bsize = cfg.width*cfg.height*3;
+
+    //
+    // Also you should define pointers to the flow buffer
+    //
+    uint8*     buffer_video;
+    Timestamp* buffer_ts;
+    
+    //
+    // Start capturing
+    //
+    cap.start();
+
+    //
+    // This is the main loop of you client.
+    // You can think on it as a "while(running)" loop.
+    // It ends only when the SmartFlow server send the "kill" signal
+    // or if you execute "running=false"
+    //
+    CLIENT_CONFIG_WHILE_RUNNING() 
+    {
+        try
+        {
+            cap >> rgb;
+        }
+        catch( ImagePlusError& e )
+        {
+            std::cout << "Error capturing frame: " << frame_number << "\n";
+            std::cout << e.what() << std::endl;
+        }
+       
+        //
+        // Get output buffer from the flow:
+        //
+        if( frame_counter == cfg.use_every_N_frames )
+        {
+        	Timestamp ts = clock_ts();
+
+	        cfg.video->get_buffer(buffer_video);
+	        cfg.ts   ->get_buffer(buffer_ts);
+	
+	        //
+	        // Fills up the output buffer
+	        //
+	        //rgb.export_to(buffer_video, cfg.width, cfg.height, RGB);
+	        export_to(rgb, buffer_video, bsize, RGB);
+	        *buffer_ts = ts;
+	        
+	        //
+	        // Send and release the output buffer
+	        //
+	        send_buffer(cfg.video, ts);
+	        send_buffer(cfg.ts,    ts);
+	        
+	        // Increment the frame buffer
+	        frame_number++;
+	        frame_counter = 1;
+        }
+        else
+        {
+        	frame_counter++;
+        }
+    }
+    
+    // End client
+    cap.stop();
+    return (0);
+}
+
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_CLIENT_CONFIG_END()
+
+
+#else
+
+#include <iostream>
+
+int main(int argc, char* argv[])
+{
+    std::cout << "Please, to run this client you should build it with the flag USE_VIDEO4LINUX." << std::endl;
+}
+ 
+#endif // USE_VIDEO4LINUX

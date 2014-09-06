@@ -1,0 +1,525 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//
+// - NAME of your tool
+//   - This is mandatory
+//   - Avoid the character '-', use always '_' 
+// - GROUP where your tool belong (tools/GROUP directory)
+//   - This is optional
+//   - Comment the second definition to not group your tool
+//
+#define IMAGEPLUS_TOOL_CONFIG_NAME  partition_distances
+#define IMAGEPLUS_TOOL_CONFIG_GROUP segmentation
+
+//
+// Include tool_config.hpp header 
+//
+// Note that it is mandatory to FIRST define the name (and group)
+// of your tool, and LATER on include this header.
+//
+#include <imageplus/toolbox/tool_config.hpp>
+
+
+//
+// ImagePlus headers
+//
+#include <imageplus/io/readimage.hpp>
+#include <boost/filesystem.hpp>
+#include <imageplus/segmentation/distances.hpp>
+
+//
+// Standard headers
+//
+#include <iostream>
+
+//
+// namespaces
+//
+using namespace std;
+using namespace imageplus;
+using namespace io;
+using namespace segmentation;
+
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+
+    "Compares two image partitions by means of some distances.\n";
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+    "Compares two image partitions by means of some distances.\n";
+
+
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+    string filename_partition_1;
+    string filename_partition_2;
+    
+    string rand_index;
+    string prec_recall_regions;
+    string asymmetric_part_dist;
+    string symmetric_part_dist;
+    string segmentation_covering;
+    string optimal_segmentation_covering;
+    string bidirectional_consistency_error;
+    string global_consistency_error;
+    string local_consistency_error;
+    string variation_of_information;
+    string mutual_information;
+    
+    string hoover_measures;
+    string region_detection_f;
+    
+    float64 hoover_threshold;
+    
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+
+    rand_index = "";
+    prec_recall_regions = "";
+    asymmetric_part_dist = "";
+    symmetric_part_dist = "";
+    segmentation_covering = "";
+    optimal_segmentation_covering = "";
+    bidirectional_consistency_error = "";
+    global_consistency_error = "";
+    local_consistency_error = "";
+    hoover_measures = "";
+    hoover_threshold = 0.51;
+    variation_of_information = "";
+    mutual_information = "";
+    region_detection_f = "";
+    
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description 
+    // and an optional abreviature
+    //
+    IMAGEPLUS_TOOL_CONFIG_OPTION( rand_index , "Filename to write the rand index");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( prec_recall_regions , "Filename to write the precision for regions and recall for regions");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( asymmetric_part_dist , "Filename to write the asymmetric partition distance");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( symmetric_part_dist , "Filename to write the symmetric partition distance");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( segmentation_covering , "Filename to write the segmentation covering");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( optimal_segmentation_covering , "Filename to write the optimal segmentation covering");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( bidirectional_consistency_error , "Filename to write the bidirectional consistency error");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( local_consistency_error , "Filename to write the local consistency error");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( global_consistency_error , "Filename to write the global consistency error");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( hoover_measures , "Filename to write the Hoover measures");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( hoover_threshold , "Threshold of the Hoover measures");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( mutual_information, "Filename to write the mutual information");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( variation_of_information , "Filename to write the variation of information");
+    IMAGEPLUS_TOOL_CONFIG_OPTION( region_detection_f , "Filename to write the region-detection F measure");
+
+
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description 
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description. 
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments 
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_partition_1, "First partition filename (.prl)" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_partition_2, "Second partition filename (.prl)" );
+ 
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_partition_1 );
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_partition_2 );
+    
+    IMAGEPLUS_TOOL_CONFIG_READ( rand_index );
+    IMAGEPLUS_TOOL_CONFIG_READ( prec_recall_regions );
+    IMAGEPLUS_TOOL_CONFIG_READ( asymmetric_part_dist );
+    IMAGEPLUS_TOOL_CONFIG_READ( symmetric_part_dist );
+    
+    IMAGEPLUS_TOOL_CONFIG_READ( segmentation_covering );
+    IMAGEPLUS_TOOL_CONFIG_READ( optimal_segmentation_covering );
+    
+    IMAGEPLUS_TOOL_CONFIG_READ( global_consistency_error );
+    IMAGEPLUS_TOOL_CONFIG_READ( local_consistency_error );
+    IMAGEPLUS_TOOL_CONFIG_READ( bidirectional_consistency_error );
+    
+    IMAGEPLUS_TOOL_CONFIG_READ( hoover_measures );
+    IMAGEPLUS_TOOL_CONFIG_READ( hoover_threshold );
+    
+    IMAGEPLUS_TOOL_CONFIG_READ( mutual_information );
+    IMAGEPLUS_TOOL_CONFIG_READ( variation_of_information );
+    
+    IMAGEPLUS_TOOL_CONFIG_READ( region_detection_f );
+
+ 
+//
+// This is the "main" function of your tool.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the exemple with "--help" to see your configuration.
+//
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{
+    try
+    {
+        // Set of intersection matrices
+        std::vector<MultiArray<uint64, 2> > intersect_matrices;
+
+        io::ReadImage readImage;
+
+        // Get all partitions 1
+        std::vector<std::string> files_partitions_1;
+        std::stringstream dataStream1(cfg.filename_partition_1);
+        std::copy(std::istream_iterator<std::string>(dataStream1),
+                  std::istream_iterator<std::string>(),
+                  std::back_inserter(files_partitions_1));
+        std::vector<ImagePartition<> > partitions_1(files_partitions_1.size());
+        for(std::size_t part_id=0; part_id<files_partitions_1.size(); ++part_id)
+        {
+            readImage.open(files_partitions_1[part_id]);
+            readImage >> partitions_1[part_id];
+        }
+        
+        // Get all partitions 2
+        std::vector<std::string> files_partitions_2;
+        std::stringstream dataStream2(cfg.filename_partition_2);
+        std::copy(std::istream_iterator<std::string>(dataStream2),
+                  std::istream_iterator<std::string>(),
+                  std::back_inserter(files_partitions_2));
+        std::vector<ImagePartition<> > partitions_2(files_partitions_2.size());
+        for(std::size_t part_id=0; part_id<files_partitions_2.size(); ++part_id)
+        {
+            readImage.open(files_partitions_2[part_id]);
+            readImage >> partitions_2[part_id];
+        }
+
+        // Check sizes
+        if(partitions_1[0].size_x()!=partitions_2[0].size_x() || partitions_1[0].size_y()!=partitions_2[0].size_y())
+        {
+            if(files_partitions_1.size()==1)  // Rotate partition_1
+            {
+                ImagePartition<> tmp(partitions_1[0].size_y(), partitions_1[0].size_x());
+                for(std::size_t xx=0; xx<partitions_1[0].size_x(); ++xx)
+                    for(std::size_t yy=0; yy<partitions_1[0].size_y(); ++yy)
+                        tmp[yy][partitions_1[0].size_x()-xx-1] = partitions_1[0][xx][yy];
+
+                partitions_1[0] = tmp;
+            }
+            else // Multiple partition 1
+            {
+                if(files_partitions_2.size()!=1)
+                {
+                    throw(ImagePlusError("Only partition 1 or 2 can be multiple"));
+                }
+                ImagePartition<> tmp(partitions_2[0].size_y(), partitions_2[0].size_x());
+                for(std::size_t xx=0; xx<partitions_2[0].size_x(); ++xx)
+                    for(std::size_t yy=0; yy<partitions_2[0].size_y(); ++yy)
+                        tmp[yy][partitions_2[0].size_x()-xx-1] = partitions_2[0][xx][yy];
+
+                partitions_2[0] = tmp;
+            }
+
+            if(partitions_1[0].size_x()!=partitions_2[0].size_x() || partitions_1[0].size_y()!=partitions_2[0].size_y())
+            {
+                throw(ImagePlusError("The partitions compared must be of the same size!"));
+            }
+        }
+
+        if(files_partitions_1.size()==1)  // Only one partition 1
+        {
+            // Compute all intersection matrices
+            intersect_matrices.resize(partitions_2.size());
+            for(std::size_t part_id=0; part_id<partitions_2.size(); ++part_id)
+            {
+                intersect_matrices[part_id] = intersection_matrix(partitions_1[0], partitions_2[part_id]);
+            }
+        }
+        else // Multiple partition 1
+        {
+            if(files_partitions_2.size()!=1)
+            {
+                throw(ImagePlusError("Only partition 1 or 2 can be multiple"));
+            }
+
+            // Compute all intersection matrices the other way around
+            intersect_matrices.resize(partitions_1.size());
+            for(std::size_t part_id=0; part_id<partitions_1.size(); ++part_id)
+            {
+                intersect_matrices[part_id] = intersection_matrix(partitions_1[part_id], partitions_2[0]);
+            }
+        }
+
+        // Local partition-based
+        if(cfg.asymmetric_part_dist!="")
+        {
+            // Mean of distances to GTs
+            float64 apd = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                apd += (float64)asymmetric_partition_distance(intersect_matrices[part_id]);
+            }
+            apd /= (float64)intersect_matrices.size();
+
+            // Write to file
+            std::ofstream out_file(cfg.asymmetric_part_dist.c_str(), std::ios::out | std::ios::app);
+            out_file << apd/(float64)partitions_1[0].size_x()/(float64)partitions_1[0].size_y() << std::endl;
+            out_file.close();
+        }
+
+        if(cfg.segmentation_covering!="")
+        {
+            // Mean of distances to GTs
+            float64 sc = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                sc += (float64)segmentation_covering(intersect_matrices[part_id]);
+            }
+            sc /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.segmentation_covering.c_str(), std::ios::out | std::ios::app);
+            out_file << sc << std::endl;
+            out_file.close();
+        }
+
+        // Optimal partition-based
+        if(cfg.symmetric_part_dist!="")
+        {
+            // Mean of distances to GTs
+            float64 spd = 0;
+            for(std::size_t part_id_1=0; part_id_1<partitions_1.size(); ++part_id_1)
+            {
+                for(std::size_t part_id_2=0; part_id_2<partitions_2.size(); ++part_id_2)
+                {
+                    spd += (float64)symmetric_partition_distance(partitions_1[part_id_1], partitions_2[part_id_2]);
+                }
+            }
+            spd /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.symmetric_part_dist.c_str(), std::ios::out | std::ios::app);
+            out_file << spd/(float64)partitions_1[0].size_x()/(float64)partitions_1[0].size_y() << std::endl;
+            out_file.close();
+        }
+
+        if(cfg.optimal_segmentation_covering!="")
+        {
+            // Mean of distances to GTs
+            float64 osc = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                osc += (float64)optimal_segmentation_covering(intersect_matrices[part_id]);
+            }
+            osc /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.optimal_segmentation_covering.c_str(), std::ios::out | std::ios::app);
+            out_file << osc << std::endl;
+            out_file.close();
+        }
+
+        // Consistency
+        if(cfg.global_consistency_error!="")
+        {
+            // Mean of distances to GTs
+            float64 gce = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                gce += (float64)global_consistency_error(intersect_matrices[part_id]);
+            }
+            gce /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.global_consistency_error.c_str(), std::ios::out | std::ios::app);
+            out_file << gce << std::endl;
+            out_file.close();
+        }
+
+        if(cfg.local_consistency_error!="")
+        {
+            // Mean of distances to GTs
+            float64 lce = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                lce += (float64)local_consistency_error(intersect_matrices[part_id]);
+            }
+            lce /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.local_consistency_error.c_str(), std::ios::out | std::ios::app);
+            out_file << lce << std::endl;
+            out_file.close();
+        }
+
+        if(cfg.bidirectional_consistency_error!="")
+        {
+            // Mean of distances to GTs
+            float64 bce = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                bce += (float64)bidirectional_consistency_error(intersect_matrices[part_id]);
+            }
+            bce /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.bidirectional_consistency_error.c_str(), std::ios::out | std::ios::app);
+            out_file << bce << std::endl;
+            out_file.close();
+        }
+
+        // Hoover
+        if(cfg.hoover_measures!="")
+        {
+            // Mean of distances to GTs
+            float64 cd = 0; float64 os = 0; float64 us = 0; float64 ns = 0; float64 ms = 0;  float64 tos = 0;  float64 tus = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                HooverMeasures hoover(cfg.hoover_threshold);
+                hoover.calculate(intersect_matrices[part_id]);
+                cd += (float64)hoover.correct_detections().size();
+                os += (float64)hoover.over_segmentations().size();
+                us += (float64)hoover.under_segmentations().size();
+                ms += (float64)hoover.missed().size();
+                ns += (float64)hoover.noise().size();
+                tos += (float64)hoover.total_over_segmentations();
+                tus += (float64)hoover.total_under_segmentations();
+            }
+            cd  /= (float64)intersect_matrices.size();
+            os  /= (float64)intersect_matrices.size();
+            us  /= (float64)intersect_matrices.size();
+            ms  /= (float64)intersect_matrices.size();
+            ns  /= (float64)intersect_matrices.size();
+            tos /= (float64)intersect_matrices.size();
+            tus /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.hoover_measures.c_str(), std::ios::out | std::ios::app);
+            out_file << cd << "\t" << os << "\t" << us << "\t" << ms << "\t" << ns << "\t" << tos << "\t" << tus << "\t" << std::endl;
+            out_file.close();
+        }
+
+        // Information-theory
+        if(cfg.mutual_information!="")
+        {
+            // Mean of distances to GTs
+            float64 mi = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                // Normalized
+                uint32 num_regs_1 = intersect_matrices[part_id].dims(0);
+                uint32 num_regs_2 = intersect_matrices[part_id].dims(1);
+                mi += (float64)mutual_information(intersect_matrices[part_id])/log(num_regs_1*num_regs_2)*log(2);
+            }
+            mi /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.mutual_information.c_str(), std::ios::out | std::ios::app);
+            out_file << mi << std::endl;
+            out_file.close();
+        }
+
+        if(cfg.variation_of_information!="")
+        {
+            // Mean of distances to GTs
+            float64 vi = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                // Normalized
+                uint32 num_regs_1 = intersect_matrices[part_id].dims(0);
+                uint32 num_regs_2 = intersect_matrices[part_id].dims(1);
+
+                vi += 1-((float64)variation_of_information(intersect_matrices[part_id])/(2*log(max(num_regs_1,num_regs_2))/log(2)));
+            }
+            vi /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.variation_of_information.c_str(), std::ios::out | std::ios::app);
+            out_file << vi << std::endl;
+            out_file.close();
+        }
+
+        // Pairs of pixels
+        if(cfg.rand_index!="")
+        {
+            // Mean of distances to GTs
+            float64 ri = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                PairsOfPixels pairs;
+                pairs.calculate(intersect_matrices[part_id]);
+                ri += (float64)pairs.rand_index();
+            }
+            ri /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.rand_index.c_str(), std::ios::out | std::ios::app);
+            out_file << ri << std::endl;
+            out_file.close();
+        }
+
+        if(cfg.prec_recall_regions!="")
+        {
+            // Mean of distances to GTs
+            float64 prr = 0; float64 rer = 0; float64 fr = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                PairsOfPixels pairs;
+                pairs.calculate(intersect_matrices[part_id]);
+                prr += pairs.precision();
+                rer += pairs.recall();
+                fr += 2*pairs.precision()*pairs.recall()/(pairs.precision()+pairs.recall());
+            }
+            prr /= (float64)intersect_matrices.size();
+            rer /= (float64)intersect_matrices.size();
+            fr /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.prec_recall_regions.c_str(), std::ios::out | std::ios::app);
+            out_file << prr << "\t" << rer << "\t" << fr << std::endl;
+            out_file.close();
+        }
+
+
+        if(cfg.region_detection_f!="")
+        {
+            // Mean of distances to GTs
+            float64 prd = 0; float64 rrd = 0; float64 frd = 0;
+            for(std::size_t part_id=0; part_id<intersect_matrices.size(); ++part_id)
+            {
+                RegionDetectionF reg_det_f;
+                reg_det_f.calculate(intersect_matrices[part_id]);
+                prd += reg_det_f.precision();
+                rrd += reg_det_f.recall();
+                frd += reg_det_f.f_measure();
+            }
+            prd /= (float64)intersect_matrices.size();
+            rrd /= (float64)intersect_matrices.size();
+            frd /= (float64)intersect_matrices.size();
+
+            std::ofstream out_file(cfg.region_detection_f.c_str(), std::ios::out | std::ios::app);
+            out_file << prd << "\t" << rrd << "\t" << frd << std::endl;
+            out_file.close();
+        }
+    }
+    catch(BacktracedImagePlusException e)
+    {
+        std::cerr << e.what() << std::endl;
+        exit(1);
+    }
+    catch(std::exception e)
+    {
+        std::cerr << e.what() << std::endl;
+        exit(1);
+    }
+}
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_TOOL_CONFIG_END()
+

@@ -1,0 +1,87 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \file closing.test
+//!
+//! Tests for class Closing
+//!
+
+#include <iostream>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/math/morphology/closing.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( ClosingSuite );
+
+using namespace imageplus;
+using namespace imageplus::math::morphology;
+
+typedef boost::mpl::list<uint8,int64> DataTypes;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( ClosingGeneral, T, DataTypes)
+{
+    io::ReadImage  rima_ori(std::string(TEST_DATA_PATH_R) +"/foreman_000_y.png");
+    ImageGray<uint8> ori_ima;
+    rima_ori >> ori_ima;
+
+    ImageGray<T> ima = convert<T>(ori_ima);
+
+    io::ReadImage  rima_fil(std::string(TEST_DATA_PATH_R) +"/morphology/foreman_clo.png");
+    ImageGray<uint8> fil_ima;
+    rima_fil >> fil_ima;
+
+    ImageGray<T> fil = convert<T>(fil_ima);
+    ImageGray<T> out;
+
+    // Closing, connectivity 8, kernel 3x3 (square)
+    Closing<2> clo(8,3);
+
+    out = clo.filter(ima);
+
+    BOOST_CHECK (out == fil);
+}
+
+BOOST_AUTO_TEST_CASE( ClosingBool )
+{
+    io::ReadImage  rima_ori(std::string(TEST_DATA_PATH_R) +"/morphology/testmorphbool_Original.png");
+    ImageGray<uint8> ori_ima;
+    rima_ori >> ori_ima;
+
+    ImageMask ima = convert(ori_ima);
+
+    io::ReadImage  rima_fil(std::string(TEST_DATA_PATH_R) +"/morphology/testmorphbool_Clo.png");
+    ImageGray<uint8> fil_ima;
+    rima_fil >> fil_ima;
+
+    ImageMask fil = convert(fil_ima);
+    ImageMask out;
+
+    // Closing, connectivity 8, kernel 3x3 (square)
+    Closing<2> clo(8,3);
+
+    out = clo.filter(ima);
+
+    BOOST_CHECK (out == fil);
+
+
+    // Closing using an arbitrary structuring element (not simple)
+    MultiArray<bool,2> se_ma(3,3);
+    se_ma = true;
+
+    StructuringElement<2> se(se_ma, Coord<int64,2>(1,1));
+
+    Closing<2> clo_se(se);
+
+    ImageMask out2;
+    out2 = clo_se.filter(ima);
+
+    BOOST_CHECK (out2 == fil);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

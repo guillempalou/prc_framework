@@ -1,0 +1,64 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file max_flow_min_cut.test
+//!
+//!  Tests for the math operations on Graphs
+//!
+
+#include <imageplus/math/graphs/graph.hpp>
+#include <imageplus/math/graphs/graph_io.hpp>
+#include <imageplus/math/graphs/algorithms/max_flow_min_cut.hpp>
+
+BOOST_AUTO_TEST_SUITE ( test_max_flow_min_cut );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::graphs;
+
+BOOST_AUTO_TEST_CASE( max_flow_min_cut_test )
+{
+	typedef BoostGraph<kGraphBidirectional, NodeMaxFlowProperties, EdgeMaxFlowProperties> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	ReadGraph<Graph> rg;
+
+	rg.read(std::string(TEST_DATA_PATH_R) + "/math/graphs/test.graph", g, true);
+
+	for (Graph::edge_iterator ed = g.edges_begin(); ed != g.edges_end(); ++ed) {
+		g.edge_properties(*ed).capacity = g.edge_properties(*ed).weight;
+	}
+
+	MaxFlowMinCut<Graph> maxflow;
+
+	Graph::node_iterator n = g.nodes_begin();
+	Graph::node_iterator e = (++g.nodes_begin());
+
+	float64 flow = maxflow.calculate(g,*n,*e);
+
+	MaxFlowMinCut<Graph>::EdgeMap cut = maxflow.min_cut();
+
+	float64 cut_sum = 0;
+	std::set<std::pair<uint64,uint64> > s;
+	s.insert(std::pair<uint64,uint64>(6,1));
+	s.insert(std::pair<uint64,uint64>(19,46));
+	s.insert(std::pair<uint64,uint64>(20,46));
+	s.insert(std::pair<uint64,uint64>(32,1));
+
+	for (MaxFlowMinCut<Graph>::EdgeMap::iterator it = cut.begin(); it != cut.end(); ++it) {
+		BOOST_CHECK(s.find(it->first) != s.end());
+		cut_sum+=it->second.capacity;
+	}
+
+	BOOST_CHECK_CLOSE(flow, 1.1569, 0.1);
+	BOOST_CHECK_CLOSE(flow, cut_sum,0.01);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+

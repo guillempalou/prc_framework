@@ -1,0 +1,181 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file overlay.test
+ */ 
+
+#include <imageplus/core/imagergb.hpp>
+#include <imageplus/core/region.hpp>
+#include <imageplus/core/coord2d.hpp>
+#include <imageplus/core/imagegray.hpp>
+#include <imageplus/segmentation/overlay.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( Segmentation_Overlay_Suite );
+
+using namespace imageplus;
+using namespace segmentation;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE( overlay_region_test )
+{
+    ImageRGB<uint8> im(2,2);
+    im=1;
+    
+    imageplus::Region<Coord2D<int64> > my_region;
+     my_region.push_back(Coord2D<int64>(1,0));
+     my_region.push_back(Coord2D<int64>(1,1));
+     
+    ImageRGB<uint8>::Color rgb_color = 255;
+    overlay(my_region.begin(), my_region.end(), im, rgb_color);
+
+    BOOST_CHECK_EQUAL(im(0)[0][0], 1);    BOOST_CHECK_EQUAL(im(0)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(0)[0][1], 1);    BOOST_CHECK_EQUAL(im(0)[1][1], 255);
+    
+    BOOST_CHECK_EQUAL(im(1)[0][0], 1);    BOOST_CHECK_EQUAL(im(1)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(1)[0][1], 1);    BOOST_CHECK_EQUAL(im(1)[1][1], 255);
+    
+    BOOST_CHECK_EQUAL(im(2)[0][0], 1);    BOOST_CHECK_EQUAL(im(2)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(2)[0][1], 1);    BOOST_CHECK_EQUAL(im(2)[1][1], 255);
+    
+    ImageGray<uint8> im2(2,2);
+    im2=2;
+
+    ImageGray<uint8>::Color gray_color = 255;
+    overlay(my_region.begin(), my_region.end(), im2, gray_color);
+
+    BOOST_CHECK_EQUAL(im2[0][0], 2);    BOOST_CHECK_EQUAL(im2[1][0], 255);
+    BOOST_CHECK_EQUAL(im2[0][1], 2);    BOOST_CHECK_EQUAL(im2[1][1], 255);
+}
+
+BOOST_AUTO_TEST_CASE( overlay_vector_test )
+{
+    ImageRGB<uint8> im(2,2);
+    im=1;
+    std::vector<Coord2D<int64> > my_coords;
+     my_coords.push_back(Coord2D<int64>(2,1));
+     my_coords.push_back(Coord2D<int64>(2,3));
+     
+    ImageRGB<uint8>::Color rgb_color = 255;
+    overlay_contour(my_coords.begin(), my_coords.end(), im, rgb_color);
+
+    BOOST_CHECK_EQUAL(im(0)[0][0], 255);    BOOST_CHECK_EQUAL(im(0)[1][0], 1);
+    BOOST_CHECK_EQUAL(im(0)[0][1], 255);    BOOST_CHECK_EQUAL(im(0)[1][1], 1);
+    
+    BOOST_CHECK_EQUAL(im(1)[0][0], 255);    BOOST_CHECK_EQUAL(im(1)[1][0], 1);
+    BOOST_CHECK_EQUAL(im(1)[0][1], 255);    BOOST_CHECK_EQUAL(im(1)[1][1], 1);
+    
+    BOOST_CHECK_EQUAL(im(2)[0][0], 255);    BOOST_CHECK_EQUAL(im(2)[1][0], 1);
+    BOOST_CHECK_EQUAL(im(2)[0][1], 255);    BOOST_CHECK_EQUAL(im(2)[1][1], 1);
+    
+    ImageGray<uint8> im2(2,2);
+    im2=2;
+
+    ImageGray<uint8>::Color gray_color = 255;
+    overlay_contour(my_coords.begin(), my_coords.end(), im2, gray_color);
+
+    BOOST_CHECK_EQUAL(im2[0][0], 255);    BOOST_CHECK_EQUAL(im2[1][0], 2);
+    BOOST_CHECK_EQUAL(im2[0][1], 255);    BOOST_CHECK_EQUAL(im2[1][1], 2);
+}
+
+
+BOOST_AUTO_TEST_CASE( overlay_list_test )
+{
+    ImageRGB<uint8> im(2,2);
+    im=1;
+    std::list<Coord2D<int64> > my_coords;
+     my_coords.push_back(Coord2D<int64>(2,1));
+     my_coords.push_back(Coord2D<int64>(2,3));
+     
+    ImageRGB<uint8>::Color rgb_color = 255;
+    overlay_contour(my_coords.begin(), my_coords.end(), im, rgb_color);
+
+    BOOST_CHECK_EQUAL(im(0)[0][0], 255);    BOOST_CHECK_EQUAL(im(0)[1][0], 1);
+    BOOST_CHECK_EQUAL(im(0)[0][1], 255);    BOOST_CHECK_EQUAL(im(0)[1][1], 1);
+    
+    BOOST_CHECK_EQUAL(im(1)[0][0], 255);    BOOST_CHECK_EQUAL(im(1)[1][0], 1);
+    BOOST_CHECK_EQUAL(im(1)[0][1], 255);    BOOST_CHECK_EQUAL(im(1)[1][1], 1);
+    
+    BOOST_CHECK_EQUAL(im(2)[0][0], 255);    BOOST_CHECK_EQUAL(im(2)[1][0], 1);
+    BOOST_CHECK_EQUAL(im(2)[0][1], 255);    BOOST_CHECK_EQUAL(im(2)[1][1], 1);
+    
+    ImageGray<uint8> im2(2,2);
+    im2=2;
+
+    ImageGray<uint8>::Color gray_color = 255;
+    overlay_contour(my_coords.begin(), my_coords.end(), im2, gray_color);
+
+    BOOST_CHECK_EQUAL(im2[0][0], 255);    BOOST_CHECK_EQUAL(im2[1][0], 2);
+    BOOST_CHECK_EQUAL(im2[0][1], 255);    BOOST_CHECK_EQUAL(im2[1][1], 2);
+}
+
+
+BOOST_AUTO_TEST_CASE( overlay_contour_test )
+{
+    ImageRGB<uint8> im(2,2);
+    im=1;
+    ImagePartition<uint32> partition(2,2);
+     partition[0][0] = 1;    partition[1][0] = 1;
+     partition[0][1] = 2;    partition[1][1] = 2;
+
+    Partition<RegionContour<Coord2D<int64> > > my_part(partition);
+    ImageRGB<uint8>::Color rgb_color = 255;
+    overlay_contour(my_part[2], im, rgb_color);
+
+    BOOST_CHECK_EQUAL(im(0)[0][0], 255);    BOOST_CHECK_EQUAL(im(0)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(0)[0][1],   1);    BOOST_CHECK_EQUAL(im(0)[1][1],   1);
+    
+    BOOST_CHECK_EQUAL(im(1)[0][0], 255);    BOOST_CHECK_EQUAL(im(1)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(1)[0][1],   1);    BOOST_CHECK_EQUAL(im(1)[1][1],   1);
+    
+    BOOST_CHECK_EQUAL(im(2)[0][0], 255);    BOOST_CHECK_EQUAL(im(2)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(2)[0][1],   1);    BOOST_CHECK_EQUAL(im(2)[1][1],   1);
+    
+    ImageGray<uint8> im2(2,2);
+    im2=2;
+
+    ImageGray<uint8>::Color gray_color = 255;
+    overlay_contour(my_part[2], im2, gray_color);
+
+    BOOST_CHECK_EQUAL(im2[0][0], 255);    BOOST_CHECK_EQUAL(im2[1][0], 255);
+    BOOST_CHECK_EQUAL(im2[0][1],   2);    BOOST_CHECK_EQUAL(im2[1][1],   2);
+}
+
+
+BOOST_AUTO_TEST_CASE( overlay_contour_partition_test )
+{
+    ImageRGB<uint8> im(2,2);
+    im=1;
+    ImagePartition<uint32> partition(2,2);
+     partition[0][0] = 1;    partition[1][0] = 1;
+     partition[0][1] = 2;    partition[1][1] = 2;
+
+    Partition<RegionContour<Coord2D<int64> > > my_part(partition);
+    ImageRGB<uint8>::Color rgb_color = 255;
+    overlay_contour(my_part, im, rgb_color);
+
+    BOOST_CHECK_EQUAL(im(0)[0][0], 255);    BOOST_CHECK_EQUAL(im(0)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(0)[0][1],   1);    BOOST_CHECK_EQUAL(im(0)[1][1],   1);
+    
+    BOOST_CHECK_EQUAL(im(1)[0][0], 255);    BOOST_CHECK_EQUAL(im(1)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(1)[0][1],   1);    BOOST_CHECK_EQUAL(im(1)[1][1],   1);
+    
+    BOOST_CHECK_EQUAL(im(2)[0][0], 255);    BOOST_CHECK_EQUAL(im(2)[1][0], 255);
+    BOOST_CHECK_EQUAL(im(2)[0][1],   1);    BOOST_CHECK_EQUAL(im(2)[1][1],   1);
+    
+    ImageGray<uint8> im2(2,2);
+    im2=2;
+
+    ImageGray<uint8>::Color gray_color = 255;
+    overlay_contour(my_part, im2, gray_color);
+
+    BOOST_CHECK_EQUAL(im2[0][0], 255);    BOOST_CHECK_EQUAL(im2[1][0], 255);
+    BOOST_CHECK_EQUAL(im2[0][1],   2);    BOOST_CHECK_EQUAL(im2[1][1],   2);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+

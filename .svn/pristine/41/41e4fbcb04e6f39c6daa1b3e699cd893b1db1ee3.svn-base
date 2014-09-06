@@ -1,0 +1,250 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file multiarray.test
+ */
+
+#include <iostream>
+
+#include <imageplus/core.hpp>
+
+BOOST_AUTO_TEST_SUITE ( MultiArraySuite );
+
+using namespace imageplus;
+
+BOOST_AUTO_TEST_CASE (  MultiArray_constructors_and_operators )
+{
+    // Check constructor with extents
+    MultiArray<uint8,2> a1(boost::extents[3][20]); a1 = 22;
+
+    // Check constructor with
+    uint64  m[2] = {3,20};
+    MultiArray<uint8,2> a2( m ); a2 = 22;
+    BOOST_CHECK (a1 == a2 );
+   
+    // Check constructor with explicit sizes
+    MultiArray<uint8,3> b3(10,10,10); b3 = 3;
+    MultiArray<uint8,2> b2(10,10); b2 = 2;
+    MultiArray<uint8,1> b1(10); b1 = 1;
+	
+	BOOST_CHECK_EQUAL(b1.dims(0), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b1[9], (uint8)1);
+	
+	BOOST_CHECK_EQUAL(b2.dims(0), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b2.dims(1), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b2[9][9], (uint8)2);
+	
+	BOOST_CHECK_EQUAL(b3.dims(0), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b3.dims(1), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b3.dims(2), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b3[9][9][9], (uint8)3);
+
+    // Check constructor with dims()
+    MultiArray<uint8,3> b4(b3.dims()); b4 = 4;
+	BOOST_CHECK_EQUAL(b4.dims(0), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b4.dims(1), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b4.dims(2), (std::size_t)10);
+    BOOST_CHECK_EQUAL(b4[9][9][9], (uint8)4);
+    
+    // Check constructor with copy
+    MultiArray<uint8,3> b5(b3);
+	BOOST_CHECK_EQUAL(b5.dims(0), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b5.dims(1), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b5.dims(2), (std::size_t)10);
+	BOOST_CHECK_EQUAL(b5[9][9][9], (uint8)3);
+
+    // Check constructor from boost:multi_array (fortran_storage_order)
+    boost::multi_array<uint8,2> ma1(boost::extents[15][10],boost::fortran_storage_order());
+    uint8 val = 0;
+
+    for (uint32 y = 0; y < ma1.shape()[1]; y++)
+    {
+        for (uint32 x = 0; x < ma1.shape()[0]; x++)
+        {
+            ma1[x][y] = val++;
+        }
+    }
+    
+    MultiArray<uint8,2> d1(ma1);
+    BOOST_CHECK ( d1.dims(0) == ma1.shape()[0] );
+    BOOST_CHECK ( d1.dims(1) == ma1.shape()[1] );
+
+    val = 0;
+
+    for (uint32 y = 0; y < d1.dims(1); y++) 
+	{
+        for (uint32 x = 0; x < d1.dims(0); x++)
+        {
+            BOOST_CHECK_EQUAL ( d1[x][y], val++ ); 
+        }
+
+    }
+  
+    val = 0;
+    for (uint32 p = 0; p < d1.num_elements(); p++)
+    {
+        BOOST_CHECK ( d1.data()[p] == val++ );
+    }
+
+    // Check constructor from boost:multi_array (c_storage_order)
+    boost::multi_array<uint8,2> ma2(boost::extents[15][10],boost::c_storage_order());
+    val = 0;
+
+    for (uint32 y = 0; y < ma2.shape()[1]; y++)
+    {
+        for (uint32 x = 0; x < ma2.shape()[0]; x++)
+        {
+            ma2[x][y] = val++;
+        }
+    }
+
+    MultiArray<uint8,2> d2(ma1);
+    BOOST_CHECK (d2.dims(0) == ma2.shape()[0]);
+    BOOST_CHECK (d2.dims(1) == ma2.shape()[1]);
+
+    val = 0;
+    for (uint32 y = 0; y < d2.dims(1); y++)
+    {
+        for (uint32 x = 0; x < d2.dims(0); x++)
+        {
+            BOOST_CHECK ( d2[x][y] == val++ );                  
+        }
+    }
+    
+    val = 0;
+    for (uint32 p = 0; p < d2.num_elements(); p++)
+    {
+        BOOST_CHECK ( d2.data()[p] == val++ ); 
+    }
+    
+    // Check assignment operator with different sizes
+    MultiArray<int64,2> e1(1,1);
+    MultiArray<int64,2> e2(5,10);
+    e2 = 10;
+    e1 = e2;
+
+    BOOST_CHECK ( e1 == e2 ); 
+
+    // Check prints
+    /*    std::cout << e1;
+    b1 = 3;
+    std::cout << convert<int64>(b1);
+    */
+
+    // Check operator= with values
+    MultiArray<uint8,3> f1(50,50,50);
+    f1 = (uint8)3;
+    BOOST_CHECK ( f1 == (uint8)3 ); 
+
+    // Check comparisons
+    MultiArray<uint8,2> g1(5,5);
+    MultiArray<uint8,2> g2(5,5);
+
+    g1 = 5;
+    g2 = 5;
+
+    BOOST_CHECK (g1==g2);
+    BOOST_CHECK (g1==5);
+}
+
+BOOST_AUTO_TEST_CASE (  MultiArray_indices )
+{
+    MultiArray<int32,2> ma(5,5);
+    ma[0][0] = 1;
+    ma[1][2] = 2;
+
+    boost::array<std::size_t, 2> base = {{-1,-2}};
+    ma.reindex(base);
+
+    // Indices are changed properly
+    BOOST_CHECK_EQUAL(ma[-1][-2], 1);
+    BOOST_CHECK_EQUAL(ma[ 0][ 0], 2);
+
+    // Indices are kept by copy constructor
+    MultiArray<int32,2> ma2(ma);
+    BOOST_CHECK_EQUAL(ma2[-1][-2], 1);
+    BOOST_CHECK_EQUAL(ma2[ 0][ 0], 2);
+
+    MultiArray<int32,2> ma3 = ma;
+    BOOST_CHECK_EQUAL(ma3[-1][-2], 1);
+    BOOST_CHECK_EQUAL(ma3[ 0][ 0], 2);
+
+    // Indices are kept by operator=
+    MultiArray<int32,2> ma4;
+    ma4 = ma;
+    BOOST_CHECK_EQUAL(ma4[-1][-2], 1);
+    BOOST_CHECK_EQUAL(ma4[ 0][ 0], 2);
+}
+
+
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64, int8, int16, int32, int64, float32, float64 > DataTypes;
+
+// Tests for the 2 logical operators == and !=
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_equal, T, DataTypes )
+{   
+    uint64 size = 10;
+    T val = static_cast<T>(3);
+    
+    MultiArray<T,1> ma(size);
+            
+    ma = 3;      
+
+    BOOST_CHECK(ma == val); 
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_different_of, T, DataTypes )
+{
+    uint64 size = 10;
+    T val = static_cast<T>(3);
+    
+    MultiArray<T,1> ma(size);
+            
+    ma = 5;      
+
+    BOOST_CHECK(ma != val); 
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( equal_operator_ma, T, DataTypes )
+{
+    MultiArray<T, 2> ma1(10,5);
+    MultiArray<T, 2> ma2(10,5);
+ 
+    for (size_t y=0; y< 5; ++y)
+    for (size_t x=0; x<10; ++x)
+    {
+        ma1[x][y] = static_cast<T>(std::numeric_limits<T>::max() * (rand()/ float64(RAND_MAX)));
+        ma2[x][y] = ma1[x][y];
+    }   
+    
+    BOOST_CHECK(ma1 == ma2);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( not_equal_operator_ma, T, DataTypes )
+{
+    MultiArray<T, 2> ma1(10,5);
+    MultiArray<T, 2> ma2(10,5);
+    MultiArray<T, 2> ma3(10,10);
+ 
+    for (size_t y=0; y< 5; ++y)
+    for (size_t x=0; x<10; ++x)
+    {
+        ma1[x][y] = static_cast<T>(std::numeric_limits<T>::max() * (rand()/ float64(RAND_MAX)));
+        ma2[x][y] = static_cast<T>(std::numeric_limits<T>::max() * (rand()/ float64(RAND_MAX)));
+    }
+    
+    BOOST_CHECK(ma1 != ma2);
+    
+    ma1 = 1;
+    ma2 = 2;
+    ma3 = 2;
+    
+    BOOST_CHECK(ma1 != ma2);
+    BOOST_CHECK(ma2 != ma3);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

@@ -1,0 +1,327 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file qr_decomposition.cpp
+//!
+//!  Implementation for QRDecomposition class
+//!
+
+
+
+#include <imageplus/math/numeric/qr_decomposition.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+
+
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+template<typename T>
+QRDecomposition::QRDecomposition(const MultiArray<T,2>& A)
+{
+    _QR = A;
+    _m = A.dims(1);
+    _n = A.dims(0);
+    _Rdiag = MultiArray<float64,1>(_n);
+
+    // Main loop.
+    for (uint64 k = 0; k < _n; k++) 
+    {
+        // Compute 2-norm of k-th column without under/overflow.
+        float64 nrm = 0;
+        for (uint64 i = k; i < _m; i++) 
+        {
+            nrm = imageplus::math::numeric::hypot(nrm,_QR[k][i]);
+        }
+
+        if (nrm != 0.0) 
+        {
+            // Form k-th Householder vector.
+            if (_QR[k][k] < 0) 
+            {
+                nrm = -nrm;
+            }
+            for (uint64 i = k; i < _m; i++) 
+            {
+                _QR[k][i] /= nrm;
+            }
+            _QR[k][k] += 1.0;
+
+            // Apply transformation to remaining columns.
+            for (uint64 j = k+1; j < _n; j++) 
+            {
+                float64 s = 0.0; 
+                for (uint64 i = k; i < _m; i++) 
+                {
+                    s += _QR[k][i]*_QR[j][i];
+                }
+                s = -s/_QR[k][k];
+                for (uint64 i = k; i < _m; i++) 
+                {
+                    _QR[j][i] += s*_QR[k][i];
+                }
+            }
+        }
+        _Rdiag[k] = -nrm;
+    }
+}
+
+
+/**
+   Flag to denote the matrix is of full rank.
+   @return 1 if matrix is full rank, 0 otherwise.
+*/
+bool QRDecomposition::full_rank() const		
+{
+    for (uint64 j = 0; j < _n; j++) 
+    {
+        if (_Rdiag[j] == 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+	
+	
+
+
+/** 
+    Retreive the Householder vectors from QR factorization
+    @returns lower trapezoidal matrix whose columns define the reflections
+*/
+MultiArray<float64,2> QRDecomposition::householder (void)  const
+{
+    MultiArray<float64,2> H(_n, _m);
+
+    /* note: H is completely filled in by algorithm, so
+       initialization of H is not necessary.
+    */
+    for (uint64 i = 0; i < _m; i++) 
+    {
+        for (uint64 j = 0; j < _n; j++) 
+        {
+            if (i >= j) 
+            {
+                H[j][i] = _QR[j][i];
+            } 
+            else 
+            {
+                H[j][i] = 0.0;
+            }
+        }
+    }
+    return H;
+}
+
+/** Return the upper triangular factor, R, of the QR factorization
+    @return     R
+*/
+
+MultiArray<float64,2> QRDecomposition::r() const
+{
+    MultiArray<float64,2> R(_n,_n);
+                    
+    for (uint64 i = 0; i < _n; i++) 
+    {
+        for (uint64 j = 0; j < _n; j++) 
+        {
+            if (i < j) 
+            {
+                R[j][i] = _QR[j][i];
+            } 
+            else if (i == j) 
+            {
+                R[j][i] = _Rdiag[i];
+            } 
+            else 
+            {
+                R[j][i] = 0.0;
+            }
+        }
+    }
+    return R;
+}
+	
+/** 
+    Generate and return the (economy-sized) orthogonal factor
+    @param     Q the (ecnomy-sized) orthogonal factor (Q*R=A).
+*/
+
+MultiArray<float64,2> QRDecomposition::q() const
+{
+    MultiArray<float64,2> Q(_n, _m);
+    for (int64 k = _n-1; k >= 0; k--) 
+    {
+        for (uint64 i = 0; i < _m; i++) 
+        {
+            Q[k][i] = 0.0;
+        }
+        Q[k][k] = 1.0;
+        for (uint64 j = k; j < _n; j++) 
+        {
+            if (_QR[k][k] != 0)
+            {
+                float64 s = 0.0;
+                for (uint64 i = k; i < _m; i++) 
+                {
+                    s += _QR[k][i]*Q[j][i];
+                }
+
+                s = -s/_QR[k][k];
+
+                for (uint64 i = k; i < _m; i++) 
+                {
+                    Q[j][i] += s*_QR[k][i];
+                }
+            }
+        }
+    }
+    return Q;
+}
+
+
+
+template<typename T>
+MultiArray<float64,1> QRDecomposition::solve (const MultiArray<T,1>& b)  throw (ImagePlusError)
+{
+    if ( b.dims(1) != _m )		/* arrays must be conformant */
+    {
+        throw ImagePlusError ("Array dimensions do not match");
+    }
+
+    if ( !full_rank() )		/* matrix is rank deficient */
+    {
+        throw ImagePlusError ("Matrix is rank deficient");
+    }
+
+    MultiArray<float64,1> x(b);
+
+    // Compute Y = transpose(Q)*b
+    for (uint64 k = 0; k < _n; k++) 
+    {
+        float64 s = 0.0; 
+        for (uint64 i = k; i < _m; i++) 
+        {
+            s += _QR[k][i]*x[i];
+        }
+        s = -s/_QR[k][k];
+        for (uint64 i = k; i < _m; i++) 
+        {
+            x[i] += s*_QR[k][i];
+        }
+    }
+
+    // Solve R*X = Y;
+    for (int64 k = _n-1; k >= 0; k--) 
+    {
+        x[k] /= _Rdiag[k];
+        for (int64 i = 0; i < k; i++) 
+        {
+            x[i] -= x[k]*_QR[k][i];
+        }
+    }
+
+
+    /* return n x nx portion of X */
+    MultiArray<float64,1> x_(_n);
+    for (uint64 i=0; i < _n; i++)
+    {
+        x_[i] = x[i];
+    }
+
+    return x_;
+}
+
+/** Least squares solution of A*X = B
+    @param B     m x k Array (must conform).
+    @return X     n x k Array that minimizes the two norm of Q*R*X-B. If
+    B is non-conformant, or if QR.isFullRank() is false,
+    the routine returns a null (0x0) array.
+*/
+
+template<typename T>
+MultiArray<float64,2> QRDecomposition::solve(const MultiArray<T,2>& B) throw (ImagePlusError)
+{
+    if ( B.dims(1) != _m )		/* arrays must be conformant */
+    {
+        throw ImagePlusError ("Array dimensions do not match");
+    }
+
+    if ( !full_rank() )		/* matrix is rank deficient */
+    {
+        throw ImagePlusError ("Matrix is rank deficient");
+    }
+
+
+    uint64 nx = B.dims(0); 
+    MultiArray<float64,2> X(B);
+
+    // Compute Y = transpose(Q)*B
+    for (uint64 k = 0; k < _n; k++)
+    {
+        for (uint64 j = 0; j < nx; j++)
+        {
+            float64 s = 0.0; 
+
+            for (uint64 i = k; i < _m; i++) 
+            {
+                s += _QR[k][i]*X[j][i];
+            }
+
+            s = -s/_QR[k][k];
+
+            for (uint64 i = k; i < _m; i++) 
+            {
+                X[j][i] += s*_QR[k][i];
+            }
+        }
+    }
+    // Solve R*X = Y;
+    for (int64 k = _n-1; k >= 0; k--) 
+    {
+        for (uint64 j = 0; j < nx; j++)
+        {
+            X[j][k] /= _Rdiag[k];
+        }
+
+        for (int64 i = 0; i < k; i++)
+        {
+            for (uint64 j = 0; j < nx; j++) 
+            {
+                X[j][i] -= X[j][k]*_QR[k][i];
+            }
+        }
+    }
+
+
+    /* return n x nx portion of X */
+    MultiArray<float64,2> X_(nx, _n);
+    for (uint64 i=0; i < _n; i++)
+    {
+        for (uint64 j=0; j<nx; j++)
+        {
+            X_[j][i] = X[j][i];
+        }
+    }
+    return X_;
+}
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            template MultiArray<float64,1> QRDecomposition::solve(const MultiArray<float64,1>& );
+            template MultiArray<float64,2> QRDecomposition::solve(const MultiArray<float64,2>& );
+    
+            template QRDecomposition::QRDecomposition(const MultiArray<float64,2>& );
+    
+        }
+    }
+}

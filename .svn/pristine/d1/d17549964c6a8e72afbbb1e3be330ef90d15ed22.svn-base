@@ -1,0 +1,172 @@
+/*
+ * descriptor_manager.hpp
+ *
+ *  Created on: Jul 31, 2012
+ *      Author: guillem
+ */
+
+#ifndef DESCRIPTOR_MANAGER_HPP_
+#define DESCRIPTOR_MANAGER_HPP_
+
+#include <string>
+#include <map>
+
+#include <imageplus/descriptors/descriptor_base.hpp>
+
+namespace imageplus {
+	namespace descriptors {
+
+	class DescriptorManager {
+
+		typedef uint64												PointerType;
+		typedef std::pair<PointerType,PointerType>					PointerPairType;
+
+		typedef std::map<std::string, DescriptorBase*> 					DescriptorContainer;
+		typedef std::vector<DescriptorContainer>						SignalDescriptorContainer;
+		typedef std::map<PointerType, SignalDescriptorContainer> 		GlobalDescriptorContainer;
+
+		typedef std::pair<PointerType, DescriptorContainer> 		signal_descriptor_pair_type;
+		typedef std::pair<PointerType, SignalDescriptorContainer> 	global_descriptor_pair_type;
+
+	public:
+
+		~DescriptorManager() {
+			for (GlobalDescriptorContainer::iterator i = _descriptors.begin(); i != _descriptors.end(); ++i)
+				for (SignalDescriptorContainer::iterator k = i->second.begin(); k != i->second.end(); ++k)
+					for (DescriptorContainer::iterator d = k->begin(); d != k->end(); ++d)
+						delete d->second;
+		}
+
+		void set_max_number_of_regions(uint64 num) {
+			_max_size = num;
+		}
+
+		template<class DescriptorType, class SignalModel, class RegionModel>
+		const typename DescriptorType::type& calc_descriptor(SignalModel& signal, RegionModel& region, const typename DescriptorType::Parameters& pars = DescriptorType::default_parameters() ) {
+
+			PointerType signal_id = (PointerType)&signal;
+			PointerType region_id = region.label();
+
+			if (region_id >= _max_size) {
+				ImagePlusError("Region index too high to store the descriptor");
+			}
+
+
+			std::string descriptor_id = DescriptorType::id(pars);
+			DescriptorType* desc = NULL;
+
+			if (_descriptors.find(signal_id) == _descriptors.end()) {
+				_descriptors[signal_id] = SignalDescriptorContainer(_max_size);
+			}
+			DescriptorContainer& region_descriptors = _descriptors[signal_id][region_id];
+			DescriptorContainer::iterator descriptor_iterator = region_descriptors.find(descriptor_id);
+
+			if (descriptor_iterator == region_descriptors.end()) {
+				desc = new DescriptorType(pars);
+
+				if (desc->is_recursive() && region.children().size() != 0) {
+					desc->recursive_calculate(signal, region, region.children(), pars, this);
+				} else {
+					desc->calculate(signal, region, pars, this);
+				}
+				region_descriptors[descriptor_id] = desc;
+			} else
+				desc = (DescriptorType*)descriptor_iterator->second;
+
+			return (desc)->value();
+		}
+
+		template<class SignalModel>
+		void clear_descriptors(SignalModel& signal) {
+			GlobalDescriptorContainer::iterator it = _descriptors.find((PointerType)&signal);
+			if (it == _descriptors.end()) return;
+
+			for (uint64 i = 0; i < it->second.size(); i++) {
+				DescriptorContainer& k = it->second[i];
+				for (DescriptorContainer::iterator d = k.begin(); d != k.end(); ++d)
+					delete d->second;
+			}
+			it->second.clear();
+			_descriptors.erase(it);
+		}
+
+		template<class RegionModel>
+		void clear_all_region_descriptors(RegionModel& region){
+			//erase all the descriptors for region
+			for (GlobalDescriptorContainer::iterator i = _descriptors.begin(); i != _descriptors.end(); i++) {
+				if (i == _descriptors.end()) return;
+
+				if (region.label() >= _max_size) {
+					ImagePlusError("Region index too high to store the descriptor");
+				}
+
+				DescriptorContainer& k = i->second[region.label()];
+				for (DescriptorContainer::iterator d = k.begin(); d != k.end(); ++d) {
+					//std::cout << "Deleting " << d->first << " from " <<region.label() << std::endl;
+					delete d->second;
+				}
+
+				k.clear();
+			}
+			//i->second.erase(k);
+		}
+
+		template<class DescriptorType, class SignalModel, class RegionModel>
+		const bool is_calculated(SignalModel& signal, RegionModel& region, const typename DescriptorType::Parameters& pars = DescriptorType::default_parameters()) const {
+			//PointerPairType id = PointerPairType((PointerType)&signal,(PointerType)&region);
+			return true; //_descriptors[id].find(DescriptorType::id(pars)) != _descriptors[id].end();
+		}
+
+		template<class DescriptorType, class SignalModel, class RegionModel>
+		const DescriptorType* find_descriptor(SignalModel& signal, RegionModel& region, const typename DescriptorType::Parameters& pars = DescriptorType::default_parameters()) const {
+
+			PointerType signal_id = (PointerType)&signal;
+			PointerType region_id = region.label();
+			std::string descriptor_id = DescriptorType::id(pars);
+
+			//std::cout << "finding " << region.label() << " " << descriptor_id << " " << std::endl;
+			GlobalDescriptorContainer::const_iterator container = _descriptors.find(signal_id);
+			if (container == _descriptors.end()) {
+				ImagePlusError("No object found for the descriptor");
+				return NULL;
+			}
+			if (region_id >= _max_size) {
+				ImagePlusError("Region index too high to store the descriptor");
+			}
+			DescriptorContainer& region_cont = container->second[region_id];
+
+			DescriptorContainer::const_iterator desc = region_cont.find(descriptor_id);
+			if (desc == region_cont.end()) {
+				ImagePlusError("No calculated descriptor found");
+				return NULL;
+			}
+			return (const DescriptorType*)(desc->second);
+		}
+
+		template<class DescriptorType, class SignalModel, class RegionModel>
+		const typename DescriptorType::type descriptor_value(SignalModel& signal, RegionModel& region, const typename DescriptorType::Parameters& pars = DescriptorType::default_parameters()) const {
+			return find_descriptor<DescriptorType>(signal,region,pars)->value();
+		}
+
+		uint64 size() {
+			uint64 s = 0;
+			for (GlobalDescriptorContainer::iterator i = _descriptors.begin(); i != _descriptors.end(); ++i) {
+				for (SignalDescriptorContainer::iterator k = i->second.begin(); k != i->second.end(); ++k) {
+					s+=k->size();
+				}
+			}
+			return s;
+		}
+
+	protected:
+
+		uint64 _max_size;
+
+		GlobalDescriptorContainer _descriptors;
+	};
+
+	}
+}
+
+
+#endif /* DESCRIPTOR_MANAGER_HPP_ */

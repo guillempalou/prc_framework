@@ -1,0 +1,118 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file watershed.hpp
+//!
+//!  Interface for Watershed operations on MultiArray and ImageGray objects
+//!
+
+#ifndef IMAGEPLUS_MORPHOLOGY_WATERSHED_HPP
+#define IMAGEPLUS_MORPHOLOGY_WATERSHED_HPP
+
+#include <imageplus/core.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace morphology
+        {
+            //!
+            //! \brief Watershed operation
+            //!
+            //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+            //!
+            //! \date 10-1-2008
+            //!
+            //! The actual implementation of the operation is in method implementation(). Althoug this method is public \n
+            //! it should never be called directly. Method filter(), inherited from base class Filter should always be called,
+            //! with the object to be filtered as a parameter
+            //!
+            //! \code
+            //!    ImageGray<uint8> g1(100,100), g2(100,100);
+            //!    ...
+            //!    Watershed ero(4,1);
+            //!    g2 = ero.filter(g1);
+            //! \endcode
+            //!
+            //!
+            class Watershed : public Filter<Watershed>
+            {
+                public:
+
+                    //!
+                    //! \brief Default constructor
+                    //!
+                    Watershed();
+
+
+                    //!
+                    //! \brief Constructor
+                    //!
+                    //! \param[in] alpha : Weighting of texture and contour (alpha = 1 ==> only texture)
+                    //! \param[in] gamma : Weighting between color components (gamma = 1/3 ==> same weight for the 3 components)
+                    //!
+                    Watershed(float64 alpha, float64 gamma = 0.3333333333) throw (ImagePlusError);
+
+
+                    //!
+                    //! \brief Overloading of method implementation() for a MultiArray object
+                    //!
+                    //! WARNING!: Never use this method. Use filter() instead.
+                    //!
+                    //! \param[in] ori : Original graylevel image
+                    //! \param[in] lab : Image partition constraining the watershed
+                    //! \param[in] seg : Label image with markers
+                    //!
+                    //! \return Filtered object
+                    //!
+                    template<typename T>
+                    ImagePartition<int32> implementation(const ImageGray<T>& ori, const ImagePartition<int32>& lab, const ImagePartition<int32>& seg) const throw (ImagePlusError);
+
+                    //!
+                    //! \brief Overloading of method implementation() for an ImageGray object
+                    //!
+                    //! WARNING!: Never use this method. Use filter() instead.
+                    //!
+                    //! \param[in] ori   : Original color image (YUV)
+                    //! \param[in] lab   : Image partition constraining the watershed
+                    //! \param[in] ori_p : Reference (i.e. previous frame) original color image (YUV)
+                    //! \param[in] lab_p : Reference (i.e. previous frame) image partition
+                    //! \param[in] seg   : Label image with markers
+                    //!
+                    //! \return Filtered object
+                    //!
+                    template<typename T>
+                    ImagePartition<int32> implementation(const ImageYUV<T>& ori, const ImagePartition<int32>& lab, const ImageYUV<T>& ori_p, const ImagePartition<int32>& lab_p, const ImagePartition<int32>& seg) const throw (ImagePlusError);
+
+
+                private:
+                    //! Connectivity (4 or 8 for Images, 6, 18 or 26 for Volumes)
+                    float64 _alpha;
+                    //! Number of successive operations
+                    float64 _gamma;
+
+                    //! \brief Compute distance from
+                    //! 
+                    //! \param[in] ori     : Original color image (YUV)
+                    //! \param[in] lab     : Image partition constraining the watershed
+                    //! \param[in] seg     : Label image with markers
+                    //! \param[in] feature : Matrix with features computed for each region in lab 
+                    //! \param[in] begin   : Address of current pixel
+                    //! \param[in] nei     : Address of a neighbor of current pixel
+                    //!
+                    //! \return              Distance 
+                    template<typename T>
+                    int64 _conrgdist (const ImageGray<T>& ori, const ImagePartition<int32>& lab, const ImagePartition<int32>& seg, const MultiArray<float64,2>& feature, const int32* begin, const int32* nei) const;
+
+            };
+
+        } /// namespace morphology
+    }
+} /// namespace imageplus
+
+#endif // IMAGEPLUS_MORPHOLOGY_WATERSHED_HPP

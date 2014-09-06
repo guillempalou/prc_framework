@@ -1,0 +1,116 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+
+#ifndef IMAGEPLUS_SEMANTIC_READWRITEANNOTATION_HPP
+#define IMAGEPLUS_SEMANTIC_READWRITEANNOTATION_HPP
+
+#include <list>
+#include <string>
+
+#include <imageplus/core.hpp>
+#include <imageplus/semantic/annotation.hpp>
+
+namespace imageplus
+{
+	namespace semantic
+	{
+	    //!
+	    //! \brief Class for reading and writing Annotation instances from/to
+		//! disk files in XML format.
+		//!
+		//! Usage with operators:
+		//! \code
+		//! Annotation my_ann1, my_ann2;
+		//! //... add some instances to my_ann2
+		//!
+		//! ReadWriteAnnotation rwAnnotation("foo.xml");
+		//!
+		//! rwAnnotation >> my_ann1; // Read from disk
+		//! rwAnnotation << my_ann2; // Write to disk
+		//! \endcode
+		//!
+		//! Usage with function calls:
+		//! \code
+		//! Annotation my_ann1, my_ann2;
+		//! //... add some instances to my_ann2
+		//!
+		//! ReadWriteAnnotation rwAnnotation("foo.xml");
+		//!
+		//! rwAnnotation.read(my_ann1);  // Read from disk
+		//! rwAnnotation.write(my_ann2); // Write to disk
+		//! \endcode
+	    //!
+	    //! \author Pau Haro Negre
+	    //!
+	    //! \date 24-3-2011
+	    //!
+		class ReadWriteAnnotation
+		{
+		public:
+
+            //! \brief Default constructor
+			ReadWriteAnnotation()
+		    : _filename("") {}
+
+            //! Constructor from file name.
+            //!
+            //! \param[in] filename Name of the file to store/read the Annotation.
+            //! 
+            //! \throw ImagePlusError When the XML library is not used and the extension is XML
+            explicit ReadWriteAnnotation(const std::string& filename) throw (ImagePlusError);
+
+            //! Destructor
+            ~ReadWriteAnnotation() {}
+
+            //! Set the file name of the Annotation file.
+            //!
+            //! \param[in] filename Name of the file to store/read the Annotation.
+            //!
+            //! \throw ImagePlusError When the file path is not be found
+            void open(const std::string& filename) throw (ImagePlusError);
+
+            //! Read an annotation
+            //!
+            //! \param[out] annotation Annotation read from disk
+            //!
+            //! \throw ImagePlusError When the file is not found, or some error related to XML
+            void read(Annotation& annotation) const throw (ImagePlusError);
+
+            //! Operator to read an annotation
+            //!
+			//! \param[out] annotation Annotation read from disk
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+            void operator>>(Annotation& annotation) const throw (ImagePlusError);
+
+			//! Write an annotation
+			//!
+			//! \param[in] annotation Annotation to be written
+            //!
+            //! \return True if the Annotation was correctly written to the file, otherwise False
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+			bool write(const Annotation& annotation) const throw (ImagePlusError);
+
+            //! Operator to write an annotation
+			//!
+			//! \param[in] annotation Annotation to be written
+            //!
+            //! \return True if the Annotation was correctly written to the file, otherwise False
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+            bool operator<<(Annotation& annotation) const throw (ImagePlusError);
+            
+		private:
+            //! Stores the file name of the annotation to read or write
+            std::string _filename;
+            
+		};
+	}
+}
+
+#endif //IMAGEPLUS_SEMANTIC_READWRITEANNOTATION_HPP

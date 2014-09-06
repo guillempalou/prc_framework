@@ -1,0 +1,266 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file circular_sync_buffer.hpp
+ */
+
+#ifndef IMAGEPLUS_TOOLBOX_CIRCULAR_SYNC_BUFFER_HPP
+#define IMAGEPLUS_TOOLBOX_CIRCULAR_SYNC_BUFFER_HPP
+
+/*
+ * Std+Boost headers
+ */
+#include <boost/circular_buffer.hpp>
+
+#include <imageplus/core.hpp>
+
+namespace imageplus
+{
+namespace toolbox
+{
+    /*!
+     * Base class to synchronise circular buffers.
+     *
+     * You should not instantiate a class of this type, but of CircularSyncBuffer<>.
+     *
+     * \see CircularSyncBuffer, CircularSyncBufferSyncronizer
+     *
+     * \author Albert Gil Moreno - 2012-03 - First draft
+     */
+    class CircularSyncBufferBase : public boost::circular_buffer<Timestamp>
+    {
+        typedef boost::circular_buffer<Timestamp> Base; //!< base type
+    public:
+        typedef Base::size_type index_type; //!< the type used to acces to the elements
+        typedef std::string     id_type;    //!< the type used as ID
+
+        /*!
+         * Add a new element Timestamp to the buffer
+         *
+         * \param[in] ts : the Timestamp to be added
+         */
+        void add( const Timestamp& ts )
+        {
+            //_cbtime.push_front(ts);
+            this->push_front(ts);
+        }
+
+        /*!
+         * Set the internal id of the CircularSyncBuffer
+         *
+         * Note that this id is used by the CircularSyncBufferSynchroniser.
+         *
+         * \param[in] id : the id to be set
+         */
+        void id(const id_type& id)
+        {
+            _id = id;
+        }
+
+        /*!
+         * \returns de id of the object
+         *
+         * Note that this id is used by the CircularSyncBufferSynchroniser.
+         */
+        const id_type& id() const
+        {
+            return _id;
+        }
+
+    protected:
+        //boost::circular_buffer<Timestamp> _cbtime;
+        id_type                       _id; //!< the object id
+    };
+
+    /*!
+     * Class to synchronise multiple CircularSyncBuffer.
+     *
+     * \see CircularSyncBuffer
+     *
+     * \author Albert Gil Moreno - 2012-03 - First draft
+     */
+    class CircularSyncBufferSynchroniser
+    {
+        typedef CircularSyncBufferBase::index_type index_type; //!< type to access to elements
+        typedef CircularSyncBufferBase::id_type    id_type;    //!< type of the ids of the elements
+
+    public:
+
+        /*!
+         * Add a CircularSyncBuffer to be sync
+         *
+         * \param[in] cb_ptr : the pointer to the CircularSyncBuffer to be added
+         */
+        void add( CircularSyncBufferBase* cb_ptr )
+        {
+            _cbs [cb_ptr->id()] = cb_ptr;
+            _idxs[cb_ptr->id()] = 0;
+        }
+
+        /*!
+         * Set the synchronisation to the last element of all CircularSyncBuffer
+         */
+        void last()
+        {
+            for(std::map<id_type, index_type>::iterator it=_idxs.begin(); it != _idxs.end(); ++it) it->second = 0;
+        }
+
+        /*!
+         * Set the synchronisation to the last element really synchronised for all element.
+         * To decide if an element is "really synchronised" the function uses a max_dist parameter.
+         *
+         * \param[in] max_dist : maxim distance between Timestamps to be "synchronised"
+         *
+         * \return true if a synchronised element has been found, false if not
+         *
+         * \todo the search of synchronised element is very little, it assumes a well sincronised element
+         *       or a high max_dist...
+         */
+        bool sync( const Timestamp& max_dist )
+        {
+            Timestamp first_oldest = (*(_cbs.begin()->second))[0];
+
+            for(std::map<id_type, CircularSyncBufferBase*>::iterator it=_cbs.begin(); it != _cbs.end(); ++it)
+            {
+                if( first_oldest > (*(it->second))[0]  ) first_oldest = (*(it->second))[0];
+            }
+
+            for(std::map<id_type, index_type>::iterator it=_idxs.begin(); it != _idxs.end(); ++it)
+            {
+                bool found = false;
+                const id_type& id = it->first;
+
+                for( _idxs[id]=0; _idxs[id] < _cbs[id]->size(); ++_idxs[id])
+                {
+                    if( are_similars( first_oldest, (*_cbs[id])[_idxs[id]], max_dist) )
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if(!found)
+                {
+                    _idxs[id] = _cbs[id]->size() -1; //just to avoid a bad idxs when returning
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /*!
+         * Function to know the synchronised index of a given CircularSyncBuffer.
+         *
+         * \param[in] cb_ptr : the pointer of the CircularSyncBuffer to get the synchronised index
+         *
+         * \returns the synchronised index of the given CircularSyncBuffer
+         */
+        index_type get_sync(const CircularSyncBufferBase* cb_ptr) const
+        {
+            //return _idxs[cb_ptr->id()]; // no-const...
+            return (_idxs.find(cb_ptr->id()))->second;
+        }
+
+    private:
+
+        std::map< id_type, CircularSyncBufferBase* > _cbs;  //!< the container of all CircularSyncBuffer to be sync
+        std::map< id_type, index_type              > _idxs; //!< the resulting indexes of the synchronisation
+    };
+
+    /*!
+     * Circular buffer class to be synchronised with other CircularSyncBuffer by a CircularSyncBufferSynchroniser
+     *
+     * \tparam DataType : the type of the element to be saved in the Buffer
+     *
+     * \see CircularSyncBufferSyncronizer
+     *
+     * \author Albert Gil Moreno - 2012-03 - First draft
+     */
+    template< class DataType >
+    class CircularSyncBuffer : public CircularSyncBufferBase
+    {
+        typedef CircularSyncBufferBase Base; //!< the base class
+    public:
+        typedef Base::index_type index_type; //!< the type of the index to access to the elements
+        typedef Base::id_type    id_type;    //!< the type of the objects id
+
+        /*!
+         * Adds a new DataType element to the buffer with its Timestamp
+         *
+         * \param[in] data : the DataType element to be added
+         * \param[in] time : the Timestamp of the element
+         */
+        void add( const DataType& data, const Timestamp& time )
+        {
+            _cbdata.push_front(data);
+            //_cbtime.push_front(time);
+            this->push_front(time);
+        }
+
+        /*!
+         * Sets the capacity of the CircularSyncBuffer.
+         *
+         * Note that it is a "circular" buffer, so when you add more element the new ones remove the oldest ones.
+         *
+         * \param[in] capacity : the maximum number of elements to be stored.
+         */
+        void capacity(std::size_t capacity)
+        {
+            CircularSyncBufferBase::set_capacity(capacity);
+            _cbdata                .set_capacity(capacity);
+        }
+
+        /*!
+         * \returns the DataType element based on a given synchronisation.
+         *
+         * \param[in] sync : the CircularSyncBufferSynchroniser already configured and synchronised
+         */
+        DataType& data(const CircularSyncBufferSynchroniser& sync)
+        {
+            return _cbdata[sync.get_sync(this)];
+        }
+
+        /*!
+         * \returns the DataType element based on a given synchronisation.
+         *
+         * \param[in] sync : the CircularSyncBufferSynchroniser already configured and synchronised
+         */
+        const DataType& data(const CircularSyncBufferSynchroniser& sync) const
+        {
+            return _cbdata[sync.get_sync(this)];
+        }
+
+        /*!
+         * \returns the Timestamp of the element to be returned by data() based on a given synchronisation.
+         *
+         * \param[in] sync : the CircularSyncBufferSynchroniser already configured and synchronised
+         */
+        Timestamp& time(const CircularSyncBufferSynchroniser& sync)
+        {
+            //return _cbtime[sync.get_sync(this)];
+            return (*this)[sync.get_sync(this)];
+        }
+
+        /*!
+         * \returns the Timestamp of the element to be returned by data() based on a given synchronisation.
+         *
+         * \param[in] sync : the CircularSyncBufferSynchroniser already configured and synchronised
+         */
+        const Timestamp& time(const CircularSyncBufferSynchroniser& sync) const
+        {
+            //return _cbtime[sync.get_sync(this)];
+            return (*this)[sync.get_sync(this)];
+        }
+
+
+    private:
+        boost::circular_buffer<DataType> _cbdata; //!< the container of the DataType elements
+    };
+} // ns toolbox
+} // ns imageplus
+
+#endif // HPP

@@ -1,0 +1,375 @@
+/*
+ * projective_reconstruction.hpp
+ *
+ *  Created on: Jun 13, 2013
+ *      Author: gpalou
+ */
+
+#ifndef PROJECTIVE_RECONSTRUCTION_HPP_
+#define PROJECTIVE_RECONSTRUCTION_HPP_
+
+#include <imageplus/math/math_types.hpp>
+#include <unsupported/Eigen/Polynomials>
+
+#include <imageplus/monocular_depth/structure_from_motion/fundamental_matrix.hpp>
+#include <iostream>
+
+namespace imageplus {
+	namespace  monocular_depth {
+
+	class ProjectiveReconstruction {
+
+	public:
+
+		inline float64 solve_polynomial_f(math::Matrix& F, math::Vector& er, math::Vector& el) {
+			float64 f1 = er(2);
+			float64 f2 = el(2);
+			float64 a = F(1,1);
+			float64 b = F(1,2);
+			float64 c = F(2,1);
+			float64 d = F(2,2);
+
+			//polynomial coefficients
+			math::Vector coeffs(7);
+			coeffs(6) = -(2*a*a*c*d*f1*f1*f1*f1 - 2*a*b*c*c*f1*f1*f1*f1);
+			coeffs(5) = -(-2*a*a*a*a - 4*a*a*c*c*f2*f2 + 2*a*a*d*d*f1*f1*f1*f1 - 2*b*b*c*c*f1*f1*f1*f1 - 2*c*c*c*c*f2*f2*f2*f2);
+			coeffs(4) = - (-8*a*a*a*b + 4*a*a*c*d*f1*f1 - 8*a*a*c*d*f2*f2 - 4*a*b*c*c*f1*f1 - 8*a*b*c*c*f2*f2 + 2*a*b*d*d*f1*f1*f1*f1 - 2*b*b*c*d*f1*f1*f1*f1 - 8*c*c*c*d*f2*f2*f2*f2);
+			coeffs(3) = - (-12*a*a*b*b + 4*a*a*d*d*f1*f1 - 4*a*a*d*d*f2*f2 - 16*a*b*c*d*f2*f2 - 4*b*b*c*c*f1*f1 - 4*b*b*c*c*f2*f2 - 12*c*c*d*d*f2*f2*f2*f2);
+			coeffs(2) = - (2*a*a*c*d - 8*a*b*b*b - 2*a*b*c*c + 4*a*b*d*d*f1*f1 - 8*a*b*d*d*f2*f2 - 4*b*b*c*d*f1*f1 - 8*b*b*c*d*f2*f2 - 8*c*d*d*d*f2*f2*f2*f2);
+			coeffs(1) = - (2*a*a*d*d - 2*b*b*b*b - 2*b*b*c*c - 4*b*b*d*d*f2*f2 - 2*d*d*d*d*f2*f2*f2*f2);
+			coeffs(0) = -2*a*b*d*d + 2*b*b*c*d;
+
+			Eigen::PolynomialSolver<float64,6> solver(coeffs);
+
+			std::vector<float64> real_roots;
+
+			solver.realRoots(real_roots);
+
+			//assymptote at t=infty
+			float64 v_min = 1e200;
+			float64 t_min = 0;
+			real_roots.push_back(1e40);
+			for (uint64 i = 0; i < real_roots.size(); i++) {
+
+				float64 t = real_roots[i];
+
+				//evaluate cost function
+				float64 st = t*t/(1+f1*f1*t*t) + (c*t*d)*(c*t*d)/((a*t+b)*(a*t+b) + f2*f2*(c*t+d)*(c*t+d));
+				//std::cout << t << " " << st << std::endl;
+				if (st < v_min) {
+					v_min = st;
+					t_min = t;
+				}
+			}
+
+			//std::cout << "minimum value" << t_min << std::endl;
+			return t_min;
+		}
+
+		math::Vector triangulate(math::Vector& x1, math::Vector& x2, math::Matrix& P1, math::Matrix&  P2) {
+			math::Matrix A(4,4);
+
+			//homogenize coords
+			x1 /= x1(2);
+			x2 /= x2(2);
+
+			A.row(0) = x1(0)*P1.row(2) - P1.row(0); //A.row(0) /= A.row(0).norm();
+			A.row(1) = x1(1)*P1.row(2) - P1.row(1); //A.row(1) /= A.row(1).norm();
+			A.row(2) = x2(0)*P2.row(2) - P2.row(0); //A.row(2) /= A.row(2).norm();
+			A.row(3) = x2(1)*P2.row(2) - P2.row(1); //A.row(3) /= A.row(3).norm();
+
+			Eigen::JacobiSVD<math::Matrix> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
+
+			return svd.matrixV().col(3);
+		}
+
+		inline math::Matrix projective_reconstruction_from_two_views(math::Matrix& x1, math::Matrix& x2, math::Matrix& F12) {
+
+			uint64 N = x1.rows();
+
+			Eigen::JacobiSVD<math::Matrix> svd(F12, Eigen::ComputeFullU | Eigen::ComputeFullV);
+			math::Vector e2 = svd.matrixU().col(2); // left null vector
+			math::Matrix Ex(3,3); // cross-product matrix
+
+			//normalize epipole
+			e2/=e2(2);
+
+			//std::cout << "Epipole on second image " << e2.transpose() << " --  F^T*e = " << (F12.transpose()*e2).norm() << std::endl;
+
+			//matrix cross product
+			Ex << 0, -e2(2), e2(1), e2(2), 0, -e2(0), -e2(1), e2(0), 0;
+
+			math::Matrix P1(3,4);
+			math::Matrix P2(3,4);
+
+			//Projection matrix for first view
+			P1.fill(0);
+			P1.diagonal().fill(1);
+
+			//Projection matrix for second view
+			P2.block(0,0,3,3) = Ex*F12;
+			P2.col(3) = e2;
+
+
+			//find the optimal point for each pair of points
+			math::Matrix Xpoints(N,4);
+
+			for (uint64 i =0; i < N; i++) {
+				math::Matrix T1(3,3);
+				math::Matrix T2(3,3);
+
+				T1 << 1,0,-x1(i,0),0,1,-x1(i,1),0,0,1;
+				T2 << 1,0,-x2(i,0),0,1,-x2(i,1),0,0,1;
+
+				//put F with special structure
+				math::Matrix F = T2.transpose().inverse() * F12 * T1.inverse();
+
+				//compute right and left epipoles
+				Eigen::JacobiSVD<math::Matrix> svd(F, Eigen::ComputeFullU | Eigen::ComputeFullV);
+				math::Vector ee2 = svd.matrixU().col(2); // second epipole vector
+				math::Vector ee1 = svd.matrixV().col(2); // first epipole vector
+
+				ee2 /= ee2(2);
+				ee1 /= ee1(2);
+
+				float64 ne1 = ee1(0)*ee1(0) + ee1(1)*ee1(1);
+				float64 ne2 = ee2(0)*ee2(0) + ee2(1)*ee2(1);
+
+				ee1 /= ne1;
+				ee2 /= ne2;
+
+				//rotate the epipoles
+				math::Matrix R1(3,3);
+				math::Matrix R2(3,3);
+
+				R1 << ee1(0),ee1(1),0,-ee1(1),ee1(0),0,0,0,1;
+				R2 << ee2(0),ee2(1),0,-ee2(1),ee2(0),0,0,0,1;
+
+				F = R2 * F * R1.transpose();
+
+				//find the point in the lines which satisfy the epipolar constraint
+				float64 t_min = solve_polynomial_f(F,ee1,ee2);
+
+				math::Vector l1(3);
+				math::Vector l2(3);
+
+				if (t_min > 1e10) {
+					l1 << ee1(2), 0, -1;
+					l2 << 0, 1, 0;
+				} else {
+					l1 << ee1(2)*t_min, 1, -t_min;
+					l2 << 0,t_min,1;
+				}
+
+				l2 = F*l2;
+
+				math::Vector xx1(3);
+				math::Vector xx2(3);
+
+				xx1 << -l1(0)*l1(2), -l1(1)*l1(2), l1(0)*l1(0) + l1(1)*l1(1);
+				xx2 << -l2(0)*l2(2), -l2(1)*l2(2), l2(0)*l2(0) + l2(1)*l2(1);
+
+				//get the original image coordinates satisfying exactly x2'*F*x1 = 0
+				math::Vector x1_new = T1.inverse()*R1.transpose()*xx1;
+				math::Vector x2_new = T2.inverse()*R2.transpose()*xx2;
+
+				//Get the projective reconstruction
+				math::Vector X = triangulate(x1_new,x2_new,P1,P2);
+				Xpoints.row(i) = X.transpose()/X(3);
+				std::cout << X.transpose()/X(3) << std::endl;
+
+				//exit(0);
+				//exit(0);
+			}
+			//exit(0);
+
+			_P.resize(2);
+			_P[0] = P1;
+			_P[1] = P2;
+
+			return Xpoints;
+		}
+
+		math::Matrix metric_reconstruction(math::Matrix& X, float64 w, float64 h) {
+
+			/*math::Matrix K(3,3);
+			K << w+h, 0, w/2, 0, w+h, h/2, 0,0, 1;
+			math::Matrix Ki = K.inverse();*/
+
+			std::vector<math::Matrix> Ps = _P;
+			//_P[0] = _P1;
+			//_P[1] = _P2;
+
+			math::Matrix Chi(4*Ps.size(),5);
+			math::Vector b(4*Ps.size());
+
+			std::cout << "Projection matrix:" << std::endl;
+			std::cout << Ps[0] << std::endl;
+
+			std::cout << "Projection matrix:" << std::endl;
+			std::cout << Ps[1] << std::endl;
+
+			for (uint64 i = 0; i < Ps.size(); i++) {
+				math::Matrix P = Ps[i];
+				math::Vector u = P.row(0), v = P.row(1), w=P.row(2);
+				Chi.row(i*4) 	<< u(0)*u(0) + u(1)*u(1) - v(0)*v(0) - v(1)*v(1),  	2*(u(3)*u(0) - v(0)*v(3)), 	2*(u(3)*u(1) - v(1)*v(3)), 	2*(u(3)*u(2) - v(2)*v(3)), 	u(3)*u(3)-v(3)*v(3);
+				Chi.row(i*4+1)	<< u(0)*v(0) + u(1)*v(1), 							u(3)*v(0) + u(0)*v(3), 		u(3)*v(1) + u(1)*v(3), 		u(3)*v(2) + u(2)*v(3), 		u(3)*v(3);
+				Chi.row(i*4+2)	<< u(0)*w(0) + u(1)*w(1), 							u(3)*w(0) + u(0)*w(3), 		u(3)*w(1) + u(1)*w(3), 		u(3)*w(2) + u(2)*w(3), 		u(3)*w(3);
+				Chi.row(i*4+3)	<< v(0)*w(0) + v(1)*w(1), 							v(3)*w(0) + v(0)*w(3), 		v(3)*w(1) + v(1)*v(3), 		v(3)*w(2) + v(2)*w(3), 		v(3)*w(3);
+
+				b.segment(4*i,4) << -u(2)*u(2) + v(2)*v(2), -u(2)*v(2), -u(2)*w(2), v(2)*w(2);
+			}
+
+			math::Vector a = Chi.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
+
+			math::Matrix Q(4,4);
+
+			std::cout << Chi << std::endl;
+			std::cout << "------------------" << std::endl;
+			std::cout << b.transpose() << std::endl;
+			std::cout << "------------------" << std::endl;
+
+			Q << 	a(0), 	0, 		0, 		a(1),
+					0, 		a(0), 	0,		a(2),
+					0, 		0, 		1, 		a(3),
+					a(1), 	a(2), 	a(3), 	a(4);
+
+			//Ensure rank 3
+			Eigen::JacobiSVD<math::Matrix> svd(Q, Eigen::ComputeFullU | Eigen::ComputeFullV);
+			math::Matrix D = svd.singularValues(); D(3) = 0;
+			Q = svd.matrixU() * D.asDiagonal() * svd.matrixV().transpose();
+
+			std::cout << Q << std::endl;
+			std::cout << "------------------" << std::endl;
+
+			std::cout << "Focal length " << Q(0,0) << "," << Q(1,1) << std::endl;
+
+			return X;
+		}
+
+		math::Matrix normalize_points(math::Matrix& points) {
+			math::Vector m  			= points.colwise().mean().transpose();
+
+			points.rowwise() -= m.transpose();
+
+			float64 d 					= points.rowwise().norm().mean();
+			float64 s = sqrt(2)/d;
+
+			points *= s;
+
+			math::Matrix T(3,3); T << 	s,	0,	-m(0)*s,
+			0,	s,	-m(1)*s,
+			0,	0,	1;
+
+			return T;
+		}
+
+		math::Matrix projective_factorization(std::vector<math::Matrix> points, uint64 num_iterations = 1) {
+
+			//number of views
+			uint64 M = points.size();
+			//number of points
+			uint64 N = points[0].rows();
+			_P.resize(M);
+
+			//normalization matrices
+			std::vector<math::Matrix> Ts(M);
+			//normalized projection matrices
+			std::vector<math::Matrix> Ps(M);
+
+			std::vector<math::Matrix> points_hom(M,math::Matrix(N,3));
+
+			//normalize points in each image
+			for (uint64 i = 0; i < M; i++) {
+				points_hom[i].block(0,0,N,2) = points[i];
+
+				Ts[i] = normalize_points(points_hom[i]);
+
+				points_hom[i].col(2).fill(1);
+				//std::cout << "Normalization matrix: " << std::endl << Ts[i] << std::endl;
+			}
+
+			// initial projective depths
+			// can use the reconstruction method from two views
+			math::Matrix lambda(M,N);
+			lambda.fill(1);
+
+			math::Matrix P;
+			math::Matrix X;
+
+			//std::cout << "Beggining factorizations" << std::endl;
+			for (uint64 iter = 0; iter < num_iterations; iter++) {
+				math::Matrix W(3*M,N);
+
+				//normalize projective depth matrix
+				for (uint64 i = 0; i < M; i++) {
+					lambda.row(i) /= lambda.row(i).norm();
+				}
+				for (uint64 k = 0; k < N; k++) {
+					lambda.col(k) /= lambda.col(k).norm();
+				}
+
+				//build measurement matrix
+				for (uint64 i = 0; i < M; i++) {
+					for (uint64 k = 0; k < N; k++) {
+						//put projective depth of point k with respect to view i
+						W.block(3*i,k,3,1) = lambda(i,k)*(points_hom[i].row(k).transpose());
+					}
+				}
+
+				Eigen::JacobiSVD<math::Matrix> svd(W, Eigen::ComputeFullU | Eigen::ComputeFullV);
+				//Get projection matrices
+				math::Vector d = svd.singularValues().head(4);
+				math::Matrix U = svd.matrixU();
+
+				std::cout << U.block(0,0,3*M,4) << std::endl;
+				std::cout << d.transpose() << std::endl;
+
+				exit(0);
+
+				//Projection matrices
+				P = U.block(0,0,3*M,4)*d.asDiagonal();
+
+				//3D points up to a projective transform
+				X = svd.matrixV().block(0,0,N,4).transpose();
+
+				//std::cout << "Matrix W size " << W.rows() << " " << W.cols() << std::endl;
+				//std::cout << "Matrix X size " << X.rows() << " " << X.cols() << std::endl;
+				//std::cout << "Matrix P size " << P.rows() << " " << P.cols() << std::endl;
+
+				//recompute lambda
+				//std::cout << "computing lambdas" << std::endl;
+				for (uint64 i = 0; i < M; i++) {
+					for (uint64 k = 0; k < N; k++) {
+						lambda(i,k) = (P.block(3*i,0,3,4) * X.col(k))(2);
+					}
+				}
+				//normalize depths
+				//std::cout << "normalizing depths" << std::endl;
+				for (uint64 k = 0; k < N; k++) X.col(k) /= X(3,k);
+
+			}
+
+
+			//de-normalize projections
+			//std::cout << "Denormalizing" << std::endl;
+			for (uint64 i = 0; i < M; i++) {
+				_P[i] = Ts[i].inverse() * P.block(3*i,0,3,4);
+			}
+
+			return X;
+		}
+
+	private:
+
+		std::vector<math::Matrix> _P;
+
+	};
+
+
+
+	}
+}
+
+
+#endif /* PROJECTIVE_RECONSTRUCTION_HPP_ */

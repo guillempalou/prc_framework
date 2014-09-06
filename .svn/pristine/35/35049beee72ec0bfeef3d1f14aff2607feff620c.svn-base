@@ -1,0 +1,313 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file async_sender.cpp
+ *
+ * \author Albert Gil
+ */
+
+#define IMAGEPLUS_CLIENT_CONFIG_NAME  async_sender
+#include <imageplus/toolbox/client_config.hpp>
+
+#include <imageplus/core.hpp>
+
+
+/*
+ * namespaces config
+ */
+using namespace imageplus;
+using namespace imageplus::toolbox;
+using namespace std;
+
+
+template< class ConfigClientT >
+class AsyncProcess
+{
+private:
+    ConfigClientT       cfg;
+    boost::thread_group thgrp;
+
+    /*
+     * Shared variables and its timestamps
+     */
+    volatile int32 data1;
+    volatile int32 data2;
+
+    Timestamp ts1; //should be volatile??
+    Timestamp ts2;
+
+    /*
+     * Threads and sync variables
+     */
+    boost::shared_mutex           mutex;
+    boost::condition_variable_any cond_all_flow;
+    boost::condition_variable_any cond_any_flow;
+
+    volatile bool  data1_received;
+    volatile bool  data2_received;
+
+public:
+    AsyncProcess( ConfigClientT& cfg_ )
+    :   cfg(cfg_)
+    {
+        data1_received     = false;
+        data2_received     = false;
+    }
+
+    ~AsyncProcess()
+    {}
+
+    void join()
+    {
+        thgrp.join_all();
+    }
+    void run()
+    {
+        thgrp.add_thread(new boost::thread( boost::bind(&AsyncProcess::flow_receiver1,   this )));
+        thgrp.add_thread(new boost::thread( boost::bind(&AsyncProcess::flow_receiver2,   this )));
+        thgrp.add_thread(new boost::thread( boost::bind(&AsyncProcess::flow_addition,    this )));
+        thgrp.add_thread(new boost::thread( boost::bind(&AsyncProcess::flow_subtraction, this )));
+    }
+
+private:
+
+    void flow_receiver1()
+    {
+        flow_receiver( cfg.in1, &data1, &data1_received, &ts1, "flow1" );
+    }
+
+    void flow_receiver2()
+    {
+        flow_receiver( cfg.in2, &data2, &data2_received, &ts2, "flow2" );
+    }
+
+    void flow_addition()
+    {
+        int32* bout;
+        Timestamp ts;
+
+        /*
+         * Just to wait for the first data available from all flows
+         */
+        boost::shared_lock<boost::shared_mutex> first_lock(mutex);
+        cond_all_flow.wait(first_lock);
+        first_lock.unlock();
+
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the output buffer
+             */
+            cfg.out1->get_buffer(bout);
+
+            /*
+             * Shared lock to read the shared variables
+             */
+            boost::shared_lock<boost::shared_mutex> lock(mutex);
+            cond_any_flow.wait(lock);
+
+            /*
+             * Process the input data and create the output data
+             */
+            *bout = data1 + data2;
+            ts    = ts1; //TODO: select the newer ts...
+
+            /*
+             * Shared unlock
+             */
+            lock.unlock();
+
+            /*
+             * Send and release the output buffer
+             */
+            std::cout << "Sending Addition:    " << *bout << std::endl;
+            send_buffer(cfg.out1, ts);
+        }
+    }
+
+    void flow_subtraction()
+    {
+        int32* bout;
+        Timestamp ts;
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the output buffer
+             */
+            cfg.out2->get_buffer(bout);
+
+            /*
+             * Shared lock to read the shared variables
+             */
+            boost::shared_lock<boost::shared_mutex> lock(mutex);
+            cond_all_flow.wait(lock);
+
+            /*
+             * Process the input data and create the output data
+             */
+            *bout = data1 - data2;
+            ts    = ts1; //TODO: select the newer ts...
+
+            /*
+             * Shared unlock
+             */
+            lock.unlock();
+
+            /*
+             * Send and release the output buffer
+             */
+            std::cout << "Sending Subtraction: " << *bout << std::endl;
+            send_buffer(cfg.out2, ts);
+        }
+    }
+
+    void flow_receiver( DataInputFlow& flow, volatile int32* data, volatile bool* data_received, Timestamp* ts, std::string id )
+    {
+        const int32*    bdata;
+
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            //
+            // Get output buffer from the flow (blocking function):
+            //
+            *ts   = flow->get_buffer(bdata);
+            std::cout << "Received " << id << ": " << *bdata << std::endl;
+
+            /*
+             * Lock to write to the shared variables
+             */
+            boost::unique_lock<boost::shared_mutex> lock(mutex);
+
+            *data          = *bdata;
+            *data_received = true;
+
+            /*
+             * control the processes to be done
+             */
+            if( data1_received || data2_received ) //this condition is always true!
+            {
+                cond_any_flow.notify_all();
+            }
+            if( data1_received && data2_received )
+            {
+                cond_all_flow.notify_all();
+
+                data1_received = false;
+                data2_received = false;
+            }
+
+            /*
+             * UnLock to write to the shared variables
+             */
+            lock.unlock();
+        }
+    }
+};
+
+
+IMAGEPLUS_CLIENT_CONFIG_BRIEF()
+
+    "This client is just and example about how to send multiple flows asynchronously\n";
+
+IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()
+
+    "This client is just and example about how to send multiple flows asynchronously\n";
+
+IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()
+
+    // options
+
+    // flags
+
+    // arguments
+
+    // flows
+    DataInputFlow  in1;
+    DataInputFlow  in2;
+
+    DataOutputFlow out1;
+    DataOutputFlow out2;
+
+IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description.
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLOWS()
+
+    //
+    // Here you have to define your FLOWS
+    //
+    CLIENT_CONFIG_DATA_IN( in1, int32 );
+    CLIENT_CONFIG_DATA_IN( in2, int32 );
+
+    CLIENT_CONFIG_DATA_OUT( out1, int32 );
+    CLIENT_CONFIG_DATA_OUT( out2, int32 );
+
+IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_METADATAS()
+
+    //
+    // Here you can get the metadatas from the input flows
+    // And you MUST set the metadata of your output flows
+    //
+    // Note that from now on you can access to the previously
+    // defined config parameters with the "cfg" object.
+    //
+
+//
+// This is the "main" function of your client.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the client with "--help" to see your configuration.
+//
+IMAGEPLUS_CLIENT_CONFIG_MAIN()
+{
+    AsyncProcess<MyClientConfig> app( cfg );
+    app.run();
+    app.join();
+}
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_CLIENT_CONFIG_END()

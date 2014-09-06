@@ -1,0 +1,139 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file qr_decomposition.hpp
+//!
+//!  Class for QR decomposition on rectangular matrices
+//!
+
+#ifndef IMAGEPLUS_MATH_NUMERIC_QR_DECOMPOSITION_HPP
+#define IMAGEPLUS_MATH_NUMERIC_QR_DECOMPOSITION_HPP
+
+
+#include <imageplus/core.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            //!
+            //! \brief Class for QR decomposition
+            //!
+            //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+            //!
+            //! \date 30-3-2008
+            //!
+            //!	Classical <a href="http://en.wikipedia.org/wiki/QR_decomposition">QR</a> Decomposition:\n
+            //! for an m-by-n matrix A with m >= n, the QR decomposition is an m-by-n
+            //! orthogonal matrix Q and an n-by-n upper triangular matrix R so that\n
+            //! A = Q*R.\n
+            //! The QR decompostion always exists, even if the matrix does not have
+            //! full rank, so the constructor will never fail.  The primary use of the
+            //! QR decomposition is in the least squares solution of nonsquare systems
+            //! of simultaneous linear equations. This will fail if full_rank()
+            //! returns 0 (false).\n
+            //!	The Q and R factors can be retrived via the q() and r()
+            //!	methods. Furthermore, a solve() method is provided to find the
+            //! least squares solution of Ax=b using the QR factors.  
+            //! (Adapted from JAMA, a Java Matrix Library, developed by jointly 
+            //! by the Mathworks and NIST; see  http://math.nist.gov/javanumerics/jama).
+    
+            class QRDecomposition 
+            {
+                public:
+    	
+                    //!
+                    //! \brief Constructor. Creates a QR factorization of object A
+                    //!
+                    //! \param[in] A : Rectangular m x n matrix (m >= n)
+                    //!
+                    template<typename T>
+                    QRDecomposition(const MultiArray<T,2>& A);
+    
+    
+                    //!
+                    //! \brief Check if matrix is full rank
+                    //!
+                    //! \author Ramon Morros <ramon.morros@upc.edu>
+                    //!
+                    //! \date 31-03-2008
+                    //!
+                    //! \return  True if matrix is full rank, false otherwise.
+                    //!
+                    bool full_rank() const;
+    	
+    
+                    //!
+                    //! \brief Retreive the Householder vectors from QR factorization
+                    //!
+                    //! \return  Lower trapezoidal matrix whose columns define the reflections
+                    //!
+                    MultiArray<float64,2> householder (void)  const;
+    
+    
+                    //!
+                    //! \brief Generate and return the upper triangular factor of the QR factorization
+                    //!
+                    //! \return  R, the upper triangular factor of the QR factorization
+                    //!
+                    MultiArray<float64,2> r() const;
+    	
+    
+                    //!
+                    //! \brief Generate and return the upper (economi-sized) orthogonal factor of the QR factorization
+                    //!
+                    //! \return  Q, the (economy-sized) orthogonal factor (Q*R=A).
+                    //!
+                    MultiArray<float64,2> q() const;
+    
+    
+                    //!
+                    //! \brief Least squares solution of A*x = b using QR decomposition
+                    //!
+                    //! Dimension of b must be the same as the first dimension of A
+                    //! If b is non-conformant, or if full_rank() is false, an exception is thrown
+                    //!
+                    //! \param[in] b : m-length array (1D MultiArray)
+                    //!
+                    //! \return  The n-length array (1D MultiArray) x that minimizes the two norm of Q*R*X-B.
+                    //!
+                    template<typename T>
+                    MultiArray<float64,1> solve(const MultiArray<T,1>& b) throw (ImagePlusError);
+    
+                    //!
+                    //! \brief Least squares solution of A*X = B using QR decomposition
+                    //!
+                    //! First dimension of B must be the same as the first dimension of A
+                    //! If b is non-conformant, or if full_rank() is false, an exception is thrown
+                    //!
+                    //! \param[in] B : mxk matrix (2D MultiArray)
+                    //!
+                    //! \return X, the nxk matrix (2D MultiArray) that minimizes the two norm of Q*R*X-B.
+                    //!
+                    template<typename T>
+                    MultiArray<float64,2> solve(const MultiArray<T,2>& B) throw (ImagePlusError);
+    
+    
+                private:
+                    //! Array for internal storage of decomposition.
+                    MultiArray<float64,2> _QR;
+                    //! Row dimensions.
+                    uint64 _m;
+                    //! Column dimensions.
+                    uint64 _n;
+                    //! Array for internal storage of diagonal of R.
+                    MultiArray<float64,1> _Rdiag;
+            };
+    
+        }
+    }
+}
+
+
+#endif // IMAGEPLUS_MATH_NUMERIC_QR_DECOMPOSITION_HPP

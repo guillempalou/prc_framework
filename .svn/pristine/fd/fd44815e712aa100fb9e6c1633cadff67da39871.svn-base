@@ -1,0 +1,905 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file histogram.hpp
+//!
+//!  Class to use histograms
+//!
+
+#ifndef IMAGEPLUS_MATH_STATISTICS_HISTOGRAM_HPP
+#define IMAGEPLUS_MATH_STATISTICS_HISTOGRAM_HPP
+
+#include <imageplus/math/statistics/multiarray_statistics.hpp>
+#include <imageplus/core/multiarray_arithmetic.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace statistics
+        {
+            //!
+            //! \brief Diferent modes used in calculate. 
+            //!
+            //! They are totally related to the diferent HistogramTypes (HistogramDefaultType, HistogramYUV_Y_Type...) \n
+            //! You should not use them, use always HistogramTypes.
+            //! 
+            //! See the Histogram class for more information on how to use this
+            //!
+            enum HistogramMode { DEFAULT, Y_MODE, UV_MODE, YUYV_MODE }; 
+            
+            //!
+            //! \brief Default histogram mode
+            //! 
+            //! See the Histogram class for more information on how to use this HistogramType.
+            //!
+            template< class InputType >
+            struct HistogramDefaultType
+            {
+                static const std::size_t   channels = InputType::channels; //!< Default channels are the same of the InputType
+                static const HistogramMode mode     = DEFAULT;             //!< Default mode computes all the channels
+            };
+            
+            //!
+            //! \brief Only computes a 1 channel Histogram for the Y_CHANNEL
+            //! 
+            //! See the Histogram class for more information on how to use this HistogramType.
+            //!
+            typedef struct HistogramYUV_Y_Type
+            {
+                static const std::size_t   channels = 1;      //!< Histogram computes only one channel
+                static const HistogramMode mode     = Y_MODE; //!< Y Mode
+            } HistogramYUV_Y_Type;
+
+            
+            //!
+            //! \brief Computes a 2 channels Histogram for the U_CHANNEL and V_CHANNEL
+            //! 
+            //! See the Histogram class for more information on how to use this HistogramType.
+            //!
+            typedef struct HistogramYUV_UV_Type
+            {
+                static const std::size_t   channels = 2;       //!< Histogram is 2D 
+                static const HistogramMode mode     = UV_MODE; //!< UV Mode
+            } HistogramYUV_UV_Type;
+            
+            //!
+            //! \brief Computes a 2 channels Histogram for Y*U and Y*V channels
+            //! 
+            //! See the Histogram class for more information on how to use this HistogramType.
+            //!
+            typedef struct HistogramYUV_YUYV_Type
+            {
+                static const std::size_t   channels = 2;         //!< Histogram is 2D
+                static const HistogramMode mode     = YUYV_MODE; //!< Y*U and Y*V Mode
+            } HistogramYUV_YUYV_Type;
+            
+            //!
+            //! \brief Computes a Histogram of just one channel of the image (see ChannelHistogram for further info)
+            //! 
+            //! See the Histogram class for more information on how to use this HistogramType.
+            //!
+            typedef struct SingleChannelType
+            {
+                static const std::size_t   channels = 1;         //!< Histogram is 2D
+                static const HistogramMode mode     = DEFAULT; //!< Y*U and Y*V Mode
+            } SingleChannelType;
+
+            
+
+	        //!
+	        //! \brief Multi-dimensional and multi-channel Histogram
+	        //!
+            //! A Histogram is a mapping \f$m_i\f$ that counts the number of 
+	        //! observations that fall into various disjoint categories (known as bins). 
+	        //! Thus, if we let <i>n</i> be the total number of observations and <i>k</i> be the total number of bins, 
+	        //! the histogram \f$m_i\f$ meets the following conditions:\n
+	        //!
+	        //! \f$ n = \sum_{i=1}^k{m_i} \f$ \n
+	        //!
+            //! In partucular, this class implements a <i><b>multi-dimensional</b></i> and <i><b>multi-channel histogram</b></i>, 
+            //! so you can generate histograms of your different types of images and volumes: ImageGray, VolumeGray, 
+            //! ImageRGB, ImageYUV... and also for MultiArray.\n
+            //!
+            //! For instance, to create and calculate different types of histograms from a diferent types of InputTypes:
+            //!
+            //! \code
+            //!// Your InputTypes of data:
+            //!ImageRGB<uint8>     ima;
+            //!VolumeGray<uint8>   vol;
+            //!MultiArray<uint8,2> may;
+            //!
+            //!// And your histograms:
+            //!Histogram< ImageRGB<uint8>     > hima;
+            //!Histogram< VolumeGray<uint8>   > hvol;
+            //!Histogram< MultiArray<uint8,2> > hmay;
+            //!
+            //!// You can calculate the histogram of all your InputTypes with the same method:
+            //!hima.calculate(ima);
+            //!hvol.calculate(vol);
+            //!hmay.calculate(may);
+            //!
+            //!// You can re-calculate (re-use) an histogram with a new image (usefull when images are video frames)
+            //!hima.calculate( new_frame );
+            //!
+            //! \endcode
+            //!
+            //! As you can see to set the <i>multi-channel and multi-dimension</i>, you <b>only need one template parameter, the <i>InputType</i></b>.\n
+            //! But there is also <b>another optional template parameter</b> useful for special Histogram cases, the <b><i>HistogramType</i></b>.\n
+            //! The most tipical usage for the HistogramType parameter is for the ImageYUV class, where histogram can be calculate only for the
+            //! Y_CHANNEL, for the two color channels or making the product of the luminance for each color channel:
+            //!
+            //! \code
+            //!
+            //!ImageYUV<uint8>   ima(100,200);
+            //!
+            //!Histogram< ImageYUV<uint8>, HistogramYUV_Y_Type  > hy;  // One channel histogram
+            //!Histogram< ImageYUV<uint8>, HistogramYUV_UV_Type > huv; // Two channels histogram
+            //!
+            //!hy.calculate(ima);
+            //!huv.calculate(ima);
+            //!
+            //!// Note that this two histograms have the same InputType (ImageYUV<uint8>), but have diferent channels.
+            //!// So to access its multi-demensional bins you need different parameters (see access below):
+            //!float64 value = hy[3];     // access to the 1D bin 3
+            //!float64 value = huv[2][3]; // access to the 2D bin (2,3)
+            //! 
+            //! \endcode
+            //!
+            //! For more information about Histograms of YUV images see HistogramYUV_*_Types, e.g., HistogramYUV_Y_Type.
+            //!
+            //! By the other side, the Histogram class also allows <b>region selection by masks</b>. \n 
+            //! You can calculate the histogram only for the data, pixels or voxels, in your desired region. \n 
+            //! For this purpose, the Histogram class uses the generic ImaVol <bool, 1, D> class to define its mask (see mask() methods).\n
+            //! Note that because ImageMask and VolumeMask are also ImaVols you can use them normally. 
+            //!
+            //! \code
+            //!
+            //!Image<uint8, 1> ima(800,600); // Note that our InputData and the mask MUST have the same dimensions and sizes.
+            //!ImageMask       msk(800,600); // (this condition is only assert in debug mode) 
+            //!
+            //!h.mask(msk);
+            //!h.calculate(ima);
+            //!
+            //! \endcode
+            //!
+        	//! One of the most important point is that the <b>Histogram class is a MultiArray</b> (inherits from MultiArray<float64, HistogramType::channels>).\n
+            //! That means: \n
+            //! <ul> 
+            //! <li> The Histogram <b>dimension depends on the number of channels selected of the InputType</b> (NOT on the dimensions of the input data) </li>
+            //! <li> All methods of the MultiArray class can be applied to the Histogram: arithmethics, access... </li> 
+            //! <li> You can access to a <i>multidimensional-bin</i> with the operator [ ]. Note that you need N operators [ ] to access to your
+            //!      <i>multidimensional-bin</i> (see the code example below). </li>
+            //! <li> You can loop to all your bins them using the data() function. </li>
+            //! <li> Histogram <b>values are always floats in the range [0,1]</b> </li>
+            //! </ul>
+            //!
+            //! Here you have some access examples:
+            //!
+            //! \code
+            //!Histogram< ImageGray<uint8> >  hi1;
+            //!Histogram< ImageRGB<uint8> >   hi3;
+            //!Histogram< VolumeGray<uint8> > hv1;
+            //!Histogram< VolumeRGB<uint8> >  hv3;
+            //!
+            //!// Access the histogram values with bin number
+            //!float64 value = hi1[10];         // Access to the bin 10 of a 1 channel histogram, from an image
+            //!float64 value = hi3[10][10][10]; // Access to the multidimensional-bin (10,10,10) of a 3 channel histogram, from an image
+            //!float64 value = hv1[5];          // Access to the bin 5 of a 1 channel histogram, from a volume
+            //!float64 value = hv3[5][5][5];    // Access to the multidimensional-bin (10,10,10) of a 3 channel histogram, from a volume
+            //!
+            //!// Note that the multidimensional-bin depends on the number of channels, NOT on the dimensions of te InputData:
+            //!
+            //! \endcode
+            //!
+            //! The Quantizer class is used in order to quantize the range of values that you want to be computed by the Histogram.
+            //! When you create a Histogram you should decide which Quantizer you want to use, use a diferent Quantizer for each channel, 
+            //! or only decide the range of values, the number of bins and use the default uniform Quantizer (see the constructors Histogram()).
+            //!
+            //! \code
+            //!// Use the same quantizer for all channels 
+            //!Quantizer<uint8> q( min_value, max_value, num_bins );
+            //!Histogram< ImageGray<uint8> >  h( q );
+            //!
+            //!//Or a different Quantizer for each channel
+            //!boost::array< class Quantizer<T>, 3 > array_q;
+            //!array_q[0] = q1;
+            //!array_q[1] = q2;
+            //!array_q[2] = q3;
+            //!
+            //!Histogram< ImageRGB<uint8> >  h( array_q ); // Note that the number of quantizers MUST match with the number of channels
+            //!
+            //!// Also note that if you want an uniform quantization, is not necessary to create your own quantizer.
+            //!// Simply use these constructors:
+            //!Histogram< ImageGray<uint8> >  h( min_value, max_value, num_bins ); 
+            //!Histogram< ImageGray<uint8> >  h; // Default contructor uses (0,255,256)
+            //!
+            //! \endcode
+            //!
+        	//! Finally note that the Histogram class also includes an alternative method to <b>access by <i>color values</i></b>, not by <i>bins</i>.
+            //! In this access the Quantizer is used to determine the <i>bin</i> that corresponds to the passed <i>color value</i> (see the color() method). 
+            //!
+            //! \code
+            //!
+            //!Histogram< ImageRGB<uint8> > h;                 // My RGB histogram
+            //!boost::array< uint8, 3 > color = {{50,100,33}}; // My RGB color
+            //!
+            //!float64 value = h.color( color );  // Returns the value of the histogram for the bin resulting in the quantization 
+            //!                                   // of the color RGB = [50][100][33] 
+            //!
+            //!// Note that color dimensions MUST match with the histogram channels.
+            //!// For this reason, if we want access to UV histogram we do:
+            //!
+            //!Histogram< ImageYUV<uint8>, HistogramYUV_UV_Type > h; // My UV histogram
+            //!boost::array< uint8, 2 > color = {{50,25}};           // My UV color
+            //!
+            //!float64 value = h.color( color );  // Returns the value of the histogram for the bin resulting in the quantization 
+            //!                                   // of the color UV = [50][25] 
+            //!
+            //!\endcode
+            //!
+            //!
+            //! \author Albert Gil   <agil@gps.tsc.upc.edu>
+        	//! \author Ramon Llorca <allorca@gps.tsc.upc.edu>
+            //! \author Ramon Morros <morros@upc.edu> (original class)
+	        //!
+	        //! \date 20-11-2008
+	        //!
+           	//! \tparam InputModel     : The input type: any ImaVol or MultiArray type 
+        	//! \tparam HistogramType : Optional. Only needed for special cases like ImageYUV. Use the predefined Histogram_*_Types
+	    	//! 
+            //! \todo Do not force color_iterator (in order to be able to compute the histogram of a MultiArray, a vector, etc.)
+            //! \todo Add more modes for images with diferent color resolution: yuv422...
+            //! \todo Add the possibility to change the Quantizer
+        	//!
+            template<class InputModel, typename T=uint64, class HistogramType = math::statistics::HistogramDefaultType< InputModel > >
+            class Histogram : public DescriptorBase, 
+                              public MultiArray< T, HistogramType::channels >
+            {
+            public:
+                //! The data_type of expected input data.
+                typedef typename InputModel::data_type data_type;
+                 
+                //! Histogram container type
+                typedef MultiArray<T, HistogramType::channels> ContainerBase;
+                
+                //! The number of channels of the Histogram. \n
+                //! Also can be interpreted as the "dimensions" of the Histogram, or better, the dimensions of the inherited
+                //! MultiArray.
+                static const std::size_t channels   = HistogramType::channels;
+                 
+                //! The dimensions of the InputType. 
+                static const std::size_t dimensions = InputModel::dimensions;
+                 
+                //! Model for Probability distributions
+                static const int32 continuous=0;
+                
+                //! The parent (base) class. Used for generic programming
+                typedef MultiArray< float64, HistogramType::channels > base;
+                
+                Histogram()
+                    : DescriptorBase("", true), ContainerBase(), _array_q(), _num_bins(), _num_points()
+                {
+                }
+
+                //!
+                //! \brief Constructor with min and max value and number of bins
+                //! 
+                //! The num_bins determine the number of bins used for each channel. 
+                //! A uniform quantizer is generated with the 3 input parameters.
+                //! The same uniform quantizer is used for each channel.
+                //!
+                //! \param[in] min_value  : Minimum value of the histogram
+                //! \param[in]  max_value : Maximum value of the histogram
+                //! \param[in]   num_bins : Number of bins of the histogram
+                Histogram(data_type min_value, data_type max_value, size_type num_bins)
+                    : DescriptorBase("", true)
+                {
+                    ASSERT( num_bins > 0, "The number of bins should be bigger than 0" );                                     
+                
+                    // Create a homogeneous Quantizer, and initialize _array_q whit it
+                    Quantizer<data_type> q_map( min_value, max_value, num_bins );
+                    for( size_type ii = 0; ii < channels; ++ii ) 
+                    {
+                        _array_q[ii] = q_map;
+                    }
+                
+                    // Common initialization 
+                    _init();
+                    _form_id();
+                };
+                    
+                //!
+                //! \brief Constructor with a unique Quantizer
+                //!
+                //! A unique Quantizer is used for each channel.
+                //! The number of bins of the histogram depends on the lenght of the Quantizer.
+                //!
+                //! \param[in]  q : Quantizer used for calculating the bin of the histogram
+                //!
+                Histogram( const Quantizer<data_type>& q )
+                    : DescriptorBase("", true)
+                {
+                    // All channels with the same quantizer 
+                    _array_q.assign(q);
+                    
+                    // Common initialization 
+                    _init();
+                    _form_id();
+                }
+
+                //!
+                //! \brief Constructor with an array of Quantizers
+                //!
+                //! The number of bins depends on the lenght of each element of the array_q.
+                //!
+                //! \param[in]  array_q : Array of Quantizers used for calculating the bin of the histogram
+                //!
+                Histogram( const boost::array< Quantizer<data_type>, channels >& array_q )
+                    : DescriptorBase("", true)
+                {
+                    for(std::size_t ii = 0; ii<channels;  ++ii)
+                    {
+                        _array_q[ii] = array_q[ii];
+                    }
+                    
+                    // Common initialization 
+                    _init();
+                    _form_id();
+                }
+                    
+                //!
+                //! \brief Copy constructor
+                //!
+                //! \param[in]  copy : Histogram to be copied
+                //!
+                Histogram( const Histogram& copy )
+                    : DescriptorBase("", true), ContainerBase((const ContainerBase&)copy)
+                {   
+                    _array_q = copy._array_q;
+                    _num_bins = copy._num_bins;
+                    _num_points = copy._num_points;
+                    
+                    _form_id();
+                }
+
+                /*!
+                 * Specialization for MultiArray for backward compatibility
+                 * Please, use the iterators API instead.
+                 * 
+                 * \param[in] ma : the input MultiaArray to compute the Histogram from.
+                 */
+                void calculate(const MultiArray<data_type, dimensions>& ma )
+                {
+                    // TODO: Asserts
+
+                    boost::array<size_t, channels> q_color;
+
+                    // Reset the histogram
+                    _num_points = 0;
+                    MultiArray< T, HistogramType::channels >::operator=(0);
+
+                    // Calculating histogram, in different modes
+                    if ( HistogramType::mode == math::statistics::HistogramDefaultType<InputModel>::mode )
+                    {
+                        const data_type* begin = ma.data();
+                        const data_type* end   = ma.data() + ma.num_elements();
+                        for(const data_type* it=begin; it != end; ++it )
+                        {
+                            for( size_type k = 0; k < channels; k++ )
+                            {
+                                q_color[k] = _array_q[k].bin( (*it) );
+                            }
+                            (*this)(q_color)++;
+                            _num_points++;
+                        }
+                    }
+                    else
+                    {
+                        ASSERT(false, "Unknown HistogramType. Mode: " << HistogramType::mode);
+                        throw ImagePlusError("Unknown HistogramType.");
+                    }
+                }
+                
+                //! \brief Calculates the color layout of a image given a pair of iterators. 
+                //!
+                //! \param[in] first : Iterator to the beginning of the image
+                //! \param[in] last : Iterator to the end of the image
+                //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+                template< class IteratorModel >
+                void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs=0x0)
+                {        
+                    _calculate(first,last);
+                }
+                
+                //! \brief Calculates dominant colors of the father region given the sons ones.
+                //!
+                //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+                //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+                //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+                void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+                {        
+                    *this = son1_descs.get(*this) + son2_descs.get(*this);
+                }
+                
+                //!
+                //! \brief Access to the quantizer used in the histogram
+                //!
+                //! \return The number of bins for each dimension N
+                //!
+                const boost::array<Quantizer< typename InputModel::data_type>, HistogramType::channels > & quantizer() const
+                {
+                    return _array_q;
+                }
+                
+                //!
+                //! \param[in] input_vector : the point to get the probability, represented by a quantized
+                //!                           1-D MultiArray
+                //!
+                //! \return the histogram value of input_vector
+                //!
+                //! \todo Do we really need these methods?
+                //!       They are just a wrapper to convert to the input_vector type
+                //!       to a normal point to access the data.
+                //!       This conversion should be done in a different way?
+                //!
+                template < typename TP >
+                const float64 & probability (const MultiArray<TP,1> & input_vector ) const
+                {
+                	static boost::array< std::size_t, channels> point;
+                	//Convert the input vector to a quantized point
+                	 for( size_type k = 0; k < channels; k++ )
+	                 {   
+	                     //point[k] = _array_q[k].bin( input_vector[k] );
+                		 point[k]=static_cast<std::size_t>(input_vector[k]);
+	                 }
+
+                	//return this->operator()(point);
+                	return base::operator()(point);
+                }
+                
+                //!
+                //! \brief R/W Access to the histogram value of a given point, represented by a quantized
+                //!        1-D MultiArray
+                //!
+                //! \param[in] input_vector : the point to get the probability
+                //!
+                //! This method has to be carefully used, as the histogram must hold stochastic constraints
+                //!
+                //! \return the probability of the input_vector
+                //!
+                //! \todo This is a incorrect set! why we need non-const access?
+                //!
+                //! \todo Do we really need these methods?
+                //!       They are just a wrapper to convert to the input_vector type
+                //!       to a normal point to access the data.
+                //!       This conversion should be done in a different way?
+                template < typename TP >
+                float64 & probability (const MultiArray<TP,1> & input_vector )
+                {
+                    static boost::array< std::size_t, channels> point;
+                    //Convert the input vector to a quantized point
+                      for( size_type k = 0; k < channels; k++ )
+                      {
+                          //point[k] = _array_q[k].bin( input_vector[k] );
+                          point[k]=static_cast<std::size_t>(input_vector[k]);
+                      }
+
+                      //return this->operator()(point);
+                      return base::operator()(point);
+                }
+               
+                //!
+                //! \return a random sample
+                //!
+                boost::array<float64, channels> emit () const
+                {
+                    float64 prob=rand_uniform();
+                    float64 cumulative_prob=0.0;
+
+                    boost::array<float64, channels> sample;
+            	   
+                    const float64 *p=this->data();
+                    const float64 *end=this->data()+this->num_elements();
+                    int32 position_counter=0;
+            	   
+                    while ( (cumulative_prob+=*p) < prob && p!=end )
+                    {
+                        p++; position_counter++;
+                    }
+            	   
+                    if ( position_counter >= (int32)this->num_elements() ) position_counter = this->num_elements()-1;
+            	   
+                    //Obtain the bin
+                    int32 size_mult;
+            	   
+                    for (int32 i=channels-1; i > 0; --i )
+                    {
+                        size_mult=1;
+                        for (int32 j=0; j<i; ++j)
+                        {
+                            size_mult*=this->dims(j);
+                        }
+                        //Integer part of the quocient
+                        sample[i]=std::floor(position_counter/size_mult);
+                        position_counter-=size_mult*sample[i]; //or position_counter%size_mult
+                    }
+                    sample[0]=position_counter;
+            	   
+                    return sample;
+                }
+                
+                /*!
+                 * \brief Operator "=" to copy a Histogram
+                 * 
+                 * \param[in]  copy : Histogram to be copied
+                 * \return Reference to the object to allow a = b = c
+                 */
+                const Histogram& operator=( const Histogram& copy)
+                {
+                    _id          = copy._id;
+                    _array_q     = copy._array_q;
+                    _num_bins    = copy._num_bins;
+                    _num_points  = copy._num_points;
+                    ContainerBase::operator=(copy);
+                    return *this;
+                }
+
+                /*!
+                 * \brief Operator "+" to sum two Histograms
+                 * 
+                 * \param[in]  other : Histogram to be summed
+                 * \return The sum of Histograms
+                 */
+                Histogram operator+( const Histogram& other ) const
+                {
+                    Histogram out;
+                    out._id = _id;
+                    out._array_q = _array_q;
+                    out._num_bins = _num_bins;
+                    out._num_points = _num_points + other._num_points;
+                    
+                    out._init();
+                    
+                    T* p_out = out.data();
+                    const T* p_in1 = MultiArray< T, HistogramType::channels >::data();
+                    const T* p_in2 = other.data();
+
+                    ASSERT((MultiArray< T,HistogramType::channels>::num_elements()) == other.num_elements(), "Histogram sum: Trying tu sum histogram of different sizes");
+                    ASSERT((MultiArray< T,HistogramType::channels>::num_elements()) == out.num_elements(), "Histogram sum: Something is wrong, out has different size");
+                    
+                    std::size_t n_elem = MultiArray< T, HistogramType::channels >::num_elements();
+                    for(std::size_t ii = 0; ii< n_elem; ++ii)
+                    {
+                        *p_out = *p_in1 + *p_in2;
+                        ++p_out; ++p_in1; ++p_in2;
+                    }
+                    return out;
+                }
+                
+                /*!
+                 * \brief Returns the number of instances in the Histogram
+                 * 
+                 * \return The number of instances in the Histogram
+                 */
+                uint64 num_points() const
+                {
+                    return _num_points;
+                }
+                
+                /*!
+                 * Returns the number of bins in each channel the Histogram.
+                 * Note that the number of channels depends on the HistogramMode used 
+                 * 
+                 * \return The number of bins for each channel
+                 */
+                const boost::array<std::size_t, channels>& num_bins() const
+                {
+                    return _num_bins;
+                }
+                
+                /*!
+                 * Returns the number of channels taken into account in the Histogram.
+                 * Note that it depends on the HistogramMode used 
+                 * 
+                 * \return The number of channels taken into account in the histogram
+                 */
+                std::size_t num_channels() const
+                {
+                    return channels;
+                }
+
+                /*!
+                 * "Equal to" operator between Histograms
+                 *
+                 * \param[in] hist1 : first histogram to compare
+                 * \param[in] hist2 : second histogram to compare
+                 *
+                 * \return true the histograms are equal
+                 *
+                 * \todo Implement operator== in DescriptorBase
+                 */
+                friend
+                bool operator==(const Histogram& hist1, const Histogram& hist2)
+                {
+                    return ((const ContainerBase&)hist1) == ((const ContainerBase&)hist2) &&
+                            hist1._num_bins        == hist2._num_bins         &&
+                            hist1._array_q         == hist2._array_q          &&
+                            hist1._id              == hist2._id               &&
+                            hist1._num_points      == hist2._num_points;
+
+                            // \todo Implement operator== in DescriptorBase
+                            // ((const DescriptorBase&)hist1) == ((const DescriptorBase&)hist2) &&
+                }
+
+            private:
+            	//! Array of quantizers
+                boost::array<Quantizer<data_type>, channels > _array_q;
+                
+                //! Number of bins for each channel taken into account
+                boost::array<std::size_t, channels > _num_bins;
+                
+                //! Number of points
+                uint64 _num_points;
+
+                //! Private method to form the identifier depending on the parameters of the descriptor
+                void _form_id()
+                {
+                    this->_id =  "Histogram";
+
+                    for( std::size_t ch = 0; ch < channels; ch++ )
+                    {
+                        this->_id = this->_id + "_" + boost::lexical_cast<std::string>(_num_bins[ch]);
+                    }
+                }
+                
+                //! Common private method that initializes the number of bins given the array of quantizers 
+                //! and allocates memory  
+                void _init()
+                {
+                    // Create _num_bins array based on the quantizer
+                    for( size_type ii = 0; ii < channels; ++ii )
+                    {
+                        _num_bins[ii] = _array_q[ii].num_bins();
+                    }
+                    
+                    // Allocate memory                     
+                    this->resize( _num_bins );
+                }
+                
+                //! Private common calculate using iterators
+                //!
+                //! \tparam IteratorModel :  Type of iterator used
+                //!
+                //! \param[in] first : Iterator to the beginning of the input
+                //! \param[in] last  : Iterator to the end of the input 
+                template< class IteratorModel >
+                void _calculate(IteratorModel first, IteratorModel last)
+                {
+                    boost::array<size_t, channels> q_color;
+
+                    // TODO: Asserts
+                    
+                    // Reset the histogram
+                    _num_points = 0;
+                    MultiArray< T, HistogramType::channels >::operator=(0);   
+                    
+                    // Calculating histogram, in different modes
+                    if ( HistogramType::mode == math::statistics::HistogramDefaultType<InputModel>::mode ) 
+                    {   
+                        for( IteratorModel it = first; it != last; ++it )
+                        {
+                            for( size_type k = 0; k < channels; k++ )
+                            {   
+                                q_color[k] = _array_q[k].bin( (*it).value(k) );
+                            }
+                            (*this)(q_color)++;  
+                            _num_points++;
+                        }
+                    }
+                    else if( HistogramType::mode == math::statistics::HistogramYUV_Y_Type::mode )
+                    {
+                        for( IteratorModel it = first; it != last; ++it )
+                        {
+                            q_color[0] = _array_q[0].bin( (*it).value(Y_CHANNEL) );
+                            (*this)(q_color)++;  
+                            _num_points++;
+                        }
+
+                    }
+                    else if( HistogramType::mode == math::statistics::HistogramYUV_UV_Type::mode )
+                    {   
+                        for( IteratorModel it = first; it != last; ++it )
+                        {
+                            q_color[0] = _array_q[0].bin( (*it).value(U_CHANNEL) );
+                            q_color[1] = _array_q[1].bin( (*it).value(V_CHANNEL) );
+                            (*this)(q_color)++;  
+                            _num_points++;
+                        }
+                    }
+                    else if( HistogramType::mode == math::statistics::HistogramYUV_YUYV_Type::mode )
+                    {
+                        for( IteratorModel it = first; it != last; ++it )
+                        {
+                            q_color[0] = _array_q[0].bin( (*it).value(Y_CHANNEL) * (*it).value(U_CHANNEL) );
+                            q_color[1] = _array_q[1].bin( (*it).value(Y_CHANNEL) * (*it).value(Y_CHANNEL) );
+                            (*this)(q_color)++;  
+                            _num_points++;
+                        }
+                    }
+                    else
+                    {
+                        ASSERT(false, "Unknown HistogramType. Mode: " << HistogramType::mode);
+                        throw ImagePlusError("Unknown HistogramType.");
+                    }
+                }
+
+            public:
+#ifdef USE_XML
+                //! Returns the name of the descriptor to be written to the XML descriptors file
+                //! \return Name of the identifier
+                std::string xml_name() const
+                {
+                    return "ColorHistogramType";
+                }
+                //! Writes the value of the descriptor.
+                //! \param[in] doc: Pointer to the XML document we are writing
+                //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+                void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+                {
+                    XERCES_CPP_NAMESPACE::DOMElement* dataElem;
+                    XERCES_CPP_NAMESPACE::DOMText* textElem;
+                    std::string append;
+                    std::string space(" ");
+                    char append2[100];
+
+                    dataElem = doc->createElement(io::fromNative("Values").c_str());
+                    vdElem->appendChild(dataElem);
+
+                    sprintf (append2, "%ld", channels);
+                    vdElem->setAttribute(io::fromNative("numChannels").c_str(), io::fromNative(append2).c_str());
+
+                    sprintf (append2, "%lu", _num_bins[0]);
+                    vdElem->setAttribute(io::fromNative("numBins").c_str(), io::fromNative(append2).c_str());
+
+                    for(uint64 ii=0; ii< this->num_elements(); ii++)
+                    {
+                        append = append + boost::lexical_cast<std::string>(this->data()[ii]) + space;
+                    }
+
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    dataElem->appendChild(textElem);
+
+                }
+#endif
+            };
+        
+            
+            
+            //!
+            //! \brief Class for visual descriptor that computes the histogram of each channel of the image independently.
+            //!        Therefore, if the input has three channels, the Histogram will consist of an array of single-channels Histograms
+            //!
+            //! \tparam InputModel : Refers to the type of input handled (ImageRGB, ImageYUV, etc.)
+            //! \tparam T : Type of data of the Histograms (by default uint64)
+            //!
+            //! \author Jordi Pont <jordi.pont@upc.edu>
+            //!
+            //! \date 6-4-2010
+            template<class InputModel, typename T=uint64>
+            class ChannelHistogram : public DescriptorBase,
+                                     public boost::array<Histogram<InputModel, T, math::statistics::SingleChannelType>, InputModel::channels>
+            {
+            public:
+            	//! Single-channel Histogram type
+                typedef Histogram<InputModel, T, math::statistics::SingleChannelType> channel_type;
+                
+                //! ChannelHistogram container type (array of channel_type)
+                typedef boost::array<channel_type, InputModel::channels> ContainerBase;
+                
+                //! Data type of InputModel
+                typedef typename InputModel::data_type data_type;
+                
+                //!
+                //! \brief Constructor with min and max value and number of bins
+                //! 
+                //! The num_bins determine the number of bins used for each channel.
+                //! A uniform quantizer is generated with the 3 input parameters.
+                //! The same uniform quantizer is used for each channel.
+                //!
+                //! \param[in]  min_value : Minimum value of the histogram
+                //! \param[in]  max_value : Maximum value of the histogram
+                //! \param[in]   num_bins : Number of bins of the histogram
+                //!
+                ChannelHistogram(data_type min_value = 0, data_type max_value = 255, uint64 num_bins = 256) 
+                    : DescriptorBase("ChannelHistogram", true)
+                {
+                    for(std::size_t ii=0; ii<InputModel::channels; ++ii)
+                    {
+                        this->at(ii) = channel_type(min_value,max_value,num_bins);
+                    }
+                };
+                 
+                //!
+                //! \brief Constructor with ColorRange, to optimize the quantization to the color range
+                //!     A different uniform quantizer is generated for each channel, adapted to its range.
+                //!
+                //! \param[in]  color_range : Color range for each channel
+                //! \param[in]   num_bins   : Number of bins
+                ChannelHistogram(const ColorRange<InputModel>& color_range, uint64 num_bins = 256) 
+                    :DescriptorBase("ChannelHistogram", true)
+                {
+                    for(std::size_t ii=0; ii<InputModel::channels; ++ii)
+                    {
+                        (*this)[ii] = channel_type(color_range[ii].min, color_range[ii].max, num_bins);
+                    }
+                };
+                
+                //! \brief Calculates the color layout of a image given a pair of iterators. 
+                //!
+                //! \param[in] first : Iterator to the beginning of the image
+                //! \param[in] last : Iterator to the end of the image
+                //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+                //!
+                template< class IteratorModel >
+                void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+                {    
+                    for(std::size_t ii=0; ii<InputModel::channels; ++ii)
+                    {
+                        typename IteratorModel::channel_iterator channel_first(first, ii);
+                        typename IteratorModel::channel_iterator channel_last(last, ii);
+                        this->at(ii).calculate(channel_first,channel_last, peer_descs);
+                    }
+                }
+                
+                //! \brief Calculates dominant colors of the father region given the son's ones.
+                //!
+                //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+                //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+                //! \param[in] peer_descs : Pointer to CollaborativeDescriptors
+                void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+                {        
+                    const ContainerBase& hist1 = son1_descs.get(*this);
+                    const ContainerBase& hist2 = son2_descs.get(*this);
+                    for(std::size_t ii=0; ii<InputModel::channels; ++ii)
+                    {
+                        this->at(ii) = hist1[ii] + hist2[ii];
+                    }
+                }
+                
+                /*!
+                 * \brief Operator "+" to sum two Histograms
+                 * 
+                 * \param[in]  other : Histogram to be summed
+                 * \return The sum of Histograms
+                 */
+                ChannelHistogram operator+( const ChannelHistogram& other ) const
+                {
+                    ChannelHistogram out;
+                    for(std::size_t ii=0; ii<InputModel::channels; ++ii)
+                    {
+                        out[ii] = (*this)[ii] + other[ii];
+                    }
+                    return out;
+                }
+                
+
+                //! \brief Returns the single-channel histogram of a given channel
+                //!
+                //! \param[in] channel: Channel to be returned
+                //! \return Single-channel histogram of a given channel
+                const channel_type& histogram(std::size_t channel) const
+                {
+                    return this->at(channel);
+                }
+            };
+        } // end statistics
+    } // end math
+} // end imageplus
+
+
+#endif //IMAGEPLUS_MATH_STATISTICS_HISTOGRAM_HPP

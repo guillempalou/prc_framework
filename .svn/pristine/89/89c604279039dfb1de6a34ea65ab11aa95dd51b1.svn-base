@@ -1,0 +1,299 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \example particlefilter_example.cpp
+ * 
+ * This is a tutorial example about how to use the \ref imageplus::particlefilters::Particle "Particle"
+ * and the \ref imageplus::particlefilters::ParticleFilter "ParticleFilter" classes.\n
+ * 
+ * The in terms of signal processing, the goal of this example is to estimate a function, specifically a 
+ * sinusoidal function with some noise.
+ * 
+ * To achieve this goal we will create our own Particle (MyParticle), that is basically a Point2D x->y=f(x), 
+ * and we will use the basic ParticleFilter structure.
+ * 
+ * 
+ * \author Ramón Llorca <rllorca@gps.tsc.upc.edu>
+ * \author Albert Gil <albert.gil@upc.edu>
+ */
+/*! \cond SKIP_DOC */
+/*
+ * This is a tutorial example about how to use the Particle and the ParticleFilter classes.
+ * 
+ * The in terms of signal processing, the goal of this example is to estimate a function, specifically a 
+ * sinusoidal function with some noise.
+ * 
+ * To achieve this goal we will create our own Particle (MyParticle), that is basically a Point2D x->y=f(x), 
+ * and we will use the basic ParticleFilter structure.
+ * 
+ * First of all we have to include the ParticleFilter header
+ */
+#include <imageplus/particlefilters/pf_basic.hpp>
+#include <imageplus/math.hpp>
+
+
+using namespace imageplus;
+using namespace imageplus::particlefilters;
+
+/*
+ * We have to define two types or classes to be used as a template parameters of our Particle:
+ * 
+ * - init_data_type: 
+ *     - used to initialize our particles
+ * - input_data_type: 
+ *     - used to "evaluate" our Particle 
+ *     - "evaluate" is also called in the "filter" method of the basic ParticleFilter 
+ */ 
+typedef struct MyInitData
+{
+    Point2D  function;  
+    float64  variance; 
+} MyInitData;
+
+typedef Point2D MyInputData;
+
+
+/*
+ * Now we can define our Particle by inheriting from Particle (mandatory), with three templates:
+ * - our own Particle
+ * - the input type defined before
+ * - the init type defined before
+ */
+class MyParticle : public Particle< MyParticle, MyInputData, MyInitData>
+{
+public:                     
+    /*
+     * We should always define ALL the following members of our Particle class.
+     * All these definitions are mandatory!
+     */
+    
+    MyParticle( float64 weight = 0 ); 
+    /* NOTE: This is a double mandatory constructor: default and by weight */
+
+    virtual 
+    ~MyParticle() {}
+    
+    virtual
+    void init_particle( const init_data_type& init_data );
+           
+    virtual
+    void propagate();
+    
+    virtual
+    void evaluate( const input_data_type& input_data );  
+
+    virtual
+    MyParticle operator+ ( const MyParticle& other_particle ) const;
+    
+    virtual
+    MyParticle operator* ( float64 weight ) const;
+    
+    virtual 
+    void copy( const MyParticle& other_particle );
+                    
+    friend
+    std::ostream& operator<< ( std::ostream& os, const MyParticle& p );
+
+private:
+    /*
+     * Here we place our custom internal data
+     */   
+    Point2D  _function; 
+    float64  _variance; 
+};
+        
+
+/*
+ * Once we have our Particle, now we can define our ParticleFilter in two ways:
+ * 
+ * - Using the basic ParticleFilter with our MyParticle
+ * - Inheriting from the basic ParticleFilter to be able to overload its methods (filter, init...)
+ * 
+ * In this example we will use only the basic ParticleFilter, so:
+ */
+typedef ParticleFilter< MyParticle > MyParticleFilter;
+
+
+/*
+ * Now we are ready to use our MyParticleFilter in a "main" function
+ */
+int main( int argc, char* argv[] ) 
+{
+    /*
+     * Again, first of all we declare two variables to manage the init and the input values.
+     */ 
+    MyParticle::input_data_type  input_data;
+    MyParticle::init_data_type   init_data;
+    
+    /*
+     * We should also fill up the init values.
+     */
+    init_data.function.x() = 0.0;
+    init_data.function.y() = 0.0;
+    init_data.variance     = 5.0;
+    
+    /*
+     * Now we can declare and initialize our particle filter with a specific number of particles (100).
+     */
+    MyParticleFilter pf( 100 );
+    pf.init_particles( init_data );
+
+	/*
+	 * Now we use the particle filter to estimate, for example, a sinus function.
+	 * We will store the estimation in a Particle variable.
+	 */
+    MyParticle estimation;
+    for (int32 i = 0; i < 10; i++) 
+	{
+        /*
+         * Create the function to estimate, for example just a sinus function.
+         * Each step moves 10 degrees from 0 to 90. 
+         */
+        Point2D function;
+        function.x() = i;
+        function.y() = sin((10*i)*(M_PI/180));
+        
+        /*
+         * The input data of the filter is the function but with some gaussian noise.
+         */
+        input_data.x() = function.x();
+        input_data.y() = function.y() + math::statistics::rand_normal( 0, 0.1 ); 
+		
+		/*
+		 * Now we can "filter" the "input_data" to estimate the real function.
+		 * In this function the ParticleFilter does: resample -> propagate -> evaluate
+		 */
+		pf.filter( input_data );
+
+		/*
+		 * And finally we can get the particle filter estimation
+		 */
+		estimation = pf.estimate();
+		
+		/*
+		 * Just to print the results
+		 */
+		std::cout << std::fixed << std::setprecision(3);
+		std::cout << "Input data: " << input_data << std::endl;
+		std::cout << "Estimation: " << estimation << std::endl;
+		std::cout << "Real value: " << function   << std::endl;
+		
+	}
+	
+	return 0;
+}
+
+
+/*
+
+The output of the execution of this example must look like:
+
+Input data:     0.000  -0.026
+Estimation:     0.010  0.007
+Real value:     0.000  0.000
+Input data:     1.000  0.133
+Estimation:     1.000  0.047
+Real value:     1.000  0.174
+Input data:     2.000  0.405
+Estimation:     1.834  0.329
+Real value:     2.000  0.342
+Input data:     3.000  0.408
+Estimation:     2.876  0.550
+Real value:     3.000  0.500
+Input data:     4.000  0.830
+Estimation:     3.948  0.836
+Real value:     4.000  0.643
+Input data:     5.000  0.758
+Estimation:     4.985  0.749
+Real value:     5.000  0.766
+Input data:     6.000  0.791
+Estimation:     5.965  0.743
+Real value:     6.000  0.866
+Input data:     7.000  0.915
+Estimation:     6.951  0.819
+Real value:     7.000  0.940
+Input data:     8.000  1.055
+Estimation:     7.857  1.140
+Real value:     8.000  0.985
+Input data:     9.000  1.029
+Estimation:     8.892  1.142
+Real value:     9.000  1.000
+
+*/ 
+
+
+
+
+/*
+ * The following lines just contain the implementation details of our particle.
+ */
+
+
+using namespace std;
+
+MyParticle::MyParticle( float64 weight )
+    : Particle< MyParticle, MyInputData, MyInitData >( weight )
+{                   
+}
+
+void MyParticle::init_particle( const init_data_type& init_data )
+{
+    _function = init_data.function;
+    _variance = init_data.variance;
+}
+
+void MyParticle::evaluate( const input_data_type& input_data )
+{
+    float64 distance_x = _function.x() - input_data.x();
+    float64 distance_y = _function.y() - input_data.y();
+
+    float64 distance = std::sqrt( distance_x * distance_x + distance_y * distance_y );
+                        
+    float64 pseudo_likelihood = std::exp( - 3.0 * distance );
+                        
+    weight( pseudo_likelihood );
+}
+
+void MyParticle::propagate()
+{
+    _function.x() = math::statistics::rand_normal( _function.x(), std::sqrt(_variance) );
+    _function.y() = math::statistics::rand_normal( _function.y(), std::sqrt(_variance) );
+}
+
+MyParticle MyParticle::operator+ ( const MyParticle& other_particle ) const
+{
+    MyParticle result_particle( 1 );
+    
+    result_particle._function = _function + other_particle._function;
+    result_particle._variance = _variance;
+    
+    return result_particle;
+}
+
+MyParticle MyParticle::operator* ( float64 weight ) const
+{
+    MyParticle result_particle( 1 );
+    
+    result_particle._function = _function * weight;
+    result_particle._variance = _variance;
+    
+    return result_particle;
+}
+
+void MyParticle::copy( const MyParticle& other_particle ) 
+{
+    weight ( other_particle.weight() ); 
+    _function = other_particle._function;
+    _variance = other_particle._variance;                   
+}
+
+std::ostream& operator<< ( std::ostream& os, const MyParticle& p )
+{
+    os << p._function;
+    return os;
+}   
+
+/*! \endcond */

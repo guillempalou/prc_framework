@@ -1,0 +1,232 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Platform Configuration                           #
+#                                                                            #
+# This script configures the build environment for the local platform.       #
+#                                                                            #
+# The supported and tested platforms are:                                    #
+#                                                                            #
+# - Linux - POSIX     : Tested on Ubuntu and Fedora distributions            #
+# - Microsoft Windows : Tested on XP Professional                            #
+# - MacOSX - Darwin   : Not tested                                           #
+#                                                                            #
+# GCC (GNU Compiler Collection) is the default tool chain supported for      #
+# compiling and linking this software (http://gcc.gnu.org/).                 #
+#                                                                            #
+# MinGW (Minimalist GNU for Windows) is the tool chain used for the Windows  #
+# platform (http://www.mingw.org/).                                          #
+#                                                                            #
+# The build system is based on SCons (http://www.scons.org/), so also this   #
+# this script.                                                               #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                Josep Ramon Casas, UPC (josepl@gps.tsc.upc.edu)             #
+#                                                                            #
+##############################################################################
+
+Import('*')
+
+import os
+import sys
+
+
+##
+## __STDC_CONSTANT_MACROS : To link agains FFMPEG (extern "C" libraries in general)
+##
+env['CPPDEFINES'] += ['__STDC_CONSTANT_MACROS']
+
+if env[ 'PLATFORM' ] == 'win32':
+
+    if env['msvc']:
+        ##
+        ## The Microsoft Visual C++ (MSVC) Tool-Chain
+        ##
+        env.Tool('msvc')
+        
+        if 'WINSDK_UPC' in os.environ:
+            env['WINSDK_UPC'] = os.environ['WINSDK_UPC']
+        else:
+            print "Environment variable WINSDK_UPC not defined, using the default one: ", env['WINSDK_UPC']
+        
+        #
+        # Add MSVC environment variables
+        #
+        using_vs_cmd=True
+        if 'INCLUDE' in os.environ:
+        	env['ENV']['INCLUDE'] += ";"+os.environ['INCLUDE']
+        else:
+            using_vs_cmd=False
+        
+        if 'LIB' in os.environ:
+            env['ENV']['LIB']     += ";"+os.environ['LIB']
+        else:
+            using_vs_cmd=False
+        
+        # TMP variable is needed by msvc linker...
+        if 'TMP' in os.environ:
+            env['ENV']['TMP']     = os.environ['TMP']
+        else:
+            using_vs_cmd=False
+
+        if not using_vs_cmd:
+            print "\nTo build with MSVC you probably need to launch the building within VS Command Prompt\n"
+        
+            
+        ##
+        ## Add MSVC paths
+        ##
+        env['CPPPATH']      += [     env['WINSDK_UPC']+'\\msvc\\include' ]
+        env['LIBPATH']      += [     env['WINSDK_UPC']+'\\msvc\\lib']
+        #env['ENV']['PATH'] += ";" + env['WINSDK_UPC']+'\\msvc\\bin' # this path should be defined in the environment
+        
+        #
+        # MSVC FLAGS
+        #
+        # WIN32: Not added by default, but always added using the MSVC IDE
+        # BOOST_NO_OLD_CONCEPT_SUPPORT: To avoid building errors due backward compatibility
+        # BOOST_ALL_NO_LIB: To avoid auto-linikg (may be this is not a good idea...)
+        # _USE_MATH_DEFINES: To be able to use M_PI, M_* (from http://msdn.microsoft.com/en-us/library/4hwaceh6.aspx)
+        # isnan = _isnan: To be able to use isnan in MSVC (from: http://msdn.microsoft.com/en-us/library/tzthab44(VS.80).aspx)
+        # NOMINMAX: to avoid min, max redefinitions (http://support.microsoft.com/kb/143208)
+        # XMD_H: to avoid error with libjpeg
+        # LIBLINKPREFIX: To fix link errors with boost
+        # LIBPREFIX: To be coherent with LIBLINKPREFIX
+        # /wd4996: "deprecated" warning disabled
+        # /wd4344: "behavior change" warning disabled
+        # /wd4244: "possible loss of data in conversion" warning disabled
+        # /WX: warnings as errors
+        # /NODEFAULTLIB:*: To control how to link against system libs
+        # /bigobj: to solve "C1128: number of sections exceeded object file format limit : compile with /bigobj"
+        # 
+        env['CPPDEFINES'] += ['MSVC',             'WIN32',             'BOOST_NO_OLD_CONCEPT_SUPPORT', 
+                              'BOOST_ALL_NO_LIB', '_USE_MATH_DEFINES', 'isnan=_isnan',
+                              'NOMINMAX', 'XMD_H']
+        env['CPPFLAGS']   += ['/EHsc', '/wd4996', '/wd4344', '/wd4244', '/WX', '/bigobj']
+        env['LINKFLAGS']  += ['/NODEFAULTLIB:libcmt.lib', '/NODEFAULTLIB:libcmtd.lib', '/NODEFAULTLIB:libcpmtd.lib']
+        env['LINKFLAGS']  += ['/NODEFAULTLIB:msvcrt.lib', '/NODEFAULTLIB:msvcrtd.lib', '/NODEFAULTLIB:msvcprtd.lib']
+        env['LIBPREFIX']   = env['LIBLINKPREFIX']
+               
+        # Debug/Release
+        #
+        # /Z7: Generates complete debugging information, embedded in the objects
+        # (from: http://msdn.microsoft.com/en-us/library/958x11bc(VS.80).aspx)
+        #
+        if env['debug']:
+            env['CPPFLAGS'] += ['/Z7']
+        else:
+            env['CPPFLAGS']  += ['/O2', '/GA' ]
+        
+               
+        # Static and Dynamic flags:
+        #
+        # /MD: To link against msvc*.dll
+        # /MT: To not link against msvc*.dll (it avoids manifest files?)
+        #
+        if env['static']:
+            if env['debug']:
+                env['CPPFLAGS'] += ['/MTd']
+                env['LIBS']     += ['libcpmtd', 'libcmtd']
+            else:
+                env['CPPFLAGS'] += ['/MT']
+                env['LIBS']     += ['libcpmt',  'libcmt']
+        else:
+            if env['debug']:
+                env['CPPFLAGS'] += ['/MDd']
+                env['LIBS']     += ['msvcprtd', 'msvcrtd' ]
+            else:
+                env['CPPFLAGS'] += ['/MD']
+                env['LIBS']     += ['msvcprt',  'msvcrt']
+          
+    else:
+    	##
+    	## The MinGW Tool-Chain
+    	## 
+        env.Tool('mingw')
+            
+        # define 'MINGW' flags
+        env[ 'CPPDEFINES' ] += [ 'MINGW' ]
+    
+        # (from https://lintouch.org/repos/lintouch/msys-mingw/packaging/trunk/mingw/mingw-setup.txt)
+        # In Windows, compiler has to work around exporting global variables when
+        # creating a DLL. The option ``--enable-runtime-pseudo-reloc`` turns on that 
+        # workaround. The reason for this *not* being turned on by default are minor 
+        # and most of all, of a historical origin. See
+        # http://www.redhat.com/docs/manuals/enterprise/RHEL-3-Manual/gnu-linker/win32.html
+        # for more.
+        env[ 'LINKFLAGS' ] += [ '-Wl,--enable-runtime-pseudo-reloc' ]
+
+        # redefine SPAWN to fix 'mingw' problem with long link lines
+        # source: http://www.scons.org/wiki/LongCmdLinesOnWin32
+        import win32file
+        import win32event
+        import win32process
+        import win32security
+        import string
+        def my_spawn(sh, escape, cmd, args, spawnenv):
+            for var in spawnenv:
+                spawnenv[var] = spawnenv[var].encode('ascii', 'replace')
+
+            sAttrs = win32security.SECURITY_ATTRIBUTES()
+            StartupInfo = win32process.STARTUPINFO()
+            newargs = string.join(map(escape, args[1:]), ' ')
+            cmdline = cmd + " " + newargs
+
+            # check for any special operating system commands
+            if cmd == 'del':
+                for arg in args[1:]:
+                    win32file.DeleteFile(arg)
+                exit_code = 0
+            else:
+                # otherwise execute the command.
+                hProcess, hThread, dwPid, dwTid = win32process.CreateProcess(None, cmdline, None, None, 1, 0, spawnenv, None, StartupInfo)
+                win32event.WaitForSingleObject(hProcess, win32event.INFINITE)
+                exit_code = win32process.GetExitCodeProcess(hProcess)
+                win32file.CloseHandle(hProcess);
+                win32file.CloseHandle(hThread);
+            return exit_code
+   
+        # apply my_spawn to fix 'mingw' problem with long lines
+        env['SPAWN'] = my_spawn
+else:
+    ##
+    ## GCC Tool-Chain
+    ##
+    ## AGIL: Adding temporally the -Wno-uninitialized flag to avoid warnings on GCC-4.6
+    ##
+    env.Tool('gcc')
+    
+    env['CPPFLAGS']   += ['-Werror', '-Wall', '-Wno-uninitialized']
+    
+    if env['static']:
+        env['LINKFLAGS' ]  += ['-static']
+        
+    if env['debug']:
+        env['CCFLAGS' ]   += ['-g']
+        
+        # We need -rdynamic flag for exceptions backtraces
+    	#
+    	# From gcc man: -rdynamic
+    	# Pass the flag -export-dynamic to the ELF linker, on targets that support it. 
+    	# This instructs the linker to add all symbols, not only used ones, to the dynamic symbol 
+    	# table. This option is needed for some uses of dlopen or to allow obtaining backtraces 
+    	# from within a program.
+    	#
+    	# MinGW's version of g++ does not support this flag
+    	#  
+        env['LINKFLAGS' ]  += ['-rdynamic']
+    else:
+        env['CPPFLAGS'] += ['-O3' ]
+    
+    if env['profile']:
+        env['CPPFLAGS' ] += ['-pg']
+        env['LINKFLAGS'] += ['-pg']
+        
+        

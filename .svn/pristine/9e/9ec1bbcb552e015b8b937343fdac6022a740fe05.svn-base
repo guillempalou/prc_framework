@@ -1,0 +1,189 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file convert_types.test
+//!
+//!  Tests for the convert function
+//!
+
+#include <imageplus/core.hpp>
+#include <imageplus/core/convert_types.hpp>
+
+BOOST_AUTO_TEST_SUITE ( suite_ConvertTypes );
+
+using namespace imageplus;
+using namespace std;
+
+
+BOOST_AUTO_TEST_CASE ( test_ConvertTypes_Imavol_to_Imavol )
+{    
+    // From ImageMask
+    ImaVol<uint8,1,2> iv_uint(10,10);
+    ImaVol<float64,1,2> iv_float(10,10);
+
+    iv_uint = 1;
+    iv_uint(0)[3][3] = 2;
+    iv_uint(0)[6][6] = 3;
+    
+    iv_float = convert<float64> (iv_uint);
+
+    BOOST_CHECK(iv_float(0)[3][3] == 2.0 );
+    BOOST_CHECK(iv_float(0)[6][6] == 3.0 );
+    BOOST_CHECK(iv_float(0)[0][0] == 1.0 );
+    BOOST_CHECK(iv_float(0)[1][1] == 1.0 );
+    
+    ImaVol<float64,1,2> iv_float2(10,10);
+    
+    iv_float2 = 1.5;
+    iv_float2(0)[3][3] = 2.3;
+    iv_float2(0)[6][6] = 3.4;
+    
+    iv_uint = convert<uint8>(iv_float2);
+
+    BOOST_CHECK(iv_uint(0)[3][3] == 2 );
+    BOOST_CHECK(iv_uint(0)[6][6] == 3 );
+    BOOST_CHECK(iv_uint(0)[0][0] == 1 );
+    BOOST_CHECK(iv_uint(0)[1][1] == 1 );
+    
+    ImaVol<int64,1,2> iv_int(10,10);
+    
+    iv_int = -1;
+    iv_int(0)[3][3] = 2;
+    iv_int(0)[6][6] = 3;
+    iv_int(0)[1][1] = 3000;
+    
+    iv_uint = convert<uint8>(iv_int);
+
+    BOOST_CHECK(iv_uint(0)[3][3] == 2 );
+    BOOST_CHECK(iv_uint(0)[6][6] == 3 );
+    
+    /*
+     * AGIL: The following checks and warning messages have been removed, but 2 warnings have been
+     *       added to the documentation of the "convert" functions 
+     */
+//    BOOST_WARN_MESSAGE(false, "NEGATIVE VALUES NOT CONTROLLED FOR CONVERT WITH IMAVOLS");    
+//    BOOST_CHECK(iv_uint(0)[0][0] == 255 );
+//    BOOST_WARN_MESSAGE(false, "OUT OF RANGE VALUES NOT CONTROLLED FOR CONVERT WITH IMAVOLS");
+//    BOOST_CHECK(iv_uint(0)[1][1] == 255 );
+}
+
+BOOST_AUTO_TEST_CASE ( test_ConvertTypes_MultiArray_to_MultiArray )
+{
+    // From ImageMask
+    MultiArray<uint8,2> ma_uint(10,10);
+    MultiArray<float64,2> ma_float(10,10);
+    
+    ma_uint = 1;
+    ma_uint[3][3] = 2;
+    ma_uint[6][6] = 3;
+    
+    ma_float = convert<float64>(ma_uint);
+
+    BOOST_CHECK(ma_float[3][3] == 2.0 );
+    BOOST_CHECK(ma_float[6][6] == 3.0 );
+    BOOST_CHECK(ma_float[0][0] == 1.0 );
+    BOOST_CHECK(ma_float[1][1] == 1.0 );
+    
+    MultiArray<float64,2> ma_float2(10,10);
+    
+    ma_float2 = 1.5;
+    ma_float2[3][3] = 2.3;
+    ma_float2[6][6] = 3.4;
+    
+    ma_uint = convert<uint8>(ma_float2);
+
+    BOOST_CHECK(ma_uint[3][3] == 2 );
+    BOOST_CHECK(ma_uint[6][6] == 3 );
+    BOOST_CHECK(ma_uint[0][0] == 1 );
+    BOOST_CHECK(ma_uint[1][1] == 1 );
+
+    MultiArray<int64,2> ma_int(10,10);
+    
+    ma_int = -1;
+    ma_int[3][3] = 2;
+    ma_int[6][6] = 3;
+    ma_int[1][1] = 30000;
+    
+    ma_uint = convert<uint8>(ma_int);
+    
+    BOOST_CHECK(ma_uint[3][3] == 2 );
+    BOOST_CHECK(ma_uint[6][6] == 3 );
+    /*
+     * AGIL: The following checks and warning messages have been removed, but 2 warnings have been
+     *       added to the documentation of the "convert" functions 
+     */
+//    BOOST_WARN_MESSAGE(false, "NEGATIVE VALUES NOT CONTROLLED FOR CONVERT WITH MULTIARRAYS");    
+//    BOOST_CHECK(ma_uint[0][0] == 255 );
+//    BOOST_WARN_MESSAGE(false, "OUT OF RANGE VALUES NOT CONTROLLED FOR CONVERT WITH MULTIARRAYS");
+//    BOOST_CHECK(ma_uint[1][1] == 0 );
+}
+
+// Convert ImageMask to ImageGray and viceversa
+BOOST_AUTO_TEST_CASE ( test_ConvertTypes_from_ImageMask )
+{    
+    // From ImageMask
+    ImageMask mask(10,10);
+    ImageMask mask2(10,10);
+
+    mask = false;
+    mask[3][3] = true;
+    mask[6][6] = true;
+    
+    ImageGray<uint8> mask_int;
+
+    mask_int = convert(mask);
+
+    BOOST_CHECK(mask_int(0)[3][3] == 1 );
+    BOOST_CHECK(mask_int(0)[6][6] == 1 );
+    BOOST_CHECK(mask_int(0)[0][0] == 0 );
+    BOOST_CHECK(mask_int(0)[1][1] == 0 );
+    
+    ImageGray<uint8> mask_int2;
+    mask_int2 = mask_int;
+    
+    mask2 = convert(mask_int2);
+
+    BOOST_CHECK(mask(0) == mask2(0));
+    BOOST_CHECK(mask2(0)[3][3] == true );
+    BOOST_CHECK(mask2(0)[6][6] == true );
+    BOOST_CHECK(mask2(0)[0][0] == false );
+    BOOST_CHECK(mask2(0)[1][1] == false );
+}
+
+// Convert MultiArray<uint8> to MultiArray<bool> and viceversa
+BOOST_AUTO_TEST_CASE ( test_ConvertTypes_from_MultiArray )
+{    
+    // From MultiArray
+    ImageMask mask(10,10);
+    ImageMask mask2(10,10);
+
+    mask = false;
+    mask[3][3] = true;
+    mask[6][6] = true;
+    
+    ImageGray<uint8> mask_int;
+
+    mask_int(0) = convert<uint8>(mask(0));
+
+    BOOST_CHECK(mask_int(0)[3][3] == 1 );
+    BOOST_CHECK(mask_int(0)[6][6] == 1 );
+    BOOST_CHECK(mask_int(0)[0][0] == 0 );
+    BOOST_CHECK(mask_int(0)[1][1] == 0 );    
+    
+    ImageGray<uint8> mask_int2;
+    
+    mask_int2 = mask_int;
+    
+    mask2(0) = convert<bool>(mask_int2(0));
+
+    BOOST_CHECK(mask2(0) == mask(0));
+    BOOST_CHECK(mask2(0)[3][3] == true );
+    BOOST_CHECK(mask2(0)[6][6] == true );
+    BOOST_CHECK(mask2(0)[0][0] == false );
+    BOOST_CHECK(mask2(0)[1][1] == false );
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

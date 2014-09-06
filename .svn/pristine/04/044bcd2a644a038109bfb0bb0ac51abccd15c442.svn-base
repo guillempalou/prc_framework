@@ -1,0 +1,503 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file bbox_math.hpp
+//!
+//!  \brief Auxiliar math functions or procedures for BBox class
+//!
+#ifndef IMAGEPLUS_MATH_GEOMETRY_BBOX_MATH_HPP
+#define IMAGEPLUS_MATH_GEOMETRY_BBOX_MATH_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/math.hpp>
+#include <boost/numeric/conversion/cast.hpp>
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace geometry
+        {
+            //!
+            //! \brief Limits the size of a BBox to other BBox
+            //!
+            //! If bb is contained within ref_bb nothing is done, otherwise bb is
+            //! reduced to ref_bb boundaries \n
+            //!
+            //! \tparam T : Type of the data (must be an integer type)
+            //! \tparam D : Number of dimensions (2 for planar bboxes, 3 for volume bboxes, etc)
+            //!
+            //! \param[in] ref_bb    : Bounding box that limits
+            //! \param[in,out] bb    : Bounding box to limit
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Eduardo Mendonca <eduardo@gps.tsc.upc.edu>
+            //!
+            //! \date 16-5-2008
+            //!
+            template <typename T, std::size_t D>
+            void limit_bbox_to_bbox(const BBox<T,D>& ref_bb, BBox<T,D>& bb)
+            {
+                ASSERT(bb.dimension() == ref_bb.dimension(), "dimensions of bounding boxs must match");
+
+                for (size_type i = 0; i != bb.dimension(); ++i)
+                {
+                    int64 opp = bb.origin()[i] + (int64)bb.side(i);
+
+                    if (bb.origin()[i] < ref_bb.origin()[i])
+                    {
+                        bb.origin()[i] = ref_bb.origin()[i];
+                    }
+                    if (opp > (ref_bb.origin()[i]+(int64)ref_bb.side(i)))
+                    {
+                        opp = ref_bb.origin()[i]+(int64)ref_bb.side(i);
+                    }
+
+                    bb.side(i) = std::abs(opp-bb.origin()[i]);
+                }
+            }
+
+            /*!
+             * \return the intersected BBox between two BBox
+             *
+             * \tparam T : type for all BBox (Coord type)
+             * \tparam D : dimensions of all BBox (Coord type)
+             *
+             * \param[in] bb1 : first BBox
+             * \param[in] bb2 : second BBox
+             *
+             * \author 2011-06 - Albert Gil - Creation, it is used in the new "overlap_percentatge" function.
+             *
+             * \todo although it is tested indirectly in the overlap_percentatge tests, and specific (and template) test will be nice!
+             */
+            template <typename T, std::size_t D>
+            BBox<T,D> intersection(const BBox<T,D>& bb1, const BBox<T,D>& bb2)
+            {
+                Coord<T,D> org1 = bb1.origin();
+                Coord<T,D> org2 = bb2.origin();
+                Coord<T,D> opp1 = bb1.opposite();
+                Coord<T,D> opp2 = bb2.opposite();
+
+                Coord<T,D> org;
+                Coord<T,D> opp;
+
+                for(std::size_t dd=0; dd<D; ++dd)
+                {
+                    org[dd] = std::max(org1[dd],org2[dd]);
+                    opp[dd] = std::min(opp1[dd],opp2[dd]);
+
+                    if(opp[dd] < org[dd]) return BBox<T,D>(Coord<T,D>(0), 0); //return BBox<T,D>(); //return BBox<T,D>(Coord<T,D>(0), Coord<T,D>(0));
+                }
+
+                return BBox<T,D>(org, opp);
+            }
+
+            //!
+            //! \brief limits a Coord point to the BBox
+            //!
+            //! If point is contained within ref_bb nothing is done, otherwise point is
+            //! reduced to ref_bb boundaries \n
+            //!
+            //! \tparam T : Type of the data (must be an integer type)
+            //! \tparam D : Number of dimensions (2 for planar bboxes, 3 for volume bboxes, etc)
+            //!
+            //! \param[in] ref_bb    : Bounding box that limits
+            //! \param[in,out] point : Bounding box to limit
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+            //!
+            //! \date 16-5-2008
+            //!
+            template <typename T, std::size_t D>
+            void limit_point_to_bbox(const BBox<T,D>& ref_bb, Coord<T,D>& point);
+
+            //! \brief Find the bounding box that circumscribes the region where in > 0
+            //!
+            //! \tparam T : Type of the data (must be an integer type)
+            //!
+            //! \param[in] in : Input multiarray
+            //!
+            //! \return  BBox circumscribing the region. If there is no region where in > 0, bbox's size_x() and size_y() are set to zero
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-12-2008
+            //!
+            template <typename T>
+            BBox2D blob_bbox (const MultiArray<T,2>& in);
+
+            //! \brief Find the bounding box that circumscribes the region where in > 0
+            //!
+            //! \param[in] in : Input multiarray
+            //!
+            //! \return  BBox circumscribing the region. If there is no region where in > 0, bbox's size_x() and size_y() are set to zero
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-12-2008
+            //!
+            BBox2D blob_bbox (const ImageMask& in);
+
+            //! \brief Finds the 2D boundin boxes for a given region in a partition
+            //!
+            //! Finds the boundin boxes a the region in a partition.
+            //! Only one scan of the image is needed. If the region is not present in the
+            //! image, a bbox with zero width and height is returned.
+            //!
+            //! \tparam T : Type of the data (must be an integer type)
+            //!
+            //! \param[in] in  	 Partition image
+            //! \param[in] reg  	 Region label
+            //!
+            //! \return The bounding box of the region in the pimage partition.
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-12-2008
+            //!
+            template <typename T>
+            BBox2D region_bbox (const ImagePartition<T>& in, T reg);
+
+            //! \brief Finds the 2D bounding boxes of all the regions in a partition
+            //!
+            //! Finds the bounding boxes of all the regions in a partition.
+            //! Only one scan of the image is needed.
+            //!
+            //! \tparam T : Type of the data (must be an integer type)
+            //!
+            //! \param[in] in  	 Partition image
+            //! \param[out] bbox  	 Allocated array of bboxes where to store the results
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-12-2008
+            //!
+            template <typename T>
+            void regions_bbox (const ImagePartition<T>& in, MultiArray<BBox2D,1>& bbox);
+
+            //!
+            //! \brief Decides if the 2 bboxes overlap
+            //!   
+            //! \param[in] window_1 : First bbox
+            //! \param[in] window_2 : Second bbox
+            //!
+            //! \return True if both bboxes overlap
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-04-2011
+            //!
+            template <typename T, std::size_t D>
+            bool overlapping( const BBox<T,D>& window_1, const BBox<T,D>& window_2 );
+
+            /*!
+             * \returns the percentage of intersection of bbox1 and bbox2 respect of bbox1
+             *
+             * \param[in] bbox1 : first BBox
+             * \param[in] bbox2 : second BBox
+             *
+             * \relatedalso imageplus::BBox
+             *
+             * \todo template <T,D> test!
+             *
+             * \author 2011-05 - Xavier Suau - Creation
+             * \author 2011-06 - Albert Gil  - Moved from BBox2D class to bbox_math
+             *                                 Generalized for BBox, new implementation (without using "contains")
+             */
+            template<typename T, std::size_t D>
+            float64 overlap_percentage(const BBox<T,D>& bbox1, const BBox<T,D>& bbox2 )
+            {
+                /*
+                 * Check if there is a real overlapping
+                 */
+                if( ! overlapping(bbox1, bbox2) ) return 0.0;
+
+                /*
+                 * Compute the intersection between bb1 and bb2
+                 */
+                BBox<T,D> bbint = intersection(bbox1, bbox2);
+
+                /*
+                 * Compute the total and the intersection "area" (N-dimensional integral)
+                 */
+                float64 inter_space = bbint.space();
+                float64 total_space = bbox1.space();
+
+                return inter_space/total_space*100.0;
+            }
+
+            //!
+            //! \brief Decides if the 2 bboxes have close centers
+            //!   
+            //! \param[in] window_1  : First bbox
+            //! \param[in] window_2  : Second bbox
+            //! \param[in] distances : max center distance
+            //!
+            //! \return True if both bboxes have close centers
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-04-2011
+            //!
+            template <typename T, std::size_t D>
+            bool close_centers (const BBox<T,D>& window_1, const BBox<T,D>& window_2, const boost::array<uint64,D>& distances );
+
+            //!
+            //! \brief Get the bounding box of a list/vector/... of bboxes
+            //!   
+            //! Usage:<br>
+            //! <pre>
+            //! // With STL vector
+            //! std::vector< BBox<int64,2> > bbox_list;
+            //! for (uint64 i=0; i < 3; ++i)
+            //! {
+            //!     bbox_list.push_back(BBox<int64,2>(Coord2D<>(i,i),5,5));
+            //! }
+            //! BBox<int64,2> res = bbox_list_bbox (bbox_list);
+            //! //Same with STL list
+            //! std::list< BBox<int64,2> > bbox_list2;
+            //! for (uint64 i=0; i < 3; ++i)
+            //! {
+            //!     bbox_list2.push_back(BBox<int64,2>(Coord2D<>(i,i),5,5));
+            //! }
+            //! BBox<int64,2> res2 = bbox_list_bbox (bbox_list2);
+            //! </pre>
+            //!   
+            //! \tparam BBoxContainer : STL container (vector, list, etc) that implements a (forward) const_iterator
+            //!
+            //! \param[in] window_list : List of bboxes. Can use any valid STL container (vector, list, etc) that implements a (forward) const_iterator
+            //!
+            //! \return BBox circumscibing all the bboxes in the input list
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-04-2011
+            //!
+            template <class BBoxContainer>
+            typename BBoxContainer::value_type bbox_list_bbox ( const BBoxContainer& window_list );
+
+            //!
+            //! \brief Get the intersection of a list/vector/... of bboxes
+            //!
+            //! Usage:<br>
+            //! <pre>
+            //! // With STL vector
+            //! std::vector< BBox<int64,2> > bbox_list;
+            //! for (uint64 i=0; i < 3; ++i)
+            //! {
+            //!     bbox_list.push_back(BBox<int64,2>(Coord2D<>(i,i),5,5));
+            //! }
+            //! BBox<int64,2> res = bbox_list_intersection (bbox_list);
+            //! //Same with STL list
+            //! std::list< BBox<int64,2> > bbox_list2;
+            //! for (uint64 i=0; i < 3; ++i)
+            //! {
+            //!     bbox_list2.push_back(BBox<int64,2>(Coord2D<>(i,i),5,5));
+            //! }
+            //! BBox<int64,2> res2 = bbox_list_intersection (bbox_list2);
+            //! </pre>
+            //!   
+            //! \tparam BBoxContainer : STL container (vector, list, etc) that implements a (forward) const_iterator
+            //!
+            //! \param[in] window_list : List of bboxes. Can use any valid STL container (vector, list, etc) that implements a (forward) const_iterator
+            //!
+            //! \return Intersection of all the bboxes in the input list
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-04-2011
+            //!
+            template <class BBoxContainer>
+            typename BBoxContainer::value_type bbox_list_intersection ( const BBoxContainer& window_list );
+
+            //!
+            //! \brief Get the mean of a list/vector/... of bboxes
+            //!
+            //! Usage:<br>
+            //! <pre>
+            //! // With STL vector
+            //! std::vector< BBox<int64,2> > bbox_list;
+            //! for (uint64 i=0; i < 3; ++i)
+            //! {
+            //!     bbox_list.push_back(BBox<int64,2>(Coord2D<>(i,i),5,5));
+            //! }
+            //! BBox<int64,2> res = bbox_list_mean (bbox_list);
+            //! //Same with STL list
+            //! std::list< BBox<int64,2> > bbox_list2;
+            //! for (uint64 i=0; i < 3; ++i)
+            //! {
+            //!     bbox_list2.push_back(BBox<int64,2>(Coord2D<>(i,i),5,5));
+            //! }
+            //! BBox<int64,2> res2 = bbox_list_mean (bbox_list2);
+            //! </pre>
+            //!   
+            //! \tparam BBoxContainer : STL container (vector, list, etc) that implements a (forward) const_iterator
+            //!
+            //! \param[in] window_list : List of bboxes. Can use any valid STL container (vector, list, etc) that implements a (forward) const_iterator
+            //!
+            //! \return mean of all the bboxes in the input list
+            //!
+            //! \relatesalso imageplus::BBox
+            //!
+            //! \author Josep Ramon Morros (JRMR) -- ramon.morros@upc.edu
+            //!
+            //! \date 30-04-2011
+            //!
+            template <class BBoxContainer>
+            typename BBoxContainer::value_type bbox_list_mean_bbox ( const BBoxContainer& window_list );
+        }
+    }
+}
+
+
+/*
+ * Implementation of template methods
+ */
+namespace imageplus
+{
+    namespace math
+    {
+        namespace geometry
+        {
+            template <typename T, std::size_t D>
+            bool overlapping( const BBox<T,D>& window_1, const BBox<T,D>& window_2 )
+            {
+                for (uint64 i = 0; i < D; ++i)
+                {
+                    int64 delta     = std::abs( window_1.center()[i] - window_2.center()[i] );
+                    int64 mean_side = boost::numeric_cast<int64>(floor( 0.5 * ( window_1.side(i) + window_2.side(i) ) + 0.5));
+
+                    if (delta > mean_side)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            template <typename T, std::size_t D>
+            bool close_centers (const BBox<T,D>& window_1, const BBox<T,D>& window_2, const boost::array<uint64,D>& distances )
+            {
+                for (uint64 i = 0; i < D; ++i)
+                {
+                    if ( static_cast<uint64>(std::abs( window_1.center()[i] - window_2.center()[i] )) > distances[i] )
+                    {
+                        return false;
+                    }
+                }
+				return true;
+			}
+
+            template <class BBoxContainer>
+            typename BBoxContainer::value_type bbox_list_bbox ( const BBoxContainer& window_list )
+            {
+                typedef typename BBoxContainer::value_type bbox_type;
+
+                Coord<int64,bbox_type::dimensions> min_origin;
+                Coord<int64,bbox_type::dimensions> max_opposite;
+                
+                typename BBoxContainer::const_iterator p_elm = window_list.begin();
+                for (uint64 i = 0; i < bbox_type::dimensions; ++i)
+                {
+                    min_origin[i]   = p_elm->origin()[i];
+                    max_opposite[i] = p_elm->opposite()[i];
+                }
+
+                for( p_elm = window_list.begin(); p_elm != window_list.end(); p_elm++ )
+                {
+                    for (uint64 i = 0; i < bbox_type::dimensions; ++i)
+                    {
+                        min_origin[i]   = std::min (min_origin[i],   p_elm->origin()[i]);
+                        max_opposite[i] = std::max (max_opposite[i], p_elm->opposite()[i]);
+                    }	
+                }
+		
+                return bbox_type(min_origin, max_opposite);
+            }
+
+            template <class BBoxContainer>
+            typename BBoxContainer::value_type bbox_list_intersection ( const BBoxContainer& window_list )
+            {
+                typedef typename BBoxContainer::value_type bbox_type;
+
+                Coord<int64,bbox_type::dimensions> max_origin;
+                Coord<int64,bbox_type::dimensions> min_opposite;
+                
+                typename BBoxContainer::const_iterator p_elm = window_list.begin();
+                for (uint64 i = 0; i < bbox_type::dimensions; ++i)
+                {
+                    max_origin[i]   = p_elm->origin()[i];
+                    min_opposite[i] = p_elm->opposite()[i];
+                }
+
+                for( p_elm = window_list.begin(); p_elm != window_list.end(); p_elm++ )
+                {
+                    for (uint64 i = 0; i < bbox_type::dimensions; ++i)
+                    {
+                        max_origin[i]   = std::max (max_origin[i],   p_elm->origin()[i]);
+                        min_opposite[i] = std::min (min_opposite[i], p_elm->opposite()[i]);
+                    }	
+                }
+		
+                return bbox_type (max_origin, min_opposite);
+            }
+
+            template <class BBoxContainer>
+            typename BBoxContainer::value_type bbox_list_mean_bbox ( const BBoxContainer& window_list )
+            {
+                typedef typename BBoxContainer::value_type bbox_type;
+
+                Coord<int64,bbox_type::dimensions>        mean_origin;
+                boost::array<int64,bbox_type::dimensions> mean_side;
+
+                // Initialize to zero
+                for (uint64 i = 0; i < bbox_type::dimensions; ++i)
+                {
+                    mean_origin[i] = 0;
+                    mean_side[i]   = 0;
+                }
+
+                for( typename BBoxContainer::const_iterator p_elm = window_list.begin(); p_elm != window_list.end(); p_elm++ )
+                {
+                    for (uint64 i = 0; i < bbox_type::dimensions; ++i)
+                    {
+                        mean_origin[i] += p_elm->origin()[i];
+                        mean_side[i]   += p_elm->side(i);
+                    }	
+                }
+
+                std::transform (mean_origin.begin(), mean_origin.end(), mean_origin.begin(), std::bind2nd(std::divides<int64>(),window_list.size()));
+                std::transform (mean_side.begin(),   mean_side.end(),   mean_side.begin(),   std::bind2nd(std::divides<int64>(),window_list.size()));
+
+                Coord<int64,bbox_type::dimensions> mean_opposite = (mean_origin + mean_side);
+                mean_opposite -= (int64)1;
+
+                return bbox_type (mean_origin, mean_opposite);
+            }
+        }
+    }
+}
+
+#endif // IMAGEPLUS_MATH_GEOMETRY_BBOX_MATH_HPP

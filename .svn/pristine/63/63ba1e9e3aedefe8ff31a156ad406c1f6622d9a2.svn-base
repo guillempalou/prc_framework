@@ -1,0 +1,101 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file line.hpp
+//!
+
+#ifndef IMAGEPLUS_MATH_GEOMETRY_LINE_HPP
+#define IMAGEPLUS_MATH_GEOMETRY_LINE_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/geometric_shape.hpp>
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace geometry
+        {
+            //!
+            //! \brief Class to represent segments of rects in the 2D world
+            //!
+            //! This class is a GeometricShape, so you can create a Line and use it to access an Image.
+            //!
+            //! \author Jordi Salvador Marcos <jordi@gps.tsc.upc.edu>
+            //! \date 29-09-2008
+            //!
+            //! \todo Add tests
+            //! \todo Add code for proper constructor with bounding limits
+            //!
+            template <typename T>
+            class Line2D : public GeometricShape<T,2>
+            {
+            public:
+                
+                //!
+                //! \brief Empty line constructor 
+                //!
+                Line2D() {}
+                
+                //!
+                //! \brief Basic constructor 
+                //!
+                //! \param[in] x1 : origin coordinate
+                //! \param[in] x2 : end coordinate
+                //!
+                Line2D(const Coord<T,2> & x1, const Coord<T,2> & x2);
+                
+            private:
+                
+                //! Origin of the line
+                Coord<T,2> _x1;
+                
+                //! End of the line
+                Coord<T,2> _x2;
+            };
+            
+
+            //!
+            //! \brief Class to represent segments of rects in the 3D world
+            //!
+            //! This class is a GeometricShape, so you can create a Line and use it to access an Image.
+            //!
+            //! \author Adolfo Lopez <adolf.lopez@upc.edu>
+            //! \date   2009-07
+            //!
+            //! \todo Add tests
+            //!
+            template <typename T>
+            class Line3D : public GeometricShape<T,3>
+            {
+            public:
+                
+                //!
+                //! \brief Empty line constructor 
+                //!
+                Line3D() {}
+                
+                //!
+                //! \brief Basic constructor 
+                //!
+                //! \param[in] x1 : origin coordinate
+                //! \param[in] x2 : end coordinate
+                //!
+                Line3D(const Coord<T,3> & x1, const Coord<T,3> & x2);
+                
+            private:
+                
+                //! Origin of the line
+                Coord<T,3> _x1;
+                
+                //! End of the line
+                Coord<T,3> _x2;
+            };
+        }//namespace geometry
+    }//namespace math
+} //namespace imageplus
+
+#endif

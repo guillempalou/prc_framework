@@ -1,0 +1,51 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file quadratic_function.test
+//!
+//!  Tests for the math operations on BBox classs
+//!
+
+#include <imageplus/math/optimization/nelder_mead.hpp>
+
+BOOST_AUTO_TEST_SUITE ( nelder_mead );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::optimization;
+
+class DifficultFunction : public numeric::ScalarFunction {
+public:
+
+	DifficultFunction() : numeric::ScalarFunction(2) {
+
+	}
+
+	inline const float64 value(const Vector& x) {
+		return 100*(x(1) - x(0)*x(0))*(x(1) - x(0)*x(0)) + (1-x(0))*(1-x(0));
+	}
+};
+
+BOOST_AUTO_TEST_CASE( nelder_mead_test )
+{
+	DifficultFunction f;
+	NelderMead nm(f);
+
+	Vector initial_point(2);
+	initial_point << 1.2,
+					 1;
+
+	nm.minimize(initial_point);
+
+	Vector solution(2);
+	solution << 1,
+				1;
+	Vector minimum_point = nm.minimum_point();
+
+	BOOST_CHECK((minimum_point-solution).norm() < 1e-3);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

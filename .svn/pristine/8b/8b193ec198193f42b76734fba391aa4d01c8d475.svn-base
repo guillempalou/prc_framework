@@ -1,0 +1,32 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System                                                    #
+#                                                                            #
+#  This build system is based on SCons (http://www.scons.org/)               #
+#                                                                            #
+# This file only calls to the main configuration file of the system.         #
+#                                                                            #
+# Actually it's a Python script launched by the "scons" command, which       #
+# works similar to "Makefile" when read by the "make" command.               #
+#                                                                            #
+#                                                                            #
+#  AUTHOR:       Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#  CONTRIBUTIONS:                                                            #
+#                Javier Ruiz, UPC                                            #
+#                Josep R. Casas, UPC                                         #
+#  DERIVED FROM WORK OF :                                                    #
+#                Shadi El Hajj, UPC                                          #
+#                Joachim Neumann, UPC                                        #
+#                                                                            #
+##############################################################################
+
+
+SConscript('#builder/main.build')

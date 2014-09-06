@@ -1,0 +1,134 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+//!
+//! \example partition_iterators_example.cpp
+//!
+//! This is an example of how to use the class PartitionTree to represent multi-sacle partition (BPTs for instance)
+//!   and move through the regions using iterators
+//!
+
+#ifndef IMAGEPLUS_DOXYGEN_DO_NOT_COMMENT_MAIN_FUNCTION
+
+#include <iostream>
+#include <string>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/io_types.hpp>
+
+using namespace imageplus;
+using namespace io;
+
+
+int main (int argc, char* argv[])
+{   
+    // This type definition will come in handy
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    
+    // The class Partition is the one that stores the BPT.
+    typedef Partition<RegionType> partition_type;
+    
+    // We build a simple ImagePartition with 5 regions
+    ImagePartition<> temp_part(3,3);
+    temp_part[0][0] = 1;     temp_part[1][0] = 1;     temp_part[2][0] = 2;
+    temp_part[0][1] = 1;     temp_part[1][1] = 2;     temp_part[2][1] = 2;
+    temp_part[0][2] = 3;     temp_part[1][2] = 4;     temp_part[2][2] = 5;
+
+    // We build the Partition from the ImagePartition. By now, it only has the regions of the base partition
+    partition_type my_partition(temp_part);
+    
+    // Now we check how we can iterate through the neighbors of a region
+    std::cout << " ------- Neighbors --------" << std::endl;
+    std::cout << "Neighbors of region 2: ";
+    RegionType& my_reg = my_partition[2];
+    RegionType::neighbor_iterator neigh_it = my_reg.neighbors_begin();
+     
+    // We can iterate through all the neighbors of a region
+    for(; neigh_it!=my_reg.neighbors_end(); ++neigh_it)
+    {
+        // Note that the value NULL represents the border of the region
+        if(*neigh_it!=NULL)
+            std::cout << (*neigh_it)->label() << ",";
+        else
+            std::cout << "Border,";
+    }
+    std::cout << std::endl;
+
+    // We can also check whether a specific region is neighbor 
+    neigh_it = my_reg.neighbors_find(&my_partition[3]);
+    if(neigh_it==my_reg.neighbors_end())
+        std::cout << "Region 3 is not a neighbor of region " <<  my_reg.label() << "." << std::endl;
+    else
+        std::cout << "Region 3 is a neighbor of region "     <<  my_reg.label() << "." << std::endl;
+    std::cout << " --------------------------" << std::endl;
+    
+    // We create now some new regions merging other two regions, via the their label
+    merge_regions(1,2,6,my_partition);  // Region 1 and 2 will form a new region 6
+    merge_regions(4,5,7,my_partition);
+    merge_regions(3,6,10,my_partition); // Please note that the labels do not necessarily have to be consecutive
+ 
+    std::cout << std::endl << " ------ Original tree -------" << std::endl;
+    
+    // We iterate through all the regions (global_iterator)
+    std::cout << "All regions: ";
+    partition_type::global_iterator glob_it = my_partition.begin();
+    for(; glob_it!=my_partition.end(); ++glob_it)
+    {
+        std::cout << (*glob_it).label() << ",";
+    }
+    std::cout << std::endl;
+    
+    // We iterate just through leaf regions (leaves_iterator)
+    // Note how just the type of iterator has to be changed
+    std::cout << "Leaf regions: ";
+    partition_type::leaves_iterator leaf_it = my_partition.begin();
+    for(; leaf_it!=my_partition.end(); ++leaf_it)
+    {
+        std::cout << (*leaf_it).label() << ",";
+    }
+    std::cout << std::endl;
+      
+    //  We iterate just through root regions (roots_iterator)
+    std::cout << "Root regions: ";
+    partition_type::roots_iterator root_it = my_partition.begin();
+    for(; root_it!=my_partition.end(); ++root_it)
+    {
+        std::cout << (*root_it).label() << ",";
+    }
+    std::cout << std::endl << " --------------------------" << std::endl << std::endl;
+    
+    
+    // Please note that there are also non_roots_iterator and non_leaves_iterator
+    
+    
+    // Now we can prune a part of the tree we do not need anymore
+    // In this case, we delete all the subtree below Region 10 
+    prune(10,my_partition);
+
+    std::cout << std::endl << " ------ Pruned tree -------" << std::endl;
+    
+    // So let's check the result
+    std::cout << "All regions: ";
+    glob_it = my_partition.begin();
+    for(; glob_it!=my_partition.end(); ++glob_it)
+    {
+        std::cout << (*glob_it).label() << ",";
+    }
+    std::cout << "    <-- Note how regions 1,2,3,6 have been removed (subtree of 10)" << std::endl;
+    
+    
+    std::cout << "Leaf regions: ";
+    leaf_it = my_partition.begin();
+    for(; leaf_it!=my_partition.end(); ++leaf_it)
+    {
+        std::cout << (*leaf_it).label() << ",";
+    }
+    std::cout << "    <-- Now region 10 is a leave" << std::endl;
+    
+    
+    std::cout << " --------------------------" << std::endl << std::endl;
+}
+
+
+#endif

@@ -1,0 +1,309 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file draw_in_image.hpp
+//!
+//!  Interface for image drawing basic tools
+//!
+
+#ifndef IMAGEPLUS_TOOLBOX_DRAW_IN_IMAGE_HPP
+#define IMAGEPLUS_TOOLBOX_DRAW_IN_IMAGE_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/math/geometry/bbox_math.hpp>
+
+namespace imageplus
+{
+	//! 
+	//! \brief Applications addressed to improve ImagePlus tools interfaces and result visualization.
+    //!
+    namespace toolbox
+	{
+		//! 
+		//! \brief Draws a GeometricShape in a RGB image.
+		//!
+		//! The function checks if  every coordinate falls inside the image, thus allowing shapes that fall partially
+		//! or completely outside the image (in the latter nothing is drawn, but no exception is thrown).
+		//! The function does not check the color range. Programmer should care about the color range depending
+		//! on the image depth. Ex: for uint8, color components are ranged from 0 to 255
+    	//!
+		//! \param[in,out] im : Image where the circle is going to be drawn.
+		//! \param[in]  shape : Set of coordinates belonging to a particular shape
+		//! \param[in]      R : red component of the desired circle color.
+		//! \param[in]      G : green component of the desired circle color.
+		//! \param[in]      B : blue component of the desired circle color.
+        //!
+		//! \author Adolfo Lopez <alopez@gps.tsc.upc.edu>
+		//!
+		void draw_geometric_shape( ImageRGB<uint8> &               im, 
+				                   const GeometricShape<int64,2> & shape, 
+				                   uint8                           R, 
+				                   uint8                           G, 
+				                   uint8                           B );
+
+		//! 
+		//! \brief Draws a circle in a RGB image given the radius, the center and a RGB color.
+		//!
+		//! The function checks if  every coordinate falls inside the image, thus allowing circles that fall partially
+		//! or completely outside the image (in the latter nothing is drawn, but no exception is thrown).
+		//! The function does not check the color range. Programmer should care about the color range depending
+		//! on the image depth. Ex: for uint8, color components are ranged from 0 to 255
+		//!
+		//! \param[in,out]    im : Image where the circle is going to be drawn.
+		//! \param[in]    radius : Circle radius
+		//! \param[in]    center : A Coord2D<> with image coordinate of the circle's center
+		//! \param[in]         R : red component of the desired circle color.
+		//! \param[in]         G : green component of the desired circle color.
+		//! \param[in]         B : blue component of the desired circle color.
+		//! \param[in] full_mode : When set to 1, the circle is drawn full (default = empty (false)).
+		//! \param[in] opacity   : opacity of the line. Value for the ouput pixels is: opacity * R + (1.-opacity)*im(RED_CHANNEL)[pixel] (same for other channels)
+		//!
+		//! \todo Use Geometric Shape
+		//!
+		//! \author Adolfo Lopez <alopez@gps.tsc.upc.edu>
+		//! \author Ramon Morros <ramon.morros@upc.edu> (ImageMagick version)
+		//!
+		void draw_circle ( ImageRGB<uint8> &     im, 
+				           float64               radius, 
+				           const Coord<int64,2>& center,
+				           uint8                 R, 
+				           uint8                 G, 
+				           uint8                 B, 
+                           bool                  full_mode = false,
+                           float64               opacity   = 1.0 );
+		
+		//! 
+		//! \brief Draws a line from an origin coordinate to and ending coordinate in a RGB image.
+		//!
+		//! Line can be continuous or a set of isolated pixels.
+		//!
+		//! The function checks if  every coordinate falls inside the image, thus allowing lines that fall partially
+		//! or completely outside the image (in the latter nothing is drawn, but no exception is thrown).
+		//! The function does not check the color range. Programmer should care about the color range depending
+		//! on the image depth. Ex: for uint8, color components are ranged from 0 to 255
+		//!
+		//! \param[in,out] im      : Image where the line is going to be drawn.
+		//! \param[in]     c1      : Origin coordinate (Coord2D)
+		//! \param[in]     c2      : End cooridnate (Coord2D)
+		//! \param[in]      R      : red component of the desired circle color.
+		//! \param[in]      G      : green component of the desired circle color.
+		//! \param[in]      B      : blue component of the desired circle color.
+		//! \param[in]   step      : Pixel step. Set to 1 for continuous line.
+		//! \param[in]   opacity   : opacity of the line. Value for the ouput pixels is: opacity * R + (1.-opacity)*im(RED_CHANNEL)[pixel] (same for other channels)
+		//!
+		//! \todo Use Geometric Shape
+		//!
+		//! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+		//! \author Adolfo López <alopez@gps.tsc.upc.edu>
+		//! \author Ramon Morros <ramon.morros@upc.edu>
+		//!
+		void draw_line( ImageRGB<uint8> &     im, 
+				        const Coord<int64,2>& c1,
+				        const Coord<int64,2>& c2,
+				        uint8                 R,
+				        uint8                 G,
+				        uint8                 B,
+				        int32                 step = 1,
+                        float64               opacity = 1.0);
+		
+		//! 
+		//! \brief Draws an image-axis oriented rectangle given its centroid.
+		//!
+		//! Line can be continuous or a set of isolated pixels.
+		//! This function is addressed to visualize tracking results.
+		//!
+		//! The function checks if every coordinate falls inside the image, thus allowing lines that fall partially
+		//! or completely outside the image (in the latter nothing is drawn, but no exception is thrown).
+		//! The function does not check the color range. Programmer should care about the color range depending
+		//! on the image depth. Ex: for uint8, color components are ranged from 0 to 255
+		//!
+		//! \param[in,out] output_image : Image where the rectangle is going to be drawn.
+		//! \param[in]           center : Centroid coordinate (Coord2D)
+		//! \param[in]            width : Rectangle width, parallel to X axis.
+		//! \param[in]           height : Rectangle height, parallel to Y axis.
+		//! \param[in]                R : red component of the desired rectangle color.
+		//! \param[in]                G : green component of the desired rectangle color.
+		//! \param[in]                B : blue component of the desired rectangle color.
+		//! \param[in]             step : Pixel step. Set to 1 for continuous line.
+		//! \param[in]        full_mode : When set to 1, the rectangle is drawn full (default = empty (false)).
+		//! \param[in]        opacity   : opacity of the line. Value for the ouput pixels is: opacity * R + (1.-opacity)*im(RED_CHANNEL)[pixel] (same for other channels)
+		//!
+		//! \author Ramon Llorca Queralt <allorca@gps.tsc.upc.edu>
+		//! \author Adolfo López <alopez@gps.tsc.upc.edu>
+		//! \author Ramon Morros <ramon.morros@upc.edu> (ImageMagick version)
+		//!
+		void draw_rectangle( ImageRGB<uint8>&    output_image, 
+				             const Coord<int64,2>& center,
+				             float64           width, 
+				             float64           height, 
+				             uint8             R,
+				             uint8             G, 
+				             uint8             B, 
+				             int32             step      = 1,
+				             bool              full_mode = false,
+                             float64           opacity   = 1.0 );
+		//! 
+		//! \brief Draws an image-axis oriented rectangle given its bounding box.
+		//!
+		//! Line can be continuous or a set of isolated pixels.\n
+		//! The function checks if every coordinate falls inside the image, thus allowing lines that fall partially
+		//! or completely outside the image (in the latter nothing is drawn, but no exception is thrown).
+		//! The function does not check the color range. 
+		//!
+		//! \param[in,out] output_image : Image where the rectangle is going to be drawn.
+		//! \param[in]             rect : Rectangle bounding box
+		//! \param[in]                R : red component of the desired rectangle color.
+		//! \param[in]                G : green component of the desired rectangle color.
+		//! \param[in]                B : blue component of the desired rectangle color.
+		//! \param[in]             step : Pixel step. Set to 1 for continuous line.
+		//! \param[in]        full_mode : When set to 1, the rectangle is drawn full (default = empty (false)).
+		//! \param[in]          opacity : opacity of the line. Value for the ouput pixels is: opacity * R + (1.-opacity)*im(RED_CHANNEL)[pixel] (same for other channels)
+		//!
+		//! \author Ramon Morros <ramon.morros@upc.edu>
+		//!
+		void draw_rectangle( ImageRGB<uint8>&      output_image, 
+				             const BBox2D&         rect, 
+				             uint8                 R,
+				             uint8                 G, 
+				             uint8                 B, 
+				             int32                 step      = 1,
+				             bool                  full_mode = false,
+                             float64               opacity   = 1.0 );
+		
+		//!
+		//! \brief Draws a cross centered in (cxi, cyi) and with the width and height specified. <br>
+		//!
+		//! Uses draw_line function. The cross has a 10% of the size specified.
+		//!
+		//! The function checks if every coordinate falls inside the image, thus allowing lines that fall partially
+		//! or completely outside the image (in the latter nothing is drawn, but no exception is thrown).
+		//! The function does not check the color range. Programmer should care about the color range depending
+		//! on the image depth. Ex: for uint8, color components are ranged from 0 to 255
+		//!
+		//! \param[in,out] output_image : Image where the cross is going to be drawn.
+		//! \param[in]           center : Centroid coordinate (Coord2D)
+		//! \param[in]            width : Cross width (10% of this value).
+		//! \param[in]           height : Cross height (10% of this value).
+		//! \param[in]                R : red component of the desired cross color.
+		//! \param[in]                G : green component of the desired cross color.
+		//! \param[in]                B : blue component of the desired cross color.
+		//! \param[in]             step : Pixel step. Set to 1 for continuous line.
+		//!
+        //! \tparam C : The coord type
+        //!
+		//! \todo Use Geometric Shape
+		//!
+		//! \author Ramon Llorca Queralt <allorca@gps.tsc.upc.edu>
+		//!
+		void draw_cross( ImageRGB<uint8>&  output_image, 
+				         const Coord<int64,2>& center,
+				         float64           width,
+						 float64           height, 
+						 uint8             R, 
+						 uint8             G, 
+						 uint8             B,
+						 int32             step = 1 );
+
+		//!
+		//! \brief Draws a point centered in (posx, posy). <br>
+		//!
+		//!
+		//!
+		//! \param[in,out]       im : Image where the point is going to be drawn.
+		//! \param[in]          pos : Centroid coordinate (Coord2D)
+		//! \param[in]            R : red component of the desired cross color.
+		//! \param[in]            G : green component of the desired cross color.
+		//! \param[in]            B : blue component of the desired cross color.
+		//!
+		//! \tparam C : The coord type
+		//!
+		//!
+		//! \author Xavier Suau  <xavier.suau@upc.edu>
+		//!
+		void draw_point(ImageRGB<uint8> &   im,
+		                const Coord<int64,2>&   pos,
+		                uint8               R,
+		                uint8               G,
+		                uint8               B);
+
+		//!
+		//! \brief Draws a vertical-horizontal cross of a user-defined size, centered at (centerx, centery). <br>
+		//!
+		//! Uses draw_point function.
+		//!
+		//! \param[in,out] image : Image where the cross is going to be drawn.
+		//! \param[in]    center : Centroid coordinate (Coord2D)
+		//! \param[in]      size : Cross' size
+		//! \param[in]         R : red component of the desired cross color.
+		//! \param[in]         G : green component of the desired cross color.
+		//! \param[in]         B : blue component of the desired cross color.
+		//!
+		//! \tparam C : The coord type
+		//!
+		//! \author Xavier Suau  <xavier.suau@upc.edu>
+		//!
+		void draw_v_cross( ImageRGB<uint8>&  image,
+		                   const Coord<int64,2>& center,
+		                   int64             size,
+		                   uint8             R,
+		                   uint8             G,
+		                   uint8             B);
+		//!
+		//! \brief Draws a bounding box. <br>
+		//!
+		//! Uses draw_rectangle function.
+		//!
+		//! \param[in,out]       im : Image where the bounding box is going to be drawn.
+		//! \param[in]         bbox : Bounding Box 2D to be drawn.
+		//! \param[in]            R : red component of the desired cross color.
+		//! \param[in]            G : green component of the desired cross color.
+		//! \param[in]            B : blue component of the desired cross color.
+		//!
+		//! \author Xavier Suau  <xavier.suau@upc.edu>
+		//!
+		//! \todo It should be replaced by draw_rectangle with BBox? (rebased from faces)
+		//!
+		void draw_bbox( ImageRGB<uint8>& im,
+		                const BBox2D&    bbox,
+		                uint8            R,
+		                uint8            G,
+		                uint8            B);
+
+		//!
+		//! \brief Writes text on the image
+		//!
+		//! The function does not check the color range. Programmer should care about the color range depending
+		//! on the image depth. Ex: for uint8, color components are ranged from 0 to 255
+        //!
+		//! \param[in,out]        image : Image where the bounding box is going to be drawn.
+		//! \param[in]             text : Text string to be drawn
+		//! \param[in]              pos : Coordinate of the text origin
+		//! \param[in]                R : red component of the desired color (0-255).
+		//! \param[in]                G : green component of the desired color (0-255).
+		//! \param[in]                B : blue component of the desired color (0-255).
+		//! \param[in]             font : Font to use (i.e. "Helvetica")
+		//! \param[in]  font_point_size : Size of the font in points (i.e. 13)
+		//! \param[in]        under_box : Whether to draw a black box under rendered text
+		//!
+		//! \author Ramon Morros  <ramon.morros@upc.edu>
+		//!
+        void render_text (ImageRGB<uint8>&   image,
+                          const std::string& text, 
+                          const Coord2D<>&   pos,  
+                          uint8              R,
+                          uint8              G,
+                          uint8              B,
+                          const std::string& font,
+                          uint64             font_point_size,
+                          bool               under_box);
+
+	}//toolbox
+}//imageplus
+
+
+
+
+#endif

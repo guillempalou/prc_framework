@@ -1,0 +1,34 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+# User List Template                                                         #
+#                                                                            #
+# This file is only a template and you shouldn't edit it.                    #
+#                                                                            #
+# To remove some modules from the builder, please follow these instructions: #
+#                                                                            #
+# 0.- Create a local directory in the root directory, and name it "user"     # 
+# 1.- Copy this file as "user.list" in the "user" directory                  #
+# 2.- Open the new file just created before                                  #
+# 3.- Remove these instructions from the new file                            #
+# 4.- Add the modules to remove to the list below                            #
+#                                                                            #
+# Please, note that the "user" directory and its files SHOULD NOT be added   #
+# to the repository.                                                         #
+#                                                                            #
+##############################################################################
+
+
+modules = Split('''
+
+
+''')
+
+Return('modules')

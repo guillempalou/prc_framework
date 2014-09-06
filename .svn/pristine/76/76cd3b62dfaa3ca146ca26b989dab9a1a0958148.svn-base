@@ -1,0 +1,232 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file kalman.cpp
+//!
+//!  Kalman filter algorithm.
+//!
+//! \author Jaime Gallego Vila <jgallego@gps.tsc.upc.edu>
+//!
+
+#include <imageplus/filters/kalman.hpp>
+
+#include <imageplus/math/numeric/products.hpp>
+#include <imageplus/math/numeric/matrices.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+
+
+
+using namespace imageplus;
+using namespace imageplus::filters;
+using namespace imageplus::math;
+using namespace imageplus::math::numeric;
+
+using namespace std;
+
+
+
+Kalman::Kalman( const MultiArray<float64, 2>& A, const MultiArray<float64, 2>& Q, const MultiArray<float64, 2>& H,
+                const MultiArray<float64, 2>& R, const MultiArray<float64, 2>& P, const MultiArray<float64, 1>& Xk)
+            : _A(A), _Q(Q), _H(H), _Xk(Xk), _P(P), _R(R)
+{
+    _AT=trans(_A);
+    _HT=trans(_H);
+
+    _state_vector_dimensions = A.dims(0);
+    _observation_dimension = R.dims(0);
+
+    ASSERT(_A.dims(1) == _state_vector_dimensions, "Kalman filter error. Matrix A must have same dimensions in x and y"); 
+    ASSERT (_R.dims(1) == _observation_dimension,"Kalman filter error. Matrix _R must have same dimensions in x and y"); 
+    ASSERT (((_Q.dims(0) == _state_vector_dimensions) && (_Q.dims(1) == _state_vector_dimensions)), "Kalman filter error. Matrix _Q dimensions error");
+    ASSERT (( (_P.dims(0) == _state_vector_dimensions) && (_P.dims(1) == _state_vector_dimensions)), "Kalman filter error. Matrix _P dimensions error");
+    ASSERT (((_H.dims(0) == _state_vector_dimensions) && (_H.dims(1) == _observation_dimension)), "Kalman filter error. Matrix _H dimensions error");
+    ASSERT ((_Xk.dims(0) == _state_vector_dimensions), "Kalman filter error. Vector _Xk dimensions error");
+}
+
+
+Kalman::~Kalman()
+{
+}
+
+void Kalman::kalman_init( const MultiArray<float64, 2>& A, const MultiArray<float64, 2>& Q, const MultiArray<float64, 2>& H,
+                          const MultiArray<float64, 2>& R, const MultiArray<float64, 2>& P, const MultiArray<float64, 1>& Xk)
+{
+    _A=A;
+    _Q=Q;
+    _H=H;
+    _R=R;
+    _P=P;
+    _Xk=Xk;
+    
+    _AT=trans(_A);
+    _HT=trans(_H);
+    
+    _state_vector_dimensions = A.dims(0);
+    _observation_dimension = R.dims(0);
+
+
+    ASSERT(_A.dims(1) == _state_vector_dimensions, "Kalman filter error. Matrix A must have same dimensions in x and y"); 
+    ASSERT (_R.dims(1) == _observation_dimension,"Kalman filter error. Matrix _R must have same dimensions in x and y"); 
+    ASSERT (((_Q.dims(0) == _state_vector_dimensions) && (_Q.dims(1) == _state_vector_dimensions)), "Kalman filter error. Matrix _Q dimensions error");
+    ASSERT (( (_P.dims(0) == _state_vector_dimensions) && (_P.dims(1) == _state_vector_dimensions)), "Kalman filter error. Matrix _P dimensions error");
+    ASSERT (((_H.dims(0) == _state_vector_dimensions) && (_H.dims(1) == _observation_dimension)), "Kalman filter error. Matrix _H dimensions error");
+    ASSERT ((_Xk.dims(0) == _state_vector_dimensions), "Kalman filter error. Vector _Xk dimensions error");
+}
+
+
+void Kalman::kalman_process( const MultiArray<float64, 1>& Zk)
+{
+    ASSERT ((Zk.dims(0) == _observation_dimension), "Kalman filter error. Observation vector Zk dimensions error");
+    
+    _kalman_predict();
+    _kalman_update(Zk);
+}
+
+
+void Kalman::_kalman_predict()
+{
+    //Project the state ahead 
+    //Xk= A·X[k-1]
+    
+    _Xk = prod(_A, _Xk);
+    
+
+    //Project the error covariance ahead
+//    Pk=A*P
+    
+    _P = prod(_A, _P);
+    
+    
+    //    Pk=A*P*A^T
+    _P = prod(_P, _AT);
+    
+    
+    //    Pk=A*P*A'+Q;
+    
+     sum(_P,_Q,_P); 
+}
+
+
+void Kalman::_kalman_update(const MultiArray<float64, 1>& Zk)
+{
+
+    uint32 y_size = _state_vector_dimensions;
+
+    MultiArray<float64, 2> Idendity_matrix;
+    
+    Idendity_matrix = identity_matrix<float64>(uint64(y_size));
+    
+    //
+    // Compute the Kalman Gain K=Pk*HT*inv(H'*Pk*H+R);
+    //
+    
+    //H*Pk*
+    MultiArray<float64, 2> Kaux = prod(_H, _P); //2x4
+    
+    //H*Pk*HT
+    MultiArray<float64, 2> Kaux2 = prod(Kaux, _HT); //2x2
+    
+    //H*Pk*HT+R
+    Kaux2 = Kaux2 + _R;     //2x2
+    
+    //inv(H'*Pk*HT+R)
+    MultiArray<float64, 2> Kaux3 = invert_matrix(Kaux2);
+    
+    //Pk*HT
+    MultiArray<float64, 2> Kaux4 =  prod(_P, _HT);    //4x2
+    
+    //K=Pk*HT*inv(H'*Pk*H+R);
+    MultiArray<float64, 2> K = prod(Kaux4, Kaux3);
+    
+    //
+    // Update estimate with measurement Zk    Xk = x+K*(z-H'*xp)
+    //
+    
+    //H*Xk
+    MultiArray<float64, 1> Xkaux2 = prod (_H, _Xk);
+    
+    //z-H*Xk
+    Xkaux2 = Zk - Xkaux2;
+    
+    //K*(z-H'*xp)
+    MultiArray<float64, 1> Xkaux = prod(K, Xkaux2);
+    
+    //x+K*(z-H'*xp)
+    MultiArray<float64, 1> Xkaux4 = _Xk + Xkaux;
+    
+    //x+K*(z-H'*xp)
+    _Xk = Xkaux4;  // --> Vector with the estimated parameters!!!
+    
+    //
+    // Update the error covariance        P=(I-K*H)*_P;
+    //
+    
+    //K*H
+    MultiArray<float64, 2> Pkaux = prod(K, _H);
+    
+    //(I-K*H)
+    MultiArray<float64, 2> Pkaux2= Idendity_matrix - Pkaux;
+    
+    //P = (I-K*H)*_P
+    _P = prod (Pkaux2, _P);
+}
+
+
+const Kalman& Kalman::operator=(const Kalman & kalman_filter_in)
+{
+    this->_A    =    kalman_filter_in._A;
+    this->_AT    =    kalman_filter_in._AT;
+    this->_Q    =    kalman_filter_in._Q;
+    this->_H    =    kalman_filter_in._H;
+    this->_HT    =    kalman_filter_in._HT;
+    this->_R    =    kalman_filter_in._R;
+    this->_P    =    kalman_filter_in._P;
+    this->_Xk    =    kalman_filter_in._Xk;
+    
+    this->_state_vector_dimensions = kalman_filter_in._state_vector_dimensions;
+    this->_observation_dimension = kalman_filter_in._observation_dimension;
+    
+    return kalman_filter_in;
+}
+
+
+void Kalman::A( const MultiArray<float64, 2>& A_in)
+{
+    _A=A_in ;
+    _AT=trans(_A);
+}
+
+
+void Kalman::H( const MultiArray<float64, 2>& H_in)
+{
+    _H=H_in;
+    _HT=trans(_H);
+}
+
+
+std::ostream& operator<<(std::ostream& os, const filters::Kalman& m)
+{
+    os<<"Matrix A"<<std::endl;
+    os<<m.A();
+        
+    os<<"Matrix H"<<std::endl;
+    os<<m.H();
+        
+    os<<"Matrix Q"<<std::endl;
+    os<< m.Q();
+        
+    os<<"Matrix R"<<std::endl;
+    os<<m.R();
+        
+    os<<"Matrix P"<<std::endl;
+    os<<m.P();
+        
+    os<<"Matrix Xk"<<std::endl;
+    os<<m.Xk();
+    
+    return os;
+}
+

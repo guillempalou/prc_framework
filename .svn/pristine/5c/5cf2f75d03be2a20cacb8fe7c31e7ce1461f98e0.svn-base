@@ -1,0 +1,304 @@
+/*
+ * morph_local_depth.cpp
+ *
+ *  Created on: May 2, 2013
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/partition/hierarchical_region_partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <imageplus/descriptors/color/color_mean.hpp>
+#include <imageplus/bpt/energy_minimization/mumford_shah.hpp>
+#include <imageplus/bpt/models/mean_color_distance.hpp>
+
+#include <imageplus/monocular_depth/conflict_resolution/join_components_and_order.hpp>
+#include <imageplus/monocular_depth/conflict_resolution/resolve_depth_conflicts.hpp>
+
+#include <boost/filesystem.hpp>
+#include <iomanip>
+#include <iostream>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef ImageSignal<float64,4>																		ImageRGBD;
+typedef ImageSignal<float64,3> 																		ImageType;
+
+typedef ImageType::coord_type																		coord2d;
+typedef ImageType::coord_float_type																	coord2df;
+typedef ImageType::value_type																		rgb_type;
+
+typedef HierarchicalRegion<coord2d>																	Region2D;
+typedef segmentation::HierarchicalRegionPartition<Region2D>											BPT;
+typedef BPT::PartitionType																			PartitionType;
+
+// estimate flow models (too costly)
+typedef bpt::MumfordShahCost<BPT, ImageType>			 											MumfordShahCostFunction;
+typedef bpt::BinaryPruner<BPT,ImageType,MumfordShahCostFunction>									Pruner;
+
+typedef bpt::MeanColorDistanceModel<ImageType, BPT::RegionType>										DistanceModelType;
+
+typedef math::graphs::BoostGraph<math::graphs::kGraphBidirectional, math::graphs::NodeMaxFlowProperties, math::graphs::EdgeMaxFlowProperties>  DOG;
+
+ImageType estimate_relative_depth(BPT& bpt, ImageType& img, ImageType& depth, PartitionType& partition, std::set<uint64> regs) {
+
+	std::map<uint64, std::map<uint64, bool> > 		adjacent;
+	std::map<uint64, std::map<uint64, float64> > 	relations;
+	std::map<uint64, std::map<uint64, float64> > 	num_relations;
+	std::map<uint64,uint64>							num_pixels;
+	std::map<uint64,float64>						mean_depth;
+
+	std::map<uint64, std::vector<float64> > depth_histograms;
+	std::map<uint64, std::vector<float64> > cumulative;
+
+	std::cout << "There are " << regs.size() << " regions" << std::endl;
+
+	//find mask for contours
+	/*int64 R = 10;
+	ImageSignal<float64,1> edge_mask(img.sizes());
+	for (ImageType::iterator p = depth.begin(); p != depth.end(); ++p) {
+		bool edge = false;
+		coord2d upper = p.pos() - coord2d(R,R);
+		coord2d lower = p.pos() + coord2d(R,R);
+		for (ImageType::roi_iterator c = depth.roi_begin(upper,lower); c != depth.roi_end(upper,lower); ++c) {
+			if ((c.pos() - p.pos()).squaredNorm() > R*R) continue;
+			if (partition(c.pos())(0) != partition(p.pos())(0)) {
+				edge = true;
+				break;
+			}
+		}
+		//std::cout << "Pos " << p.pos().transpose() << " " << edge << std::endl;
+		edge_mask(p.pos())(0) = edge;
+	}*/
+
+	//depth histograms
+	for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r) {
+		depth_histograms[*r] = std::vector<float64>(256,0);
+		cumulative[*r] = std::vector<float64>(256,0);
+		float64 men = 0;
+		uint64 n = 0;
+		for (BPT::RegionType::iterator p = bpt(*r).begin(); p != bpt(*r).end(); ++p) {
+			//if (edge_mask(*p)(0) == false) {
+				depth_histograms[*r][(uint64)depth(*p)(0)]++;
+				mean_depth[*r]+=depth(*p)(0);
+				num_pixels[*r]++;
+			//} else {
+			//	n++;
+			//	men+=depth(*p)(0);
+			//}
+		}
+		if (num_pixels[*r]==0) {
+			num_pixels[*r] = 1;
+			depth_histograms[*r][(uint64)(men/n)]++;
+			mean_depth[*r] = men/n;
+		}
+	}
+
+	// normalize histograms
+	for (std::map<uint64, std::vector<float64> >::iterator it = depth_histograms.begin(); it != depth_histograms.end(); ++it) {
+		mean_depth[it->first] /= num_pixels[it->first];
+		for (uint64 i = 0; i < 256; i++)
+			it->second[i]/=num_pixels[it->first];
+	}
+
+	//cumulative histograms
+	/*for (std::map<uint64, std::vector<float64> >::iterator it = cumulative.begin(); it != cumulative.end(); ++it) {
+		it->second[0] = depth_histograms[it->first][0];
+		for (uint64 i = 1; i < 256; i++)
+			it->second[i] = it->second[i-1]+depth_histograms[it->first][i];
+	}
+
+	//get adjacent regions
+	for (ImageType::iterator p = depth.begin(); p != depth.end(); ++p) {
+		coord2d center = p.pos();
+
+		ImageType::adjacency_iterator adj = depth.adjacency_begin(center);
+		ImageType::adjacency_iterator adj_end = depth.adjacency_end(center);
+
+		uint64 reg1 = partition(p.pos())(0);
+
+		for (uint64 i = 1; adj != adj_end; ++adj, i++) {
+			if (partition(adj.pos())(0) != partition(p.pos())(0)) {
+				uint64 reg2 = partition(adj.pos())(0);
+				adjacent[reg1][reg2] = true;
+				adjacent[reg2][reg1] = true;
+				if (num_pixels[reg1] == 1 || num_pixels[reg2] == 1) {
+					adjacent[reg1][reg2] = false;
+					adjacent[reg2][reg1] = false;
+				}
+			}
+		}
+	}
+
+	// put relation confidence
+	for (std::set<uint64>::iterator r1 = regs.begin(); r1 !=regs.end(); ++r1) {
+		for (std::set<uint64>::iterator r2 = regs.begin(); r2 !=regs.end(); ++r2) {
+
+			if (adjacent[*r1][*r2] == false) continue;
+
+			float64 pab = 0; // probabilty that the values of r1 < r2
+			float64 pba = 0; // probabilty that the values of r2 < r1
+			for (uint64 i = 0; i < 256; i++) {
+				pab += (cumulative[*r1][i] - depth_histograms[*r1][i])*depth_histograms[*r2][i];
+				pba += (cumulative[*r2][i] - depth_histograms[*r2][i])*depth_histograms[*r1][i];
+			}
+			//std::cout << "Relation " << pba << " " << pab << std::endl;
+			relations[*r1][*r2] = pba;
+			relations[*r2][*r1] = pab;
+		}
+	}
+
+
+	// Construct the DOG
+	DOG dog;
+	std::map<uint64, DOG::Node> nodes;
+	for (std::set<uint64>::iterator r = regs.begin(); r !=regs.end(); ++r) {
+		DOG::Node n = dog.add_node();
+		dog.node_properties(n).id = *r;
+		nodes[*r] = n;
+	}
+
+	// fill the DOG
+	for (std::set<uint64>::iterator r1 = regs.begin(); r1 != regs.end(); ++r1) {
+		for (std::set<uint64>::iterator r2 = regs.begin(); r2 != regs.end(); ++r2) {
+			if (r1 == r2) continue;
+
+			float64 c = relations[*r1][*r2];
+
+			if (c == 0) continue;
+			//std::cout << "Relation " << *r1 << " " << *r2 << " " << c << std::endl;
+
+			//if (num_relations[*r1][*r2] == 0) continue;
+
+			DOG::Node na = nodes[*r1];
+			DOG::Node nb = nodes[*r2];
+			DOG::Edge e;
+
+			if (!dog.edge_exists(na,nb)) e = dog.add_edge(na,nb);
+
+			e = dog.edge(na,nb);
+			dog.edge_properties(e).weight += c;
+			dog.edge_properties(e).capacity += c;
+
+		}
+	}
+
+	//std::cout << boost::write(dog.graph());
+
+	// Depth order by depth
+	monocular_depth::resolve_depth_conflicts(dog);
+	DistanceModelType distance_model;
+	std::map<uint64,std::pair<float64,uint64> > depths =  monocular_depth::join_components_and_order(dog, bpt, img, distance_model);
+
+	// output the depth ordering
+	float64 max_d = 0;
+	float64 min_d = 1e9;
+	for (std::map<uint64,std::pair<float64,uint64> >::iterator d = depths.begin(); d != depths.end(); ++d) {
+		if (max_d < d->second.first) max_d = d->second.first;
+		if (min_d > d->second.first) min_d = d->second.first;
+	}
+
+	ImageType estimated_depth(depth.sizes());
+	float64 dif = max_d - min_d; if (dif == 0) dif = 1;
+	for (std::map<uint64,std::pair<float64,uint64> >::iterator d = depths.begin(); d != depths.end(); ++d) {
+		uint64 r = d->first;
+		float64 rd = d->second.first; //min_d + (max_d - rd)*(rand()*1.0 / RAND_MAX) ; //
+		rgb_type depth_color = rgb_type::Ones() * 255 * (max_d - rd) / dif;
+		for (BPT::RegionType::iterator p = bpt(r).begin(); p != bpt(r).end(); ++p) {
+			estimated_depth(*p) = depth_color;
+		}
+	}*/
+
+	ImageType estimated_depth(depth.sizes());
+	for (std::map<uint64,float64>::iterator d = mean_depth.begin(); d != mean_depth.end(); ++d) {
+		uint64 r = d->first;
+		float64 rd = d->second; //min_d + (max_d - rd)*(rand()*1.0 / RAND_MAX) ; //
+		rgb_type depth_color = rgb_type::Ones()*rd;
+		for (BPT::RegionType::iterator p = bpt(r).begin(); p != bpt(r).end(); ++p) {
+			estimated_depth(*p) = depth_color;
+		}
+	}
+
+	return estimated_depth;
+}
+
+int main(int argc, char *argv[]) {
+
+	std::string image_path 		= argv[1];
+	std::string tree_path 		= argv[2];
+	std::string depth_path		= argv[3];
+	std::string result_path 	= argv[4];
+
+	std::vector<float64> list;
+
+	for (int64 i = 5; i < argc; i++) {
+		std::string a = argv[i];
+		std::cout << a << " ";
+		std::istringstream is(a);
+		float64 n;
+		is >> n;
+		list.push_back(n); //*1000);
+	}
+
+	// create the necessary paths
+	boost::filesystem::path result_path_p(result_path);
+	boost::filesystem::create_directories(result_path_p);
+
+	std::cout << "Reading tree" << std::endl;
+	BPT bpt;
+	bpt.load_from_prl(tree_path);
+
+	coord2d sizes = bpt.leaves_partition().sizes();
+
+	ImageType img,depth;
+	img.read(image_path);
+	depth.read(depth_path);
+
+	ColorSpaceConverter<ImageType> converter;
+	converter.convert(img,ColorSpaceLAB);
+
+	descriptors::DescriptorManager manager;
+
+	std::set<uint64> regs;
+
+	MumfordShahCostFunction cost_function(manager, bpt.max_label());
+	Pruner    				pruner(cost_function,false);
+	PartitionType			partition(img.sizes());
+
+	sort(list.begin(), list.end());
+
+	for (uint64 i = 0; i < list.size(); i++) {
+
+		std::cout << "Approximate pruning with " << list[i] << " regularizer " << std::endl;
+
+		cost_function.set_lambda(0);
+		cost_function.set_regularizer(list[i]);
+
+		regs = pruner.find_pruned_regions(bpt, img, bpt.max_label()); //regularizer acts as the number of regions
+
+		std::set<uint64> regs = pruner.regions();
+
+		for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r) {
+			for (BPT::RegionType::iterator p = bpt(*r).begin(); p != bpt(*r).end(); ++p) {
+				partition(*p)(0) = *r;
+			}
+		}
+
+		ImageType estimated_depth = estimate_relative_depth(bpt, img, depth, partition, regs);
+		std::ostringstream os; os << "depth_" << i << ".png";
+
+		//std::cout << result_path + "/" + os.str() << std::endl;
+
+		estimated_depth.write(result_path + "/" + os.str());
+	}
+
+}

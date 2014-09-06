@@ -1,0 +1,337 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file check_size.hpp
+//!
+//!  Several size consistency checks for imavols
+//!
+#ifndef IMAGEPLUS_CORE_CHECK_SIZE_HPP
+#define IMAGEPLUS_CORE_CHECK_SIZE_HPP
+
+#include <imageplus/core/exceptions.hpp>
+#include <imageplus/core/imavol.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \brief checks size consistency for ImageRGB
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : imavol to check
+    //!
+    //! \relatedalso ImageRGB
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \date 25-1-2008
+    //!
+    template<typename T, std::size_t C, std::size_t D>
+    void check_size_rgb(const ImaVol<T,C,D>& in) throw (ImagePlusError)
+    {
+        if ( C != 3 )
+        {
+            throw ImagePlusError("RGB must have 3 channels");
+        }
+        
+        if ( ( in(0).dims(0) != in(1).dims(0) ) || ( in(0).dims(0) != in(2).dims(0) ) ) 
+        {
+            throw ImagePlusError("All channel widths must be equal for RGB");
+        }
+        
+        if ( ( in(0).dims(1) != in(1).dims(1) ) || ( in(0).dims(1) != in(2).dims(1) ) ) 
+        {
+            throw ImagePlusError("All channel heights must be equal for RGB");
+        }
+    }
+    
+    //!
+    //! \brief checks size consistency for ImageYUV
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : image to check
+    //!
+    //! \relatedalso ImageYUV
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \date 25-1-2008
+    //!
+    template<typename T, std::size_t C, std::size_t D>
+    void check_size_yuv(const ImaVol<T,C,D>& in) throw (ImagePlusError)
+    {
+        if ( C != 3 )
+        {
+            throw ImagePlusError("YUV must have 3 channels");
+        }
+        
+        if ( ( in(0).dims(0) != in(1).dims(0) ) || ( in(0).dims(0) != in(2).dims(0) ) ) 
+        {
+            throw ImagePlusError("All channel widths must be equal for YUV");
+        }
+        
+        if ( ( in(0).dims(1) != in(1).dims(1) ) || ( in(0).dims(1) != in(2).dims(1) ) ) 
+        {
+            throw ImagePlusError("All channel heights must be equal for YUV");
+        }
+    }
+
+    //!
+    //! \brief checks size consistency for ImageCIELab
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : image to check
+    //!
+    //! \relatedalso ImageCIELab
+    //!
+    //! \author Guillem Palou Visa <gpalou@gps.upc.es>
+    //! \date 10-12-2009
+    //!
+    template<typename T, std::size_t C, std::size_t D>
+    void check_size_cielab(const ImaVol<T,C,D>& in) throw (ImagePlusError)
+    {
+    	if ( C != 3 )
+    	{
+    		throw ImagePlusError("L*ab must have 3 channels");
+    	}
+
+    	if ( ( in(0).dims(0) != in(1).dims(0) ) || ( in(0).dims(0) != in(2).dims(0) ) )
+    	{
+    		throw ImagePlusError("All channel widths must be equal for L*ab");
+    	}
+
+    	if ( ( in(0).dims(1) != in(1).dims(1) ) || ( in(0).dims(1) != in(2).dims(1) ) )
+    	{
+    		throw ImagePlusError("All channel heights must be equal for L*ab");
+    	}
+    }
+
+    //!
+    //! \brief checks size consistency for ImageYUV420
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : image to check
+    //!
+    //! \relatedalso ImageYUV420
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \date 25-1-2008
+    //!
+    template<typename T, std::size_t C, std::size_t D>
+    void check_size_yuv420(const ImaVol<T,C,D>& in) throw (ImagePlusError)
+    {
+        if ( C != 3 )
+        {
+            throw ImagePlusError("YUV420 must have 3 channels");
+        }
+        
+        if ( in(0).dims(0) != 2*in(1).dims(0) )
+        {
+            throw ImagePlusError("Y channel width must be two times U channel width");
+        }
+        
+        if ( in(0).dims(0) != 2*in(2).dims(0) )
+        {
+            throw ImagePlusError("Y channel width must be two times V channel width");
+        }
+
+        if ( in(0).dims(1) != 2*in(1).dims(1) )
+        {
+            throw ImagePlusError("Y channel height must be two times U channel height");
+        }
+        
+        if ( in(0).dims(1) != 2*in(2).dims(1) )
+        {
+            throw ImagePlusError("Y channel height must be two times V channel height");
+        }
+    }
+
+    //!
+    //! \brief checks size consistency for ImageYUV422
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : image to check
+    //!
+    //! \relatedalso ImageYUV422
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \date 25-1-2008
+    //!
+    template<typename T, std::size_t C, std::size_t D>
+    void check_size_yuv422(const ImaVol<T,C,D>& in) throw (ImagePlusError)
+    {
+        if ( C != 3 )
+        {
+            throw ImagePlusError("YUV422 must have 3 channels");
+        }
+        
+        if ( in(0).dims(0) != 2*in(1).dims(0) )
+        {
+            throw ImagePlusError("Y channel width must be two times U channel width");
+        }
+        
+        if ( in(0).dims(0) != 2*in(2).dims(0) )
+        {
+            throw ImagePlusError("Y channel width must be two times V channel width");
+        }
+
+        if ( in(0).dims(1) != in(1).dims(1) )
+        {
+            throw ImagePlusError("Y channel height must be equal to U channel height");
+        }
+        
+        if ( in(0).dims(1) != in(2).dims(1) )
+        {
+            throw ImagePlusError("Y channel height must be equal to V channel height");
+        }
+    }
+    
+    //!
+    //! \brief checks size consistency for ImageRIQ
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : image to check
+    //!
+    //! \relatedalso ImageRIQ
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //! \date   2010-05
+    //!
+    template<typename T, std::size_t C, std::size_t D>
+    void check_size_riq(const ImaVol<T,C,D>& in) throw (ImagePlusError)
+    {
+        if ( C != 3 )
+        {
+            throw ImagePlusError("RIQ must have 3 channels");
+        }
+            
+        if ( ( in(0).dims(0) != in(1).dims(0) ) || ( in(0).dims(0) != in(2).dims(0) ) ) 
+        {
+            throw ImagePlusError("All channel widths must be equal for RIQ");
+        }
+            
+        if ( ( in(0).dims(1) != in(1).dims(1) ) || ( in(0).dims(1) != in(2).dims(1) ) ) 
+        {
+            throw ImagePlusError("All channel heights must be equal for RIQ");
+        }
+    }
+        
+    //!
+    //! \brief checks size consistency for ImageYIQ
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : image to check
+    //!
+    //! \relatedalso ImageYIQ
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //! \date   2010-05
+    //!
+    template<typename T, std::size_t C, std::size_t D> 
+    void check_size_yiq(const ImaVol<T,C,D>& in) throw (ImagePlusError) 
+    {
+	    if (C != 3) 
+	    {
+		    throw ImagePlusError("YIQ must have 3 channels");
+	    } 
+
+	    if ( (in(0).dims(0) != in(1).dims(0) ) || (in(0).dims(0) != in(2).dims(0) )) 
+	    {
+		    throw ImagePlusError("All channel widths must be equal for YIQ");
+	    }
+
+	    if ( (in(0).dims(1) != in(1).dims(1) ) || (in(0).dims(1) != in(2).dims(1) )) 
+	    {
+		    throw ImagePlusError("All channel heights must be equal for YIQ");
+	    }
+    }
+        
+    //!
+    //! \brief checks size consistency for ImageRCQ
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : image to check
+    //!
+    //! \relatedalso ImageRCQ
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //! \date   2010-05
+    //!
+    template<typename T, std::size_t C, std::size_t D> 
+    void check_size_rcq(const ImaVol<T,C,D>& in) throw (ImagePlusError) 
+    {
+	    if (C != 3) 
+	    {
+		    throw ImagePlusError("RCQ must have 3 channels");
+	    }
+
+	    if ( (in(0).dims(0) != in(1).dims(0) ) || (in(0).dims(0) != in(2).dims(0) )) 
+	    {
+		    throw ImagePlusError("All channel widths must be equal for RCQ");
+	    }
+
+	    if ( (in(0).dims(1) != in(1).dims(1) ) || (in(0).dims(1) != in(2).dims(1) )) 
+	    {
+		    throw ImagePlusError("All channel heights must be equal for RCQ");
+	    }
+    }
+
+    //!
+    //! \brief checks size consistency for ImageRUV
+    //!
+    //! \tparam T : the type of the data
+    //! \tparam C : the number of channels
+    //! \tparam D : the number of dimensions
+    //!
+    //! \param[in] in : image to check
+    //!
+    //! \relatedalso ImageRUV
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //! \date 2010-05
+    //!
+    template<typename T, std::size_t C, std::size_t D> 
+    void check_size_ruv(const ImaVol<T,C,D>& in) throw (ImagePlusError)
+    {
+   	    if (C != 3)
+   	    {
+   		    throw ImagePlusError("RUV must have 3 channels");
+   	    }
+
+   	    if ( (in(0).dims(0) != in(1).dims(0) ) || (in(0).dims(0) != in(2).dims(0) ))
+   	    {
+   		    throw ImagePlusError("All channel widths must be equal for RUV");
+   	    }
+
+   	    if ( (in(0).dims(1) != in(1).dims(1) ) || (in(0).dims(1) != in(2).dims(1) ))
+   	    {
+   		    throw ImagePlusError("All channel heights must be equal for RUV");
+   	    }
+    }
+}
+
+#endif // IMAGEPLUS_CORE_CHECK_SIZE_HPP

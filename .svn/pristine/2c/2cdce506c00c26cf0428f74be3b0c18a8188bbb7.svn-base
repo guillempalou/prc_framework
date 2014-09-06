@@ -1,0 +1,145 @@
+/*! \page builder Build Instructions
+
+\section install_contents Table of Contents
+
+- \ref getting
+- \ref build_cmd
+- \ref build_config
+- \ref build_test
+
+
+If you plan to use the Eclipse IDE you can also see \ref eclipse to learn how to configure it.
+
+\section getting Getting the software
+
+\subsection dependences External dependences
+
+In general we want to keep ImagePlus as free of external dependences as possible, 
+but we don't want to reinvent the wheel. 
+
+So, ImagePlus only depends on the <a href="http://www.boost.org/">Boost C++ Libraries</a>.\n
+But it also use some other optional libraries to add more functionalities:
+- ImageMagick: to handle multiple image formats
+- FFMPEG: to handle multiple video formats
+- OpenGL and OpenCL: to use GPUs (GPGPU)
+- OpenMesh: for mesh processing
+- SmartFlow and Video4Linux: to create real-time clients for the UPC's SmartRoom
+
+If in your research you need extra functionalities:
+- check if Boost has something similar
+- ask to ImagePlus members
+
+
+See \ref build_config to learn how to enable any of these optional libraries.\n
+Note that the <a href="http://www.boost.org/">Boost C++ libraries</a> is not optional 
+but a strict dependence of the platform.  
+
+
+\subsection repository ImagePlus repository
+
+ImagePlus is stored in the subversion repository of the Imagege Processing Group.\n
+This repository is structured in different types of branches:
+- \c trunk
+  - the most stable and read-only branch
+- \c branches/projects
+  - where researches deliver and share their work firstly
+- \c branches/developers
+  - individual branches to control your own progress
+
+
+So, to get ImagePlus you should checkout your branch by:  
+
+\verbatim
+>> svn checkout https://imatge.upc.edu/svn/ImagePlus/branches/developers/$USER/dev ~/workspace/imageplus 
+\endverbatim
+
+ 
+
+\section build_cmd Build commands
+
+The builder of ImagePlus is based on <a href="www.scons.org">SCons</a>.
+
+It has been designed to be <b>completely modular</b>. That means that you can develop
+an isolated module by editing, building and testing it without rebuilding everything.
+ 
+To build the software you should be in the root folder:
+\verbatim
+>> cd ~/workspace/imageplus
+\endverbatim
+
+Then, the builder/scons usage is:  
+\verbatim
+>> scons target(s)
+\endverbatim
+
+Where \c target(s) can be one (or more):
+- exsting directory: 
+  - it builds all the contents of that directory
+- a predefined \e alias:
+  - \e modulename: same as \e modules/modulname 
+  - \e toolname: same as \e tools/toolname
+  - \e validate: same as \e tests
+
+For instance, to build all the tools:
+\verbatim
+>> scons tools
+\endverbatim
+
+Or to build only two tools:
+\verbatim
+>> scons img2prl bpt_creation
+\endverbatim
+
+Note that \c img2prl is a tool grouped in the \c converters directory but it doesn't matters.
+
+Or build the \c math module:
+\verbatim
+>> scons math
+\endverbatim
+
+To build and run all the tests to be sure that everything work as expected:
+\verbatim
+>> scons validate
+\endverbatim
+
+See \ref build_config for more information about all the builder options.
+See \ref build_test for more information about how to use the test environment of ImagePlus.
+
+\section build_config Build configuration
+
+The builder of ImagePlus can be also configured with some configuration files.
+To be able to do it first we should create our \c user directory:
+\verbatim
+>> mkdir ~/workspace/imageplus/user
+>> cp    ~/workspace/imageplus/builder/user/* ~/workspace/imageplus/user/
+\endverbatim
+
+Now we have created the configuration files:
+- user.build: 
+  - the predefined build options: debug, static, verbose...
+  - the predefined external dependences: USE_OPENMESH, USE_OPENCL...
+  - advanced options to be as flexible as possible
+- user-test.list:
+  - the list of test you want to include when running <tt>scons validate</tt>
+  - if empty, all tests will be included
+  - the test path must be relative to the "modules" directory (e.g. \c core/test/image.test)
+- user.list:
+  - it is mainly used by the software admin to skip building some module or tool (default: empty)
+  - for normal modular building use just the basic \c scons command
+
+See the \c user.build file for detailed information about all the configuration options.
+
+\section build_test Build and run the validation tests
+
+<em>
+"In computer programming, unit testing is a procedure used to validate that individual units of source code 
+are working properly. A \c unit is the smallest testable part of an application. 
+In procedural programming a unit may be an individual program, function, procedure, etc., 
+while in object-oriented programming, the smallest unit is a method; which may belong to a base/super class, 
+abstract class or derived/child class."
+</em>
+
+
+\todo complete the information
+
+*/

@@ -1,0 +1,80 @@
+/*
+ * segmentation_covering.hpp
+ *
+ *  Created on: Jan 8, 2013
+ *      Author: gpalou
+ */
+
+#ifndef SEGMENTATION_COVERING_HPP_
+#define SEGMENTATION_COVERING_HPP_
+
+#include <imageplus/math/math_types.hpp>
+#include <vector>
+
+namespace imageplus {
+	namespace segmentation {
+
+	template<class PartitionModel>
+	float64 segmentation_covering(PartitionModel& partition, PartitionModel& groundtruth) {
+
+		uint64 num_reg_1 = partition.max_label()+1;
+		uint64 num_reg_2 = groundtruth.max_label()+1;
+
+		// "coincidence[i][j]" is a matrix that stores the number of intersecting pixels between region "i"
+		// from the reference partition and region "j" from the fine partition
+		math::Matrix intersect_matrix = math::Matrix::Zero(num_reg_1, num_reg_2);
+
+		typename PartitionModel::iterator p = partition.begin();
+		typename PartitionModel::iterator end = partition.end();
+		for (; p != end; ++p) {
+			typename PartitionModel::coord_type pos = p.pos();
+			intersect_matrix(partition(pos)(0),groundtruth(pos)(0)) +=1;
+		}
+
+		std::vector<uint64> region_areas_1(num_reg_1,0);
+		std::vector<uint64> region_areas_2(num_reg_2,0);
+
+		uint64 image_area=0;
+		for(std::size_t jj = 0; jj < num_reg_2; jj++)
+		{
+			for(std::size_t ii = 0; ii < num_reg_1; ii++)
+			{
+				image_area += intersect_matrix(ii,jj);
+				region_areas_1[ii] = region_areas_1[ii] +  intersect_matrix(ii,jj);
+				region_areas_2[jj] = region_areas_2[jj] +  intersect_matrix(ii,jj);
+			}
+		}
+
+		// Matrix containing the Jaccard indices of each pair of regions
+		math::Matrix jaccard_matrix(num_reg_1, num_reg_2);
+		for(std::size_t jj = 0; jj < num_reg_2; jj++)
+		{
+			for(std::size_t ii = 0; ii < num_reg_1; ii++)
+			{
+				jaccard_matrix(ii,jj) = ((float64)intersect_matrix(ii,jj))/((float64)(region_areas_1[ii]+region_areas_2[jj]-intersect_matrix(ii,jj)));
+			}
+		}
+
+		float64 curr_max;
+		float64 segm_covering = 0.;
+		for(uint64 ii=0; ii<num_reg_1; ii++)
+		{
+			curr_max=0;
+			for(uint64 jj=0; jj<num_reg_2; ++jj)
+			{
+				if(curr_max<jaccard_matrix(ii,jj))
+				{
+					curr_max = jaccard_matrix(ii,jj);
+				}
+			}
+			segm_covering += curr_max*region_areas_1[ii];
+		}
+
+		return segm_covering/(float64)image_area;
+	}
+
+	}
+}
+
+
+#endif /* SEGMENTATION_COVERING_HPP_ */

@@ -1,0 +1,45 @@
+/*! \page rules Development Rules
+
+
+<p>Please, read carefully and strictly follow the next rules when adding code to the <i>ImagePlus</i> platform<p>
+
+<ul>
+  <li><b>Document your code. Read it again, Document your code!</b></li>
+  <ul>
+    <li>Follow the rules in imavol.hpp or readsequence.hpp</li>
+    <li>All hpp files (public or private) *must* be documented following the rules above</li>
+    <li>Namespaces *must* be documented only in ONE file of the module</li>
+    <li>All files *must* follow the above rules for headers, needed defines in hpp files, etc.</li>
+    <li>All your code *should* be commented and explained, think that others might extend it later</li>
+  </ul>
+  <li><b>There is NO implementation in hpp files, all methods are implemented in corresponding cpp files.</b>This rule may not be followed by some specific classes or functions (such as MultiArray or Filter) 
+  when, for instance, there is no possibility of declaring all needed instantiations.</li>
+  <li><b>Absolutely no calls to <i>using namespace xxx;</i> in hpp files and try to avoid multiple calls to <i>using namespace xxx;</i> in cpp files</b></li>
+  <li><b>Limit the use of includes to the ones strictly necessary, specially in hpp files</b></li>
+  <li><b>Global variables are strongly not to be used</b></li>
+  <li><b>Defines are strongly not to be used, use const variables or inline functions instead</b></li>
+  <li><b>All variables in classes are private, no public variables allowed. Write access functions to these private variables instead</b></li>
+  <li><b>Variable types MUST be float64, int32, etc. instead of double, int, etc. Also use int64 or uin64 as the basic integer type to 
+         prepare for the 64 bit machine revolution</b></li>
+  <li><b>Use exceptions. No calls to cerr or exit() in the library, use the exceptions provided in <a href="exceptions_8hpp.html">exceptions.hpp</a></b></li>
+  <li><b>Follow the ImagePlus Naming Conventions</b></li>
+  <ul>
+    <li>Tabulators are NOT used. Use 4 spaces instead (you might configure your code editor to behave like this)</li>
+    <li>Use unix line feeds</li>
+    <li>Braces in if(), for(), ... clauses are mandatory and start always on a new line</li>
+    <li>Constants are written in uppercase</li>
+    <li>All functions (external or members) must be written all in lowercase such as this_is_a_function()</li>
+    <li>Private variables are to be written with an inital underscore and lowercase _such_as_this</li>
+    <li>If/For/Switch/... starts with a curly bracket in the following line</li>
+    <li>Respect the indentation, See example files <i>naming_convention.hpp</i> and <i>naming_convention.cpp</i> in the <i>doc/</i> folder</a></li>
+    <li>If unsure of the formatting, use the tool <i>astyle --style=ansi --indent-namespaces --indent-preprocessor --max-instatement-indent=60 --convert-tabs --one-line=keep-statements --one-line=keep-blocks --indent-classes --indent-switches --indent=spaces=4 file</i> to format your files</li>
+  </ul>
+  <li><b>Before commiting your work make sure it compiles all modules, it validates and it generates the documentation without a single warning (<i>make check_all</i>). Also, make sure it does not have any memory problems, aka use <i>valgrind</i>.</b></li>
+</ul>
+
+
+- Remember to also document the namespace following the doxygen rules. 
+- Documenting the namespace must be done only ONCE per module so choose an hpp file in the module and document it there and only there
+
+
+*/

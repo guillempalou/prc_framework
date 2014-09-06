@@ -1,0 +1,128 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file mesh.test
+//!
+
+#ifndef AGIL_TEMPORAL_COMMENT
+
+BOOST_AUTO_TEST_SUITE ( suite_mesh );
+
+BOOST_AUTO_TEST_CASE ( test_mesh )
+{
+    BOOST_WARN_MESSAGE(false, "test_mesh: Test commented because depends on processing3d, not yet in trunk");
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+#else //AGIL_TEMPORAL_COMMENT
+
+#ifdef USE_OPENMESH
+
+#include <imageplus/core/mesh.hpp>
+#include <imageplus/processing3d/mesh_processing.hpp>
+
+BOOST_AUTO_TEST_SUITE ( suite_mesh );
+
+using namespace imageplus;
+using namespace imageplus::processing3d;
+using namespace std;
+    
+BOOST_AUTO_TEST_CASE ( test_mesh_io )
+{
+    TriMesh mesh;
+
+    /// READMESH    
+    OpenMesh::IO::Options opt;
+    bool checkio = OpenMesh::IO::read_mesh(mesh, string(TEST_DATA_PATH_R) + "/mesh/pyramid.obj", opt);
+    
+    BOOST_CHECK(checkio == true);
+    
+    uint64 nvert = mesh.n_vertices();   
+    
+    BOOST_CHECK(nvert == 5);
+}
+
+BOOST_AUTO_TEST_CASE ( test_mesh_scale )
+{
+    TriMesh mesh;
+
+    /// READMESH    
+    OpenMesh::IO::Options opt;
+    bool checkio = OpenMesh::IO::read_mesh(mesh, string(TEST_DATA_PATH_R) + "/mesh/pyramid.obj", opt);
+    
+    BOOST_CHECK(checkio == true);
+    
+    scale(mesh, Point3D(2.0,2.0,2.0));
+    
+    const TriMesh::Point &  me = mesh.point(TriMesh::VertexHandle(2));
+    
+    BOOST_CHECK(me[0] == 2.0);
+}
+
+
+BOOST_AUTO_TEST_CASE ( test_mesh_bbox )
+{
+    TriMesh mesh;
+
+    /// READMESH    
+    OpenMesh::IO::Options opt;
+    bool checkio = OpenMesh::IO::read_mesh(mesh, string(TEST_DATA_PATH_R) + "/mesh/pyramid.obj", opt);
+    
+    BOOST_CHECK(checkio == true);
+    
+    Point3D min, max;
+    
+    compute_mesh_bbox(mesh, min, max);
+
+    Point3D resmin(0.0, 0.0, 0.0);
+    Point3D resmax(1, 1, 1.6);
+    
+    BOOST_CHECK_CLOSE(min[2],resmin[2], 0.1);
+    BOOST_CHECK_CLOSE(max[2],resmax[2], 0.1);
+}
+
+
+BOOST_AUTO_TEST_CASE ( test_mesh_rotate )
+{
+    TriMesh mesh;
+
+    /// READMESH    
+    OpenMesh::IO::Options opt;
+    OpenMesh::IO::read_mesh(mesh, string(TEST_DATA_PATH_R) + "/mesh/pyramid.obj", opt);
+    
+    TriMesh::Point   pbefore = mesh.point(TriMesh::VertexHandle(1));
+    BOOST_CHECK_CLOSE(pbefore[0],1.0, 0.01);
+    
+    rotate(mesh, Point3D(0.0,0.0,1.0), M_PI / 4.0);
+    
+    TriMesh::Point   pafter = mesh.point(TriMesh::VertexHandle(1));
+    
+    BOOST_CHECK_CLOSE(pafter[0],std::sqrt(2.0) / 2.0, 0.1);
+}
+
+
+BOOST_AUTO_TEST_CASE ( test_mesh_translate )
+{
+    TriMesh mesh;
+
+    /// READMESH    
+    OpenMesh::IO::Options opt;
+    OpenMesh::IO::read_mesh(mesh, string(TEST_DATA_PATH_R) + "/mesh/pyramid.obj", opt);
+    
+    
+    translate(mesh, Point3D(1.0,0.0,0.0));
+    
+    TriMesh::Point   pafter = mesh.point(TriMesh::VertexHandle(1));
+    
+    BOOST_CHECK_CLOSE(pafter[0],2.0, 0.1);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+#endif //USE_OPENMESH
+
+#endif //AGIL_TEMPORAL_COMMENT

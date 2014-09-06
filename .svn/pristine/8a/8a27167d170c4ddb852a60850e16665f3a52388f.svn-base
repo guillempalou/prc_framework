@@ -1,0 +1,50 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \file readvolume.test
+//!
+//! Tests for class ReadVolume
+//!
+
+#include <iostream>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readvolume.hpp>
+#include <imageplus/io/writevolume.hpp>
+#include <imageplus/math/morphology/opening.hpp>
+
+BOOST_AUTO_TEST_SUITE ( Opening3dSuite );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace imageplus::math::morphology;
+
+BOOST_AUTO_TEST_CASE( Opening3dGeneral)
+{
+    ReadVolume rvol (string(TEST_DATA_PATH_R) +"/volume_toy2.rle");
+    VolumeGray<uint8> vol;
+
+    rvol >> vol;
+
+    VolumeGray<uint8> out;
+
+    Opening<3> ope((uint64)26,(uint64)3);
+    out=ope.filter(vol);
+
+    for(uint32 k=5; k<6; k++)
+    {
+        for (uint32 j=6; j<8; j++)
+        {
+            for (uint32 i=4; i<5; i++)
+            {
+                BOOST_CHECK( vol(0)[i][j][k] > out(0)[i][j][k] );
+            }
+        }
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

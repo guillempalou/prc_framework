@@ -1,0 +1,219 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file pf_basic.test
+ */
+
+#include <iostream>
+#include <stdio.h>
+#include <imageplus/core.hpp>
+#include <cmath>
+#include <iostream>
+#include <fstream>
+#include <imageplus/math/statistics/random_generators.hpp>
+#include <imageplus/particlefilters/pf_basic.hpp>
+
+/* 
+ * AGIL: This include is a hack to get a test, but not example classe in main documentation 
+ *       Note that particlefilter are abstract class, so we need a dummy particle to test it...
+ *       Better ideas? Copy the code here?
+ */ 
+//#include <../tools/examples/particlefilter_example/src/particlefilter_example.hpp>
+
+/*
+ * AGIL: Finally we have decide to copy the code inside the test suite:
+ */ 
+
+BOOST_AUTO_TEST_SUITE ( suite_pf_example );
+
+using namespace std;
+
+using namespace imageplus;
+using namespace imageplus::particlefilters;
+
+/*!
+ * \cond TestStructures
+ */
+typedef struct ToyInitData
+{
+    Point2D  function;  
+    float64  variance; 
+} ToyInitData;
+
+typedef Point2D ToyInputData;
+
+class ToyParticle : public Particle< ToyParticle, ToyInputData, ToyInitData>
+{
+public:                     
+    ToyParticle( float64 weight = 0 )
+            : Particle< ToyParticle, ToyInputData, ToyInitData >( weight )
+    {}
+
+    virtual 
+    ~ToyParticle() 
+    {}
+    
+    virtual
+    void init_particle( const init_data_type& init_data )
+    {
+        _function = init_data.function;
+        _variance = init_data.variance;
+    }
+           
+    virtual
+    void propagate()
+    {
+        _function.x() = math::statistics::rand_normal( _function.x(), std::sqrt(_variance) );
+        _function.y() = math::statistics::rand_normal( _function.y(), std::sqrt(_variance) );
+    }
+    
+    virtual
+    void evaluate( const input_data_type& input_data )  
+    {
+        float64 distance_x = _function.x() - input_data.x();
+        float64 distance_y = _function.y() - input_data.y();
+
+        float64 distance = std::sqrt( distance_x * distance_x + distance_y * distance_y );
+                            
+        float64 pseudo_likelihood = std::exp( - 3.0 * distance );
+                            
+        weight( pseudo_likelihood );
+    }
+
+    virtual
+    ToyParticle operator+ ( const ToyParticle& other_particle ) const
+    {
+        ToyParticle result_particle( 1 );
+        
+        result_particle._function = _function + other_particle._function;
+        result_particle._variance = _variance;
+        
+        return result_particle;
+    }
+
+    virtual
+    ToyParticle operator* ( float64 weight ) const
+    {
+        ToyParticle result_particle( 1 );
+        
+        result_particle._function = _function * weight;
+        result_particle._variance = _variance;
+        
+        return result_particle;
+    }
+
+    virtual 
+    void copy( const ToyParticle& other_particle )
+    {
+        weight ( other_particle.weight() ); 
+        _function = other_particle._function;
+        _variance = other_particle._variance;                   
+    }
+    
+    friend
+    std::ostream& operator<< ( std::ostream& os, const ToyParticle& p )
+    {
+        os << "X:" << p._function.x() << " Y:" << p._function.y() << " Weight:" << p.weight();
+        return os;
+    }   
+
+    Point2D& function()
+    { 
+        return _function; 
+    }
+    
+private:
+    /*
+     * Here we place our custom internal data
+     */   
+    Point2D  _function; 
+    float64  _variance;
+};
+
+/*!
+ * \endcond
+ */
+    
+BOOST_AUTO_TEST_CASE ( test_pf_example )
+{    
+	// Create particle filter
+	ParticleFilter< ToyParticle > pf( 100 );
+	
+	// Check number of particles
+	BOOST_CHECK( pf.number_of_particles() == 100 );
+	
+	// Check default particle weight
+	BOOST_CHECK_CLOSE( pf.default_particle_weight(), 0.01, 0.0001 );
+	
+	// Check survival rate
+	BOOST_CHECK( pf.survival_rate() == 1.0 );    
+	BOOST_CHECK( pf.survival_rate() <= 1.0 );
+	BOOST_CHECK( pf.survival_rate() >= 0.0 );
+			
+	// Initialize filter
+	ToyParticle::init_data_type init_data;	
+	ToyParticle result;
+	ToyParticle::input_data_type function_to_estimate;
+	
+	init_data.function.x() = 0.0;
+	init_data.function.y() = 0.0;
+	init_data.variance = 5.0;
+	float64 m = 1.0;
+	float64 n = 3.0;
+	float64 noise = 1.0;
+	
+	pf.init_particles( init_data );
+		
+	// Check particle initial function point
+	BOOST_CHECK( pf.particles()[0].function().x() == 0.0 );
+	BOOST_CHECK( pf.particles()[0].function().y() == 0.0 );
+	
+	for (uint64 i = 0; i < 100; i++) 
+	{		
+		function_to_estimate.x() = i;			
+		function_to_estimate.y() = m * function_to_estimate.x() + n;
+		function_to_estimate.y() += noise;
+		
+		pf.filter( function_to_estimate );
+		result = pf.estimate();
+		
+		if( i == 99)
+		{
+			BOOST_CHECK_CLOSE( result.function().x(), 98.4297, 5.0 );
+			BOOST_CHECK_CLOSE( result.function().y(), 103.418, 5.0 );
+			BOOST_CHECK( pf.survival_rate() <= 1.0 );
+			BOOST_CHECK( pf.survival_rate() >= 0.0 );
+		}		
+	}	
+	
+	// Checking operators
+	ParticleFilter< ToyParticle > p( 2 );
+	ToyParticle::init_data_type init_data_2;
+	
+	init_data_2.function.x() = 1.0;
+	init_data_2.function.y() = 3.0;
+	
+	p.init_particles( init_data_2 );
+
+	p.particles()[0] = p.particles()[0] + p.particles()[1]; // Operator +
+	
+	BOOST_CHECK_CLOSE( p.particles()[0].function().x(), 2.0, 0.1 );
+	BOOST_CHECK_CLOSE( p.particles()[0].function().y(), 6.0, 0.1 );
+	BOOST_CHECK_CLOSE( p.particles()[0].weight(), 1.0, 0.1 );
+	BOOST_CHECK_CLOSE( p.particles()[1].function().x(), 1.0, 0.1 );
+	BOOST_CHECK_CLOSE( p.particles()[1].function().y(), 3.0, 0.1 );
+	BOOST_CHECK_CLOSE( p.particles()[1].weight(), 0.5, 0.1 );
+
+	p.init_particles( init_data_2 );
+	
+	p.particles()[0] = p.particles()[0] * 3.0; // Operator *
+	
+	BOOST_CHECK_CLOSE( p.particles()[0].function().x(), 3.0, 0.1 );
+	BOOST_CHECK_CLOSE( p.particles()[0].function().y(), 9.0, 0.1 );
+	BOOST_CHECK_CLOSE( p.particles()[0].weight(), 1.0, 0.1 );
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

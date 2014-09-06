@@ -1,0 +1,167 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+#ifndef FIX_DOCUMENTATION
+
+//!
+//!  \file svm_kernels.hpp
+//!
+//!  Interface for SVM kernels
+//!
+
+#ifndef IMAGEPLUS_MACHINE_LEARNING_SVM_SVM_KERNELS_HPP
+#define IMAGEPLUS_MACHINE_LEARNING_SVM_SVM_KERNELS_HPP
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <errno.h>
+#include <imageplus/core.hpp>
+#include <imageplus/math/numeric/products.hpp>
+#include <fstream> //for debug
+
+
+#include <imageplus/machine_learning/svm/private/svm.h>
+
+
+
+namespace imageplus
+{
+	namespace machine_learning
+	{
+		namespace svm
+		{
+			//!
+			//! Implementation of the well-know Linear Kernel for SVMs
+			//!
+			//! This implementation is for test purposes, as it is already available in
+		    //! libsvm
+			//!
+			class LinearKernelSVM
+			{
+				public:
+					//! Constructor
+					LinearKernelSVM()
+					{
+
+					}
+					//! Destructor
+					~LinearKernelSVM()
+					{
+
+					}
+
+					//!
+					//! calculate: Kernel value for vectors a and b. ContainerType is a 1D vector
+					//! with methods size() and operator[] defined.
+					template<class ContainerType>
+					float64 calculate (const ContainerType & a, const ContainerType & b) const
+					{
+						float64 res=0.;
+						ASSERT(a.size()==b.size(), "Vectors must have the same dimensions");
+						register std::size_t S=a.size();
+						for (register std::size_t i=0; i < S; ++i)
+						{
+							res+=a[i]*b[i];
+						}
+
+						return res;
+					}
+
+			};
+
+			//!
+			//! Implementation of the Chi-Squared Kernel for SVMs
+			//!
+			//! This kernel is suitable for histogram classification
+		    //!
+			//!
+			class ChiSquaredKernelSVM
+			{
+				public:
+					//! Constructor
+					ChiSquaredKernelSVM()
+					{
+
+					}
+					//! Destructor
+					~ChiSquaredKernelSVM()
+					{
+
+					}
+
+					//!
+					//! calculate: Kernel value for vectors a and b. ContainerType is a 1D vector
+					//! with methods size() and operator[] defined.
+					template<class ContainerType>
+					float64 calculate (const ContainerType & a, const ContainerType & b) const
+					{
+						float64 res=0.;
+						ASSERT(a.size()==b.size(), "Vectors must have the same dimensions");
+						register std::size_t S=a.size();
+						for (register std::size_t i=0; i < S; ++i)
+						{
+							if (a[i] < 1e-50 && b[i] < 1e-50 )
+								res+=0.0;
+							else
+							{
+								//res+=(a[i]-b[i])*(a[i]-b[i])/((a[i]+b[i])); //Chi square test
+								res+=(a[i]-b[i])*(a[i]-b[i])/(0.5*(a[i]+b[i])); //Chi square kernel
+								//std::cout << "ChiSq (" << a[i] << ", " << b[i] << ")=" << (a[i]-b[i])*(a[i]-b[i])/(0.5*(a[i]+b[i])) << std::endl;
+							}
+							//std::cout << "Final " << res << std::endl;
+						}
+
+						return 1.0-res; //Chi-square kernel
+						//return (1.0-0.5*res); //Now we compute chi-square test
+					}
+
+			};
+
+			//!
+			//! Implementation of the Histogram Intersection Kernel for SVMs
+			//!
+			//! This kernel is suitable for histogram classification
+		    //!
+			//!
+			class HistogramIntersectionKernelSVM
+			{
+				public:
+					//! Constructor
+					HistogramIntersectionKernelSVM()
+					{
+
+					}
+					//! Destructor
+					~HistogramIntersectionKernelSVM()
+					{
+
+					}
+
+					//!
+					//! calculate: Kernel value for vectors a and b. ContainerType is a 1D vector
+					//! with methods size() and operator[] defined.
+					template<class ContainerType>
+					float64 calculate (const ContainerType & a, const ContainerType & b) const
+					{
+						float64 res=0.;
+						ASSERT(a.size()==b.size(), "Vectors must have the same dimensions");
+						register std::size_t S=a.size();
+						for (register std::size_t i=0; i < S; ++i)
+						{
+							res+=( (a[i] < b[i]) ? a[i]:b[i]);
+						}
+
+						return res;
+					}
+
+			};
+		}
+	}
+}
+
+#endif //HPP
+#endif //FIXDOC

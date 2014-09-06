@@ -1,0 +1,1112 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file eigenvalues.cpp
+//!
+//!  Class to compute eigenvalues and eigenvectors
+//!
+
+#include <imageplus/core.hpp>
+#include <imageplus/math/numeric/matrices.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+#include <imageplus/math/numeric/eigenvalues.hpp>
+
+namespace imageplus
+{
+    namespace math
+    {
+    	namespace numeric
+    	{
+	        template<typename T>
+	        Eigenvalues<T>::Eigenvalues (const MultiArray<T,2>& A) :
+	                _n(A.dims(0)), _d(_n), _e(_n)
+	        {
+	
+	            _issymmetric = true;
+	            for (uint64 j = 0; (j < _n) && _issymmetric; j++) 
+	            {
+	                for (uint64 i = 0; (i < _n) && _issymmetric; i++) 
+	                {
+	                    _issymmetric = (A[i][j] == A[j][i]);
+	                }
+	            }
+	
+	            if (_issymmetric) 
+	            {
+	                TRACE( "Simmetric!" );
+	
+	                _V = A;
+	   
+	                // Tridiagonalize.
+	                _tred2();
+	   
+	                // Diagonalize.
+	                _tql2();
+	
+	            } 
+	            else 
+	            {
+	                _V = math::numeric::identity_matrix<T>(_n);
+	
+	                _H = A;
+	
+	                _ort = MultiArray<T,1>(_n);
+	         
+	   
+	                
+	                TRACE( "Hessenberg" );
+	                // Reduce to Hessenberg form.
+	                _orthes();
+	   
+	                TRACE( "Real Schur" );
+	                // Reduce Hessenberg to real Schur form.
+	                _hqr2();
+	
+	                TRACE("Done");
+	            }
+	        }
+	
+	        template<typename T>
+	        void Eigenvalues<T>::calculate (const MultiArray<T,2>& A)
+	                
+	        {
+//	        	_n=A.dims(0);
+//	        	_d _n;
+//	        	_e _n;
+	        	
+	            _issymmetric = true;
+	            for (uint64 j = 0; (j < _n) && _issymmetric; j++) 
+	            {
+	                for (uint64 i = 0; (i < _n) && _issymmetric; i++) 
+	                {
+	                    _issymmetric = (A[i][j] == A[j][i]);
+	                }
+	            }
+	
+	            if (_issymmetric) 
+	            {
+	                TRACE( "Simmetric!" );
+	
+	                _V = A;
+	   
+	                // Tridiagonalize.
+	                _tred2();
+	   
+	                // Diagonalize.
+	                _tql2();
+	
+	            } 
+	            else 
+	            {
+	                _V = math::numeric::identity_matrix<T>(_n);
+	
+	                _H = A;
+	
+	                _ort = MultiArray<T,1>(_n);
+	         
+	   
+	                
+	                TRACE( "Hessenberg" );
+	                // Reduce to Hessenberg form.
+	                _orthes();
+	   
+	                TRACE( "Real Schur" );
+	                // Reduce Hessenberg to real Schur form.
+	                _hqr2();
+	
+	                TRACE("Done");
+	            }
+	        }
+
+	        template <typename T>
+	        const MultiArray<T,2>& Eigenvalues<T>::eigenvectors () const
+	        {
+	            return (_V);
+	        }
+	
+	
+	        template <typename T>
+	        const MultiArray<T,1>& Eigenvalues<T>::real_eigenvalues () const
+	        {
+	            return _d;
+	        }
+	
+	        template <typename T>
+	        const MultiArray<T,1>& Eigenvalues<T>::imag_eigenvalues () const
+	        {
+	            return _e;
+	        }
+	
+	        template <typename T>
+	        MultiArray<T,2> Eigenvalues<T>::getD () const
+	        {
+	            MultiArray<T,2> D(_n,_n);
+	            D = 0;
+	
+	            for (uint64 i = 0; i < _n; i++)
+	            {
+	                D[i][i] = _d[i];
+	                
+	                if (_e[i] > 0) 
+	                {
+	                    D[i+1][i] = _e[i];
+	                }
+	                else if (_e[i] < 0)
+	                {
+	                    D[i-1][i] = _e[i];
+	                }
+	            }
+	
+	            return D;
+	        }
+	
+	
+	        template <typename T>
+	        void Eigenvalues<T>::_tred2()
+	        {
+	            //  This is derived from the Algol procedures tred2 by
+	            //  Bowdler, Martin, Reinsch, and Wilkinson, Handbook for
+	            //  Auto. Comp., Vol.ii-Linear Algebra, and the corresponding
+	            //  Fortran subroutine in EISPACK.
+	
+	            for (uint64 j = 0; j < _n; j++)
+	            {
+	                _d[j] = _V[j][_n-1];
+	            }
+	
+	            // Householder reduction to tridiagonal form.
+	   
+	            for (int64 i = _n-1; i > 0; i--) 
+	            {
+	                // Scale to avoid under/overflow.
+	   
+	                T scale = 0.0;
+	                T h = 0.0;
+	                for (int64 k = 0; k < i; k++) 
+	                {
+	                    scale = scale + std::abs(_d[k]);
+	                }
+	                if (scale == 0.0) 
+	                {
+	                    _e[i] = _d[i-1];
+	                    for (int64 j = 0; j < i; j++) 
+	                    {
+	                        _d[j] = _V[j][i-1];
+	                        _V[i][j] = 0.0;
+	                        _V[j][i] = 0.0;
+	                    }
+	                } 
+	                else 
+	                {
+	   
+	                    // Generate Householder vector.
+	   
+	                    for (int64 k = 0; k < i; k++) 
+	                    {
+	                        _d[k] /= scale;
+	                        h += _d[k] * _d[k];
+	                    }
+	                    T f = _d[i-1];
+	                    T g = std::sqrt(h);
+	                    if (f > 0) {
+	                        g = -g;
+	                    }
+	                    _e[i] = scale * g;
+	                    h = h - f * g;
+	                    _d[i-1] = f - g;
+	                    for (int64 j = 0; j < i; j++) 
+	                    {
+	                        _e[j] = 0.0;
+	                    }
+	   
+	                    // Apply similarity transformation to remaining columns.
+	   
+	                    for (int64 j = 0; j < i; j++) 
+	                    {
+	                        f = _d[j];
+	                        _V[i][j] = f;
+	                        g = _e[j] + _V[j][j] * f;
+	                        for (int64 k = j+1; k <= i-1; k++) 
+	                        {
+	                            g     += _V[j][k] * _d[k];
+	                            _e[k] += _V[j][k] * f;
+	                        }
+	                        _e[j] = g;
+	                    }
+	                    f = 0.0;
+	                    for (int64 j = 0; j < i; j++) 
+	                    {
+	                        _e[j] /= h;
+	                        f += _e[j] * _d[j];
+	                    }
+	                    T hh = f / (h + h);
+	                    for (int64 j = 0; j < i; j++) 
+	                    {
+	                        _e[j] -= hh * _d[j];
+	                    }
+	                    for (int64 j = 0; j < i; j++) 
+	                    {
+	                        f = _d[j];
+	                        g = _e[j];
+	                        for (int64 k = j; k <= i-1; k++) 
+	                        {
+	                        	_V[j][k] -= (f * _e[k] + g * _d[k]);
+	                        }
+	                        _d[j] = _V[j][i-1];
+	                        _V[j][i] = 0.0;
+	                    }
+	                }
+	                _d[i] = h;
+	            }
+	   
+	            // Accumulate transformations.
+	   
+	            for (uint64 i = 0; i < _n-1; i++) 
+	            {
+	                _V[i][_n-1] = _V[i][i];
+	                _V[i][i]    = 1.0;
+	                T h = _d[i+1];
+	                if (h != 0.0) {
+	                    for (uint64 k = 0; k <= i; k++)
+	                    {
+	                        _d[k] = _V[i+1][k] / h;
+	                    }
+	                    for (uint64 j = 0; j <= i; j++)
+	                    {
+	                        T g = 0.0;
+	                        for (uint64 k = 0; k <= i; k++)
+	                        {
+	                            g += _V[i+1][k] * _V[j][k];
+	                        }
+	                        for (uint64 k = 0; k <= i; k++) 
+	                        {
+	                            _V[j][k] -= g * _d[k];
+	                        }
+	                    }
+	                }
+	                for (uint64 k = 0; k <= i; k++) 
+	                {
+	                    _V[i+1][k] = 0.0;
+	                }
+	            }
+	            for (uint64 j = 0; j < _n; j++) 
+	            {
+	                _d[j] = _V[j][_n-1];
+	                _V[j][_n-1] = 0.0;
+	            }
+	            _V[_n-1][_n-1] = 1.0;
+	            _e[0] = 0.0;
+	        } 
+	
+	
+	        template <typename T>
+	        void Eigenvalues<T>::_tql2 () 
+	        {
+	
+	            //  This is derived from the Algol procedures tql2, by
+	            //  Bowdler, Martin, Reinsch, and Wilkinson, Handbook for
+	            //  Auto. Comp., Vol.ii-Linear Algebra, and the corresponding
+	            //  Fortran subroutine in EISPACK.
+	   
+	            for (uint64 i = 1; i < _n; i++) 
+	            {
+	                _e[i-1] = _e[i];
+	            }
+	            _e[_n-1] = 0.0;
+	   
+	            T f    = 0.0;
+	            T tst1 = 0.0;
+	            T eps  = pow(2.0,-52.0);
+	            for (uint64 l = 0; l < _n; l++) 
+	            {
+	                // Find small subdiagonal element
+	   
+	                tst1 = std::max(tst1,std::abs(_d[l]) + std::abs(_e[l]));
+	                uint64 m = l;
+	
+	                // Original while-loop from Java code
+	                while (m < _n) 
+	                {
+	                    if (std::abs(_e[m]) <= eps*tst1) 
+	                    {
+	                        break;
+	                    }
+	                    m++;
+	                }
+	
+	   
+	                // If m == l, _d[l] is an eigenvalue,
+	                // otherwise, iterate.
+	   
+	                if (m > l)
+	                {
+	                    uint64 iter = 0;
+	                    do {
+	                        iter = iter + 1;  // (Could check iteration count here.)
+	   
+	                        // Compute implicit shift
+	   
+	                        T g = _d[l];
+	                        T p = (_d[l+1] - g) / (2.0 * _e[l]);
+	                        T r = hypot(p,1.0);
+	                        if (p < 0)
+	                        {
+	                            r = -r;
+	                        }
+	                        _d[l] = _e[l] / (p + r);
+	                        _d[l+1] = _e[l] * (p + r);
+	                        T dl1 = _d[l+1];
+	                        T h = g - _d[l];
+	                        for (uint64 i = l+2; i < _n; i++)
+	                        {
+	                            _d[i] -= h;
+	                        }
+	                        f = f + h;
+	   
+	                        // Implicit QL transformation.
+	   
+	                        p = _d[m];
+	                        T c = 1.0;
+	                        T c2 = c;
+	                        T c3 = c;
+	                        T el1 = _e[l+1];
+	                        T s = 0.0;
+	                        T s2 = 0.0;
+	                        for (int64 i = m-1; i >= static_cast<int64>(l); i--)
+	                        {
+	                            c3 = c2;
+	                            c2 = c;
+	                            s2 = s;
+	                            g = c * _e[i];
+	                            h = c * p;
+	                            r = hypot(p,_e[i]);
+	                            _e[i+1] = s * r;
+	                            s = _e[i] / r;
+	                            c = p / r;
+	                            p = c * _d[i] - s * g;
+	                            _d[i+1] = h + s * (c * g + s * _d[i]);
+	   
+	                            // Accumulate transformation.
+	   
+	                            for (uint64 k = 0; k < _n; k++)
+	                            {
+	                                h = _V[i+1][k];
+	                                _V[i+1][k] = s * _V[i][k] + c * h;
+	                                _V[i][k] = c * _V[i][k] - s * h;
+	                            }
+	                        }
+	                        p = -s * s2 * c3 * el1 * _e[l] / dl1;
+	                        _e[l] = s * p;
+	                        _d[l] = c * p;
+	   
+	                        // Check for convergence.
+	   
+	                    } while (std::abs(_e[l]) > eps*tst1);
+	                }
+	                _d[l] = _d[l] + f;
+	                _e[l] = 0.0;
+	            }
+	     
+	            // Sort eigenvalues and corresponding vectors.
+	   
+	            for (uint64 i = 0; i < _n-1; i++)
+	            {
+	                uint64 k = i;
+	                T p = _d[i];
+	                for (uint64 j = i+1; j < _n; j++)
+	                {
+	                    if (_d[j] < p)
+	                    {
+	                        k = j;
+	                        p = _d[j];
+	                    }
+	                }
+	                if (k != i)
+	                {
+	                    _d[k] = _d[i];
+	                    _d[i] = p;
+	                    for (uint64 j = 0; j < _n; j++)
+	                    {
+	                        p = _V[i][j];
+	                        _V[i][j] = _V[k][j];
+	                        _V[k][j] = p;
+	                    }
+	                }
+	            }
+	        }
+	
+	
+	        template <typename T>
+	        void Eigenvalues<T>::_orthes ()
+	        {
+	   
+	            //  This is derived from the Algol procedures orthes and ortran,
+	            //  by Martin and Wilkinson, Handbook for Auto. Comp.,
+	            //  Vol.ii-Linear Algebra, and the corresponding
+	            //  Fortran subroutines in EISPACK.
+	   
+	            uint64 low = 0;
+	            uint64 high = _n-1;
+	   
+	            for (uint64 m = low+1; m <= high-1; m++)
+	            {
+	   
+	                // Scale column.
+	   
+	                T scale = 0.0;
+	                for (uint64 i = m; i <= high; i++)
+	                {
+	                    scale = scale + static_cast<T>(std::abs(_H[m-1][i]));
+	                }
+	                if (scale != 0.0)
+	                {
+	   
+	                    // Compute Householder transformation.
+	   
+	                    T h = 0.0;
+	                    for (int64 i = high; i >= static_cast<int64>(m); i--)
+	                    {
+	                        _ort[i] = _H[m-1][i]/scale;
+	                        h += _ort[i] * _ort[i];
+	                    }
+	                    T g = static_cast<T>(std::sqrt(h));
+	                    if (_ort[m] > 0)
+	                    {
+	                        g = -g;
+	                    }
+	                    h = h - _ort[m] * g;
+	                    _ort[m] = _ort[m] - g;
+	   
+	                    // Apply Householder similarity transformation
+	                    // H = (I-u*u'/h)*H*(I-u*u')/h)
+	   
+	                    for (uint64 j = m; j < _n; j++)
+	                    {
+	                        T f = 0.0;
+	                        for (int64 i = high; i >= static_cast<int64>(m); i--)
+	                        {
+	                            f += _ort[i]*_H[j][i];
+	                        }
+	                        f = f/h;
+	                        for (uint64 i = m; i <= high; i++)
+	                        {
+	                            _H[j][i] -= f*_ort[i];
+	                        }
+	                    }
+	   
+	                    for (uint64 i = 0; i <= high; i++)
+	                    {
+	                        T f = 0.0;
+	                        for (int64 j = high; j >= static_cast<int64>(m); j--)
+	                        {
+	                            f += _ort[j]*_H[j][i];
+	                        }
+	                        f = f/h;
+	                        for (uint64 j = m; j <= high; j++)
+	                        {
+	                            _H[j][i] -= f*_ort[j];
+	                        }
+	                    }
+	                    _ort[m] = scale*_ort[m];
+	                    _H[m-1][m] = scale*g;
+	                }
+	            }
+	   
+	            // Accumulate transformations (Algol's ortran).
+	
+	            for (int64 m = high-1; m >= static_cast<int64>(low+1); m--)
+	            {
+	                if (_H[m-1][m] != 0.0)
+	                {
+	                    for (uint64 i = m+1; i <= high; i++)
+	                    {
+	                        _ort[i] = _H[m-1][i];
+	                    }
+	                    for (uint64 j = m; j <= high; j++)
+	                    {
+	                        T g = 0.0;
+	                        for (uint64 i = m; i <= high; i++)
+	                        {
+	                            g += _ort[i] * _V[j][i];
+	                        }
+	                        // Double division avoids possible underflow
+	                        g = (g / _ort[m]) / _H[m-1][m];
+	                        for (uint64 i = m; i <= high; i++)
+	                        {
+	                            _V[j][i] += g * _ort[i];
+	                        }
+	                    }
+	                }
+	            }
+	        }
+	
+	
+	        // Complex scalar division.
+	
+	        template <typename T>
+	        void Eigenvalues<T>::_cdiv(T xr, T xi, T yr, T yi)
+	        {
+	            T r,d;
+	            if (std::abs(yr) > std::abs(yi))
+	            {
+	                r = yi/yr;
+	                d = yr + r*yi;
+	                _cdivr = (xr + r*xi)/d;
+	                _cdivi = (xi - r*xr)/d;
+	            } 
+	            else 
+	            {
+	                r = yr/yi;
+	                d = yi + r*yr;
+	                _cdivr = (r*xr + xi)/d;
+	                _cdivi = (r*xi - xr)/d;
+	            }
+	        }
+	
+	
+	        // Nonsymmetric reduction from Hessenberg to real Schur form.
+	
+	        template <typename T>
+	        void Eigenvalues<T>::_hqr2 ()
+	        {
+	   
+	            //  This is derived from the Algol procedure hqr2,
+	            //  by Martin and Wilkinson, Handbook for Auto. Comp.,
+	            //  Vol.ii-Linear Algebra, and the corresponding
+	            //  Fortran subroutine in EISPACK.
+	   
+	            // Initialize
+	   
+	            uint64 nn = this->_n;
+	            int64 n = nn-1;
+	            uint64 low = 0;
+	            uint64 high = nn-1;
+	            T eps = std::pow(2.0,-52.0);
+	            T exshift = 0.0;
+	            T p=0,q=0,r=0,s=0,z=0,t,w,x,y;
+	   
+	            // Store roots isolated by balanc and compute matrix norm
+	   
+	            T norm = 0.0;
+	            for (uint64 i = 0; i < nn; i++)
+	            {
+	                if ((i < low) || (i > high))
+	                {
+	                    _d[i] = _H[i][i];
+	                    _e[i] = 0.0;
+	                }
+	                for (uint64 j = std::max(i-1,static_cast<uint64>(0)); j < nn; j++)
+	                {
+	                    norm = norm + std::abs(_H[j][i]);
+	                }
+	            }
+	   
+	            // Outer loop over eigenvalue index
+	   
+	            uint64 iter = 0;
+	            while (n >= static_cast<int64>(low))
+	            {
+	   
+	                // Look for single small sub-diagonal element
+	   
+	                int64 l = n;
+	                while (l > static_cast<int64>(low))
+	                {
+	                    s = std::abs(_H[l-1][l-1]) + std::abs(_H[l][l]);
+	                    if (s == 0.0)
+	                    {
+	                        s = norm;
+	                    }
+	                    if (std::abs(_H[l-1][l]) < eps * s)
+	                    {
+	                        break;
+	                    }
+	                    l--;
+	                }
+	       
+	                // Check for convergence
+	                // One root found
+	   
+	                if (l == static_cast<int64>(n))
+	                {
+	                    _H[n][n] = _H[n][n] + exshift;
+	                    _d[n] = _H[n][n];
+	                    _e[n] = 0.0;
+	                    n--;
+	                    iter = 0;
+	   
+	                    // Two roots found
+	   
+	                }
+	                else if (l == static_cast<int64>(n-1))
+	                {
+	                    w = _H[n-1][n] * _H[n][n-1];
+	                    p = (_H[n-1][n-1] - _H[n][n]) / 2.0;
+	                    q = p * p + w;
+	                    z = std::sqrt(std::abs(q));
+	                    _H[n][n] = _H[n][n] + exshift;
+	                    _H[n-1][n-1] = _H[n-1][n-1] + exshift;
+	                    x = _H[n][n];
+	   
+	                    // Real pair
+	   
+	                    if (q >= 0)
+	                    {
+	                        if (p >= 0)
+	                        {
+	                            z = p + z;
+	                        } else {
+	                            z = p - z;
+	                        }
+	                        _d[n-1] = x + z;
+	                        _d[n] = _d[n-1];
+	                        if (z != 0.0)
+	                        {
+	                            _d[n] = x - w / z;
+	                        }
+	                        _e[n-1] = 0.0;
+	                        _e[n] = 0.0;
+	                        x = _H[n-1][n];
+	                        s = std::abs(x) + std::abs(z);
+	                        p = x / s;
+	                        q = z / s;
+	                        r = std::sqrt(p * p+q * q);
+	                        p = p / r;
+	                        q = q / r;
+	   
+	                        // Row modification
+	   
+	                        for (uint64 j = n-1; j < nn; j++)
+	                        {
+	                            z = _H[j][n-1];
+	                            _H[j][n-1] = q * z + p * _H[j][n];
+	                            _H[j][n] = q * _H[j][n] - p * z;
+	                        }
+	   
+	                        // Column modification
+	   
+	                        for (int64 i = 0; i <= n; i++)
+	                        {
+	                            z = _H[n-1][i];
+	                            _H[n-1][i] = q * z + p * _H[n][i];
+	                            _H[n][i] = q * _H[n][i] - p * z;
+	                        }
+	   
+	                        // Accumulate transformations
+	   
+	                        for (uint64 i = low; i <= high; i++)
+	                        {
+	                            z = _V[n-1][i];
+	                            _V[n-1][i] = q * z + p * _V[n][i];
+	                            _V[n][i] = q * _V[n][i] - p * z;
+	                        }
+	   
+	                        // Complex pair
+	   
+	                    }
+	                    else 
+	                    {
+	                        _d[n-1] = x + p;
+	                        _d[n] = x + p;
+	                        _e[n-1] = z;
+	                        _e[n] = -z;
+	                    }
+	                    n = n - 2;
+	                    iter = 0;
+	   
+	                    // No convergence yet
+	                } 
+	                else 
+	                {
+	   
+	                    // Form shift
+	   
+	                    x = _H[n][n];
+	                    y = 0.0;
+	                    w = 0.0;
+	                    if (l < static_cast<int64>(n))
+	                    {
+	                        y = _H[n-1][n-1];
+	                        w = _H[n-1][n] * _H[n][n-1];
+	                    }
+	   
+	                    // Wilkinson's original ad hoc shift
+	   
+	                    if (iter == 10)
+	                    {
+	                        exshift += x;
+	                        for (int64 i = low; i <= n; i++)
+	                        {
+	                            _H[i][i] -= x;
+	                        }
+	                        s = std::abs(_H[n-1][n]) + std::abs(_H[n-2][n-1]);
+	                        x = y = 0.75 * s;
+	                        w = -0.4375 * s * s;
+	                    }
+	
+	                    // MATLAB's new ad hoc shift
+	
+	                    if (iter == 30)
+	                    {
+	                        s = (y - x) / 2.0;
+	                        s = s * s + w;
+	                        if (s > 0)
+	                        {
+	                            s = std::sqrt(s);
+	                            if (y < x)
+	                            {
+	                                s = -s;
+	                            }
+	                            s = x - w / ((y - x) / 2.0 + s);
+	                            for (int64 i = low; i <= n; i++)
+	                            {
+	                                _H[i][i] -= s;
+	                            }
+	                            exshift += s;
+	                            x = y = w = 0.964;
+	                        }
+	                    }
+	   
+	                    iter = iter + 1;   // (Could check iteration count here.)
+	   
+	                    // Look for two consecutive small sub-diagonal elements
+	   
+	                    int64 m = n-2;
+	                    while (m >= l)
+	                    {
+	                        z = _H[m][m];
+	                        r = x - z;
+	                        s = y - z;
+	                        p = (r * s - w) / _H[m][m+1] + _H[m+1][m];
+	                        q = _H[m+1][m+1] - z - r - s;
+	                        r = _H[m+1][m+2];
+	                        s = std::abs(p) + std::abs(q) + std::abs(r);
+	                        p = p / s;
+	                        q = q / s;
+	                        r = r / s;
+	                        if (m == l)
+	                        {
+	                            break;
+	                        }
+	                        if (std::abs(_H[m-1][m]) * (std::abs(q) + std::abs(r)) <
+	                            eps * (std::abs(p) * (std::abs(_H[m-1][m-1]) + std::abs(z) +
+	                                             std::abs(_H[m+1][m+1]))))
+	                        {
+	                            break;
+	                        }
+	                        m--;
+	                    }
+	   
+	                    for (int64 i = m+2; i <= static_cast<int64>(n); i++)
+	                    {
+	                        _H[i-2][i] = 0.0;
+	                        if (i > m+2)
+	                        {
+	                            _H[i-3][i] = 0.0;
+	                        }
+	                    }
+	   
+	                    // Double QR step involving rows l:n and columns m:n
+	   
+	                    for (int64 k = m; k <= n-1; k++)
+	                    {
+	                        bool notlast = (k != n-1);
+	                        if (static_cast<int64>(k) != m)
+	                        {
+	                            p = _H[k-1][k];
+	                            q = _H[k-1][k+1];
+	                            r = (notlast ? _H[k-1][k+2] : 0.0);
+	                            x = std::abs(p) + std::abs(q) + std::abs(r);
+	                            if (x != 0.0)
+	                            {
+	                                p = p / x;
+	                                q = q / x;
+	                                r = r / x;
+	                            }
+	                        }
+	                        if (x == 0.0)
+	                        {
+	                            break;
+	                        }
+	                                
+	                        s = std::sqrt(p * p + q * q + r * r);
+	                                
+	                        if (p < 0)
+	                        {
+	                            s = -s;
+	                        }
+	                        if (s != 0)
+	                        {
+	                            if (k != m)
+	                            {
+	                                _H[k-1][k] = -s * x;
+	                            }
+	                            else if (l != m)
+	                            {
+	                                _H[k-1][k] = -_H[k-1][k];
+	                            }
+	                            p = p + s;
+	                            x = p / s;
+	                            y = q / s;
+	                            z = r / s;
+	                            q = q / p;
+	                            r = r / p;
+	   
+	                            // Row modification
+	   
+	                            for (uint64 j = k; j < nn; j++)
+	                            {
+	                                p = _H[j][k] + q * _H[j][k+1];
+	                                if (notlast)
+	                                {
+	                                    p = p + r * _H[j][k+2];
+	                                    _H[j][k+2] = _H[j][k+2] - p * z;
+	                                }
+	                                _H[j][k] = _H[j][k] - p * x;
+	                                _H[j][k+1] = _H[j][k+1] - p * y;
+	                            }
+	   
+	                            // Column modification
+	   
+	                            for (int64 i = 0; i <= std::min(n,k+3); i++)
+	                            {
+	                                p = x * _H[k][i] + y * _H[k+1][i];
+	                                if (notlast)
+	                                {
+	                                    p = p + z * _H[k+2][i];
+	                                    _H[k+2][i] = _H[k+2][i] - p * r;
+	                                }
+	                                _H[k][i] = _H[k][i] - p;
+	                                _H[k+1][i] = _H[k+1][i] - p * q;
+	                            }
+	   
+	                            // Accumulate transformations
+	   
+	                            for (uint64 i = low; i <= high; i++)
+	                            {
+	                                p = x * _V[k][i] + y * _V[k+1][i];
+	                                if (notlast)
+	                                {
+	                                    p = p + z * _V[k+2][i];
+	                                    _V[k+2][i] = _V[k+2][i] - p * r;
+	                                }
+	                                _V[k][i] = _V[k][i] - p;
+	                                _V[k+1][i] = _V[k+1][i] - p * q;
+	                            }
+	                        }  // (s != 0)
+	                    }  // k loop
+	                }  // check convergence
+	            }  // while (n >= low)
+	
+	
+	            // Backsubstitute to find vectors of upper triangular form
+	
+	            if (norm == 0.0)
+	            {
+	                return;
+	            }
+	   
+	            for (n = nn-1; n >= 0; n--)
+	            {
+	                p = _d[n];
+	                q = _e[n];
+	   
+	                // Real vector
+	   
+	                if (q == 0)
+	                {
+	                    int64 l = n;
+	                    _H[n][n] = 1.0;
+	                    for (int64 i = n-1; i >= 0; i--)
+	                    {
+	                        w = _H[i][i] - p;
+	                        r = 0.0;
+	                        for (int64 j = l; j <= n; j++)
+	                        {
+	                            r = r + _H[j][i] * _H[n][j];
+	                        }
+	                        if (_e[i] < 0.0)
+	                        {
+	                            z = w;
+	                            s = r;
+	                        } 
+	                        else 
+	                        {
+	                            l = i;
+	                            if (_e[i] == 0.0)
+	                            {
+	                                if (w != 0.0)
+	                                {
+	                                    _H[n][i] = -r / w;
+	                                } else {
+	                                    _H[n][i] = -r / (eps * norm);
+	                                }
+	   
+	                                // Solve real equations
+	   
+	                            } 
+	                            else 
+	                            {
+	                                x = _H[i+1][i];
+	                                y = _H[i][i+1];
+	                                q = (_d[i] - p) * (_d[i] - p) + _e[i] * _e[i];
+	                                t = (x * s - z * r) / q;
+	                                _H[n][i] = t;
+	                                if (std::abs(x) > std::abs(z))
+	                                {
+	                                    _H[n][i+1] = (-r - w * t) / x;
+	                                } else {
+	                                    _H[n][i+1] = (-s - y * t) / z;
+	                                }
+	                            }
+	   
+	                            // Overflow control
+	   
+	                            t = std::abs(_H[n][i]);
+	                            if ((eps * t) * t > 1)
+	                            {
+	                                for (int64 j = i; j <= n; j++)
+	                                {
+	                                    _H[n][j] = _H[n][j] / t;
+	                                }
+	                            }
+	                        }
+	                    }
+	   
+	                    // Complex vector
+	   
+	                }
+	                else if (q < 0)
+	                {
+	                    int64 l = n-1;
+	
+	                    // Last vector component imaginary so matrix is triangular
+	   
+	                    if (std::abs(_H[n-1][n]) > std::abs(_H[n][n-1]))
+	                    {
+	                        _H[n-1][n-1] = q / _H[n-1][n];
+	                        _H[n][n-1] = -(_H[n][n] - p) / _H[n-1][n];
+	                    } else {
+	                        _cdiv(0.0,-_H[n][n-1],_H[n-1][n-1]-p,q);
+	                        _H[n-1][n-1] = _cdivr;
+	                        _H[n][n-1] = _cdivi;
+	                    }
+	                    _H[n-1][n] = 0.0;
+	                    _H[n][n] = 1.0;
+	                    for (int64 i = n-2; i >= 0; i--)
+	                    {
+	                        T ra,sa,vr,vi;
+	                        ra = 0.0;
+	                        sa = 0.0;
+	                        for (int64 j = l; j <= n; j++) 
+	                        {
+	                            ra = ra + _H[j][i] * _H[n-1][j];
+	                            sa = sa + _H[j][i] * _H[n][j];
+	                        }
+	                        w = _H[i][i] - p;
+	   
+	                        if (_e[i] < 0.0) 
+	                        {
+	                            z = w;
+	                            r = ra;
+	                            s = sa;
+	                        } else {
+	                            l = i;
+	                            if (_e[i] == 0)
+	                            {
+	                                _cdiv(-ra,-sa,w,q);
+	                                _H[n-1][i] = _cdivr;
+	                                _H[n][i] = _cdivi;
+	                            } 
+	                            else 
+	                            {
+	   
+	                                // Solve complex equations
+	   
+	                                x = _H[i+1][i];
+	                                y = _H[i][i+1];
+	                                vr = (_d[i] - p) * (_d[i] - p) + _e[i] * _e[i] - q * q;
+	                                vi = (_d[i] - p) * 2.0 * q;
+	                                if ((vr == 0.0) && (vi == 0.0))
+	                                {
+	                                    vr = eps * norm * (std::abs(w) + std::abs(q) +
+	                                                       std::abs(x) + std::abs(y) + std::abs(z));
+	                                }
+	                                _cdiv(x*r-z*ra+q*sa,x*s-z*sa-q*ra,vr,vi);
+	                                _H[n-1][i] = _cdivr;
+	                                _H[n][i] = _cdivi;
+	                                if (std::abs(x) > (std::abs(z) + std::abs(q)))
+	                                {
+	                                    _H[n-1][i+1] = (-ra - w * _H[n-1][i] + q * _H[n][i]) / x;
+	                                    _H[n][i+1] = (-sa - w * _H[n][i] - q * _H[n-1][i]) / x;
+	                                } else {
+	                                    _cdiv(-r-y*_H[n-1][i],-s-y*_H[n][i],z,q);
+	                                    _H[n-1][i+1] = _cdivr;
+	                                    _H[n][i+1]  = _cdivi;
+	                                }
+	                            }
+	   
+	                            // Overflow control
+	
+	                            t = std::max(std::abs(_H[n-1][i]),std::abs(_H[n][i]));
+	                            if ((eps * t) * t > 1)
+	                            {
+	                                for (int64 j = i; j <= n; j++)
+	                                {
+	                                    _H[n-1][j] = _H[n-1][j] / t;
+	                                    _H[n][j]   = _H[n][j] / t;
+	                                }
+	                            }
+	                        }
+	                    }
+	                }
+	            }
+	   
+	            // Vectors of isolated roots
+	   
+	            for (uint64 i = 0; i < nn; i++) 
+	            {
+	                if (i < low || i > high) 
+	                {
+	                    for (uint64 j = i; j < nn; j++) 
+	                    {
+	                        _V[j][i] = _H[j][i];
+	                    }
+	                }
+	            }
+	   
+	
+	            // Back transformation to get eigenvectors of original matrix
+	   
+	            for (int64 j = nn-1; j >= static_cast<int64>(low); j--) 
+	            {
+	                for (uint64 i = low; i <= high; i++) 
+	                {
+	                    z = 0.0;
+	                    for (int64 k = low; k <= std::min(j,static_cast<int64>(high)); k++) 
+	                    {
+	                        z = z + _V[k][i] * _H[j][k];
+	                    }
+	                    _V[j][i] = z;
+	                }
+	            }
+	        }
+    	}
+
+    }
+}
+
+namespace imageplus
+{
+    namespace math
+    {
+    	namespace numeric
+    	{
+    		template class Eigenvalues<float64>;
+    	}
+    }
+}
+

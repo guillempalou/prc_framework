@@ -1,0 +1,637 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//! \file readsequence.cpp
+//!
+//! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+//!
+//! \date 10-1-2008
+//!
+//! Implementation for ReadSequence class
+//!
+
+#include <fstream>
+#include <boost/format.hpp>
+
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/readsequence.hpp>
+
+#include <readyuv.hpp>
+#include <io_auxiliar.hpp>
+
+#ifdef USE_FFMPEG
+#include <readsequenceffmpeg.hpp>
+#endif
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+ReadSequence::ReadSequence()
+        : _filename(""), _framecount(0), _dims(2), _startframe(0), _endframe(0), _fps(0.0), _format(UNKNOWN_SEQ_FORMAT), _yuvframesize(0), _channels(0), _skip(0)
+{
+}
+
+// skip defaults to 0
+ReadSequence::ReadSequence( const std::string& filename, uint64 skip) 
+        : _dims(2)
+{
+    this->open(filename, skip);
+}
+
+// skip defaults to 0
+ReadSequence::ReadSequence( const std::string& filenames, uint64 startframe, uint64 endframe, uint64 skip)
+        : _dims(2)
+{
+    this->open(filenames, startframe, endframe, skip);
+}
+
+// skip defaults to 0
+ReadSequence::ReadSequence( const std::string& filenames, uint64 startframe, uint64 endframe, std::vector<std::string> channels, uint64 skip)
+        : _dims(2)
+{
+    this->open(filenames, startframe, endframe, channels, skip);
+}
+
+// skip defaults to 0
+void ReadSequence::open( const std::string& filename, uint64 skip) throw (ImagePlusError)
+{
+    // Private data
+    _filename = filename;
+    _framecount = 0;
+    _startframe = 0;
+    _endframe = 0;
+    _fps = 0.0;
+    _format = UNKNOWN_SEQ_FORMAT;
+    _yuvframesize = 0;
+    _channels = std::vector<std::string>(0);
+    _skip = skip;
+
+    // Get format and read data (size,fps,nframes)
+    std::string extension = _filename.substr(_filename.length() - 4 );
+
+    if ( extension == ".yuv" || extension == ".YUV" )
+    {
+
+        // File format is YUV, read data from it
+        std::string datfile = _filename.substr( 0, _filename.length() -4 ).append(".dat");
+        std::string comment;
+        uint64 totalframes;
+
+        uint64 sizex, sizey;
+        read_dat_info(datfile,
+                      sizex,
+                      sizey,
+                      totalframes,
+                      _fps,
+                      _format,
+                      comment);
+        _dims[0] = sizex;
+        _dims[1] = sizey;
+        _startframe = 0;
+        _endframe = totalframes - 1 ;
+    }
+#ifdef USE_FFMPEG
+    else
+    {
+        _ffmpeg = boost::shared_ptr<ReadSequenceFfmpeg>(new ReadSequenceFfmpeg);
+        _ffmpeg->open(_filename, _skip);
+        _dims[0] = _ffmpeg->size_x();
+        _dims[1] = _ffmpeg->size_y();
+        _startframe = _ffmpeg->startframe();
+        _endframe = _ffmpeg->endframe();
+        _format = FFMPEG;
+    }
+#else
+    else
+    {
+        throw ImagePlusFileNotFound("Sequence format not supported");
+    }
+#endif
+
+}
+
+// skip defaults to 0
+void ReadSequence::open( const std::string& filename, uint64 startframe, uint64 endframe, uint64 skip) throw (ImagePlusError)
+{
+    // Private data
+    _filename = filename;
+    _framecount = startframe;
+    _startframe = startframe;
+    _endframe = endframe;
+    _fps = 0.0;
+    _format = IMAGES_PRINTF;
+    _yuvframesize = 0;
+    _channels = std::vector<std::string>(0);
+    _skip = skip;
+
+    if ( _endframe < _startframe )
+    {
+        throw ImagePlusError("Can not open sequence with endframe < startframe");
+    }
+
+    // Read dimensions for first frame
+    _check_frame(_framecount);
+    std::string fname = boost::str( boost::format(_filename) % _framecount );
+    _dims = get_image_dimensions(fname, get_image_format(filename));
+
+}
+
+// skip defaults to 0
+void ReadSequence::open( const std::string& filename, uint64 startframe, uint64 endframe, std::vector<std::string> channels, uint64 skip) throw (ImagePlusError)
+{
+    // Private data
+    _filename = filename;
+    _framecount = startframe;
+    _startframe = startframe;
+    _endframe = endframe;
+    _fps = 0.0;
+    _format = IMAGES_PRINTF_CH;
+    _yuvframesize = 0;
+    _channels.assign(channels.begin(), channels.end());
+    _skip = skip;
+
+    if ( _endframe < _startframe )
+    {
+        throw ImagePlusError("Can not open sequence with endframe < startframe");
+    }
+
+    // Read dimensions for first frame
+    _check_frame(_framecount);
+    std::string fname = boost::str( boost::format(_filename) % _framecount );
+    _dims = get_image_dimensions(fname, get_image_format(filename));
+    
+}
+
+ReadSequence::~ReadSequence()
+{
+    // if sequence still open we can do something here. Nothing to do yet
+}
+
+ReadSequence& ReadSequence::operator[]( uint64 frame )
+{
+
+    switch ( _format )
+    {
+        case FFMPEG:
+#ifdef USE_FFMPEG
+            (*_ffmpeg)[frame];
+#else
+            throw ImagePlusError("ImagePlus library not compiled with FFmpeg support");
+#endif
+            break;
+        default:
+        {
+            _check_frame(frame);
+            break;
+        }
+    }
+    
+    _framecount = frame;
+    return *this;
+}
+
+void ReadSequence::_check_frame(uint64 frame) throw (ImagePlusError)
+{
+    // This checks if frame to read is within limits,
+    // however, as some formats do not expose the number of frames
+    // this will only works with formats that do!
+    if (frame < _startframe)
+    {
+        throw ImagePlusError("Can not change frame pointer to frame < startframe");
+    }
+
+    if (_endframe != 0) {
+        if (frame > _endframe)
+        {
+            throw ImagePlusError("Can not change frame pointer to frame > endframe");
+        }
+    }
+}
+
+ReadSequence& ReadSequence::operator>>( ImageGray<uint8>& g ) throw (ImagePlusError)
+{
+    switch (_format)
+    {
+        case YUV400P:
+        {
+            _check_frame(_framecount);
+            g = read_frame_yuv400(_filename,
+                                  _framecount,
+                                  _dims[0],
+                                  _dims[1]);
+            break;
+        }
+        case YUV420P:
+        {
+            _check_frame(_framecount);
+            ImageYUV420<uint8> image420;
+            image420 = read_frame_yuv420(_filename,
+                                         _framecount,
+                                         _dims[0],
+                                         _dims[1]);
+            g(GRAY_CHANNEL) = image420(GRAY_CHANNEL);
+            break;
+        }
+        case YUV444P:
+	  {
+            _check_frame(_framecount);
+            ImageYUV<uint8> image444;
+            image444 = read_frame_yuv444(_filename,
+                                         _framecount,
+                                         _dims[0],
+                                         _dims[1]);
+            g(GRAY_CHANNEL) = image444(GRAY_CHANNEL);
+            break;
+        }
+        case IMAGES_PRINTF:
+        {
+            _check_frame(_framecount);
+            std::string fname = boost::str( boost::format(_filename) % _framecount );
+            ReadImage rima(fname); rima >> g;
+            break;
+        }
+        case IMAGES_PRINTF_CH:
+        {
+            _check_frame(_framecount);
+            std::string fname = boost::str( boost::format(_filename) % _framecount % _channels[0]);
+            ReadImage rima(fname); rima >> g;
+            break;
+        }
+        case FFMPEG:
+        {
+#ifdef USE_FFMPEG
+            (*_ffmpeg) >> g;
+#else
+            throw ImagePlusError("ImagePlus library not compiled with FFmpeg support");
+#endif
+            break;
+        }
+        default:
+        {
+            throw ImagePlusError("Format not supported");
+        }
+    }
+    
+    // Increase the number for next frame
+    _framecount += 1 + _skip;
+    
+    return *this;
+}
+
+
+
+ReadSequence& ReadSequence::operator>>( ImageYUV<uint8>& in ) throw (ImagePlusError)
+{
+
+    switch (_format)
+    {
+        case YUV400P:
+        {
+            _check_frame(_framecount);            
+            ImageGray<uint8> imagegray;
+            imagegray = read_frame_yuv400(_filename,
+                                          _framecount,
+                                          _dims[0],
+                                          _dims[1]);
+            in(Y_CHANNEL) = imagegray(GRAY_CHANNEL);
+            in(U_CHANNEL) = 128;
+            in(V_CHANNEL) = 128;
+            break;
+        }
+        case YUV420P:
+        {
+            _check_frame(_framecount);            
+            ImageYUV420<uint8> image420;
+            image420 = read_frame_yuv420(_filename,
+                                         _framecount,
+                                         _dims[0],
+                                         _dims[1]);
+            in = to_yuv(image420);
+            break;
+        }
+        case YUV444P:
+        {
+            _check_frame(_framecount);            
+            in = read_frame_yuv444(_filename,
+                                   _framecount,
+                                   _dims[0],
+                                   _dims[1]);
+            break;
+        }
+        case IMAGES_PRINTF:
+        {
+            _check_frame(_framecount);            
+            std::string fname = boost::str( boost::format(_filename) % _framecount );
+            ReadImage rima(fname); rima >> in;
+            break;
+        }
+        case IMAGES_PRINTF_CH:
+        {
+            _check_frame(_framecount);            
+            for (uint64 ch = 0; ch != _channels.size(); ch++) {
+                std::string fname = boost::str( boost::format(_filename) % _framecount % _channels[ch]);
+                
+                ImageGray<uint8> gray_image;
+                ReadImage rima(fname); rima >> gray_image;
+                in(ch) = gray_image(0);
+            }
+            break;
+        }
+        case FFMPEG:
+        {
+#ifdef USE_FFMPEG
+            (*_ffmpeg) >> in;
+#else
+            throw ImagePlusError("ImagePlus library not compiled with FFmpeg support");
+#endif
+            break;
+        }
+        default:
+        {
+            throw ImagePlusError("Format not supported");
+        }
+    }
+    
+    // Increase the number for next frame
+    _framecount += 1 + _skip;
+    
+    return *this;
+}
+
+
+ReadSequence& ReadSequence::operator>>( ImageYUV420<uint8>& in ) throw (ImagePlusError)
+{
+    switch (_format)
+    {
+        case YUV400P: 
+        {
+            _check_frame(_framecount);
+            ImageGray<uint8> imagegray;
+            imagegray = read_frame_yuv400(_filename,
+                                          _framecount,
+                                          _dims[0],
+                                          _dims[1]);
+            in(Y_CHANNEL) = imagegray(GRAY_CHANNEL);
+            in(U_CHANNEL) = 128;
+            in(V_CHANNEL) = 128;
+            break;
+        }
+        case YUV420P:
+        {
+            _check_frame(_framecount);
+            in = read_frame_yuv420(_filename,
+                                   _framecount,
+                                   _dims[0],
+                                   _dims[1]);
+            break;
+        }
+        case YUV444P:
+        {
+            _check_frame(_framecount);
+            //! \todo ReadSequence::operator>> not implemented for 444 sequences and ImageYUV420 output
+            throw ImagePlusError("operator>> not implemented for 444 sequences and ImageYUV420 output");
+            /*
+              imageyuv = convert<T>(read_frame_yuv444(_filename,
+              _framecount,
+              _dims[0],
+              _dims[1]));
+            in = imageyuv420;
+            */
+            break;
+        }
+        case IMAGES_PRINTF:
+        {
+            _check_frame(_framecount);
+            //! \todo ReadSequence::operator>> not implemented for images_printf and ImageYUV420 output
+            throw ImagePlusError("operator>> not implemented for images_printf sequences and ImageYUV420 output");
+            /*
+              string fname = boost::str( boost::format(_filename) % _framecount );
+              
+              // Use ReadImage to read from file
+              ReadImage rima(fname);
+              rima >> g;
+            in = imageyuv420;
+            */
+            break;
+        }
+        case IMAGES_PRINTF_CH:
+        {
+            _check_frame(_framecount);
+            //! \todo ReadSequence::operator>> not implemented for images_printf and ImageYUV420 output
+            throw ImagePlusError("operator>> not implemented for images_printf sequences and ImageYUV420 output");
+            /*for (uint64 ch = 0; ch != _channels.size(); ch++) {
+              std::string fname = boost::str( boost::format(_filename) % _framecount % _channels[ch]);
+              
+              ImageGray<T> gray_image;
+	      ReadImage rima(fname); rima >> gray_image;
+	      imageyuv420(ch) = gray_image(0);
+            in = imageyuv420;
+	      }*/
+            break;
+        }
+        case FFMPEG:
+        {
+#ifdef USE_FFMPEG
+            (*_ffmpeg) >> in;
+#else
+            throw ImagePlusError("ImagePlus library not compiled with FFmpeg support");
+#endif
+            break;
+        }
+        default:
+        {
+            throw ImagePlusError("Format not supported");
+        }
+    }
+    
+    // Increase the number for next frame
+    _framecount += 1 + _skip;
+    
+    return *this;
+}
+
+
+ReadSequence& ReadSequence::operator>>( ImageRGB<uint8>& in ) throw (ImagePlusError)
+{
+    
+    switch (_format)
+    {
+        case YUV400P:
+        {  
+            _check_frame(_framecount);    
+            ImageGray<uint8> imagegray;
+            imagegray = read_frame_yuv400(_filename,
+                                          _framecount,
+                                          _dims[0],
+                                          _dims[1]);
+            in = to_rgb(imagegray);
+            break;
+        }
+        case YUV420P:
+        {
+            _check_frame(_framecount);    
+            ImageYUV420<uint8> image420;
+            image420 = read_frame_yuv420(_filename,
+                                         _framecount,
+                                         _dims[0],
+                                         _dims[1]);
+            in = to_rgb(to_yuv(image420));
+            break;
+        }
+        case YUV444P:
+        {
+            _check_frame(_framecount);    
+            ImageYUV<uint8> imageyuv = read_frame_yuv444(_filename,
+                                                         _framecount,
+                                                         _dims[0],
+                                                         _dims[1]);
+            in = to_rgb(imageyuv);
+            break;
+        }
+        case IMAGES_PRINTF:
+        {
+            _check_frame(_framecount);    
+            std::string fname = boost::str( boost::format(_filename) % _framecount );
+            ReadImage rima(fname); rima >> in;
+            break;
+        }
+        case IMAGES_PRINTF_CH:
+        {
+            _check_frame(_framecount);    
+            for (uint64 ch = 0; ch != _channels.size(); ch++) {
+                std::string fname = boost::str( boost::format(_filename) % _framecount % _channels[ch]);
+                
+                ImageGray<uint8> gray_image;
+                ReadImage rima(fname); rima >> gray_image;
+                in(ch) = gray_image(0);
+            }
+            break;
+        }
+        case FFMPEG:
+        {
+#ifdef USE_FFMPEG
+            (*_ffmpeg) >> in;
+#else
+            throw ImagePlusError("ImagePlus library not compiled with FFmpeg support");
+#endif
+            break;
+        }
+        default:
+        {
+            throw ImagePlusError("Format not supported");
+        }
+    }
+    
+    // Increase the number for next frame
+    _framecount += 1 + _skip;
+    
+    return *this;
+}
+
+
+ReadSequence& ReadSequence::operator>>( ImagePartition<uint32>& in ) throw (ImagePlusError)
+{
+    
+    switch (_format)
+    {
+        case IMAGES_PRINTF:
+        {
+            _check_frame(_framecount);    
+            std::string fname = boost::str( boost::format(_filename) % _framecount );
+            ReadImage rima(fname); rima >> in;
+            break;
+        }
+        default:
+        {
+            throw ImagePlusError("Format not supported");
+        }
+    }
+    
+    // Increase the number for next frame
+    _framecount += 1 + _skip;
+    
+    return *this;
+}
+
+
+uint64 ReadSequence::dims(uint64 d) const
+{
+#ifndef NDEBUG
+    return _dims.at(d);
+#else
+    return _dims[d];
+#endif
+}
+
+const std::vector<uint64>& ReadSequence::dims() const
+{
+    return _dims;
+}
+
+
+float64 ReadSequence::fps() const
+{
+    return _fps;
+}
+
+uint64 ReadSequence::startframe() const
+{
+    return _startframe;
+}
+
+uint64 ReadSequence::endframe() const
+{
+    return _endframe;
+}
+
+SeqFormat ReadSequence::format() const
+{
+    return _format;
+}
+
+std::vector<std::string> ReadSequence::channels() const
+{
+    return _channels;
+}
+
+uint64 ReadSequence::frame_pointer() const
+{
+    return _framecount;
+}
+
+uint64 ReadSequence::last_frame_pointer() const
+{
+    return _framecount - (1 + _skip);
+}
+
+
+bool ReadSequence::eof()
+{
+    switch ( _format )
+    {
+        case FFMPEG:
+        {
+#ifdef USE_FFMPEG
+            return _ffmpeg->eof();
+#else
+            throw ImagePlusError("ImagePlus library not compiled with FFmpeg support");
+#endif
+            break;
+        }
+        default:
+        {
+            if (_framecount >  _endframe)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+
+

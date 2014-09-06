@@ -1,0 +1,101 @@
+/*!
+ * \example hello_regions.cpp
+ *
+ * This is an example of how to loop in an ImaVol
+ * 
+ * See the \ref regions "Getting Started Guide" for more information. 
+ * 
+ * \todo Add logic using coords
+ */
+#include <imageplus/core.hpp>
+
+using namespace imageplus;
+
+void hello_regions( ImageGray<int16>   & gry, 
+                    ImageRGB <uint8>   & rgb,
+                    Volume   <uint8,1> & vol )
+{
+    // This definitions is just for convenience
+    typedef GeometricShape<int32, 2> GShape2D;
+    
+    /*
+     * There is a RegionConcept that defines all the needed properties that a Region should have.
+     * So, you can define your own "region" classes, i.e. RegionModels.
+     * 
+     * Anyway there are some basic RegionModels ready to be used: ImaVolMask and GeometricShapes.
+     * Note that these classes are totally different, but both can be used as "Regions".
+     * 
+     * In the following code we will use both to define the same region.
+     * The region will consists in just two positions: (1,1) and (0,2)
+     * 
+     */
+    ImageMask imask(gry.dims() ); // we are assume that gry.dims() == rgb.dims()
+    GShape2D  gs2d(2);
+    
+    imask[1][1] = true;  // adding position (1,1) to image mask
+    imask[0][2] = true;  // adding position (0,2) to image mask
+    
+    gs2d[0]=GShape2D::CoordType(1,1); // adding position (1,1) to geometric shape
+    gs2d[1]=GShape2D::CoordType(0,2); // adding position (0,2) to geometric shape
+    
+    /*
+     * Now we can loop with iterators, but using any of the Regions.
+     * 
+     * We will loop first with ImageMask and second with GShape2D:
+     */
+    for( ImageGray<int16>::iterator< ImageMask > it  = gry.colors_begin( imask ); 
+                                                 it != gry.colors_end  ( imask ); ++it )
+    {
+        (*it).value() = 0; // just to do something... sure you can do someting else than "=0"! ;-)
+    }
+    for( ImageGray<int16>::iterator< GShape2D > it  = gry.colors_begin( gs2d ); 
+                                                it != gry.colors_end  ( gs2d ); ++it )
+    {
+        (*it).value() = 0;
+    }
+
+    
+    /*
+     * Note that the same can be done also for RGB images:
+     */
+    for( ImageRGB<uint8>::iterator< ImageMask > it  = rgb.colors_begin( imask ); 
+                                                it != rgb.colors_end  ( imask ); ++it )
+    {
+        (*it).value() = 0;
+    }
+    for( ImageRGB<uint8>::iterator< GShape2D > it  = rgb.colors_begin( gs2d ); 
+                                               it != rgb.colors_end  ( gs2d ); ++it )
+    {
+        (*it).value() = 0;
+    }
+
+    /*
+     * And, with little changes, it also for volumes.
+     * 
+     * Note that a Region for volumes are a set of voxels, not pixels, so we need 3D positions...
+     */
+    typedef GeometricShape<int32, 3> GShape3D; // definition just for convenience...
+    
+    VolumeMask vmask( vol.dims() ); // we need to use VolumeMask instead of ImageMask
+    GShape3D   gs3d(2);             // we need geometric shapes with 3D coords 
+ 
+    vmask[1][1][0] = true; // adding position (1,1,0) to volume mask
+    vmask[0][2][0] = true; // adding position (0,2,0) to volume mask 
+ 
+    gs3d[0]=GShape3D::CoordType(1,1,0); // adding position (1,1,0) to geometric shape (3D)
+    gs3d[1]=GShape3D::CoordType(0,2,0); // adding position (0,2,0) to geometric shape (3D)
+
+    /*
+     * Looping in a region of the volume using VolumeMask and GeometricShape 3D
+     */ 
+    for( Volume<uint8,1>::iterator< VolumeMask > it  = vol.colors_begin( vmask ); 
+                                                 it != vol.colors_end  ( vmask ); ++it )
+    {
+        (*it).value() = 0;
+    }
+    for( Volume<uint8,1>::iterator< GShape3D > it  = vol.colors_begin( gs3d ); 
+                                               it != vol.colors_end  ( gs3d ); ++it )
+    {
+        (*it).value() = 0;
+    }
+}

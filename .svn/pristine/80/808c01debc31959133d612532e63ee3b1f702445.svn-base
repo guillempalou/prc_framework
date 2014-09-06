@@ -1,0 +1,625 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file svd.cpp
+//!
+//!  \brief Class implementation for SVD
+//!
+
+#include <imageplus/math/numeric/svd.hpp>
+#include <imageplus/math/numeric/products.hpp>
+#include <imageplus/math/numeric/qr_decomposition.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+#include <algorithm>
+
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+SVD::SVD(const MultiArray<float64,2>& arg) :
+        _size_x(arg.dims(0)), _size_y(arg.dims(1))
+{
+	uint64 nu = std::min(_size_y, _size_x);
+
+	_s = MultiArray<float64, 1>(std::min(_size_x, _size_y+1));
+	_u = MultiArray<float64, 2>(nu, _size_y);
+	_v = MultiArray<float64, 2>(_size_x, _size_x);
+	
+	MultiArray<float64,1> e(_size_x);
+	MultiArray<float64,1> work(_size_y);
+	MultiArray<float64,2> A(arg);
+
+	bool wantu = true;
+	bool wantv = true;
+
+
+    _u = 0.0;
+
+
+    // Reduce A to bidiagonal form, storing the diagonal elements
+    // in _s and the super-diagonal elements in e.
+
+		
+    uint64 nct     = std::min(_size_y-1, _size_x);
+    uint64 partNrt = std::min(_size_x-2,_size_y);
+    uint64 nrt     = std::max(static_cast<uint64>(0), partNrt);
+
+    for (uint64 k = 0; k < std::max(nct, nrt); k++)
+    {
+        if (k < nct) 
+        {
+            // Compute the transformation for the k-th column and
+            // place the k-th diagonal in _s[k].
+            // Compute 2-norm of k-th column without under/overflow.
+            _s[k] = 0;
+
+            for (uint64 i = k; i < _size_y; i++) 
+            {
+                _s[k] = hypot(_s[k], A[k][i]);					 
+            }
+
+            if (_s[k] != 0.0) 
+            {
+                if (A[k][k] < 0.0) 
+                {
+                    _s[k] = _s[k]*(-1);
+                }
+                for (uint64 i = k; i < _size_y; i++) 
+                {
+                    A[k][i] = A[k][i]/_s[k];							
+                }
+                A[k][k] = A[k][k] + 1.0;
+            }
+            _s[k] = _s[k]*(-1);
+        }
+
+        for (uint64 j = k+1; j < _size_x; j++) 
+        {
+            if ((k < nct) && (_s[k] != 0.0)) 
+            {
+
+                // Apply the transformation.
+
+                float64 t(0.0);
+
+                for (uint64 i = k; i < _size_y; i++) 
+                {
+                    t = t + A[k][i]*A[j][i];
+                }
+                t = -t/A[k][k];
+                for (uint64 i = k; i < _size_y; i++) 
+                {
+                    A[j][i] = A[j][i] + t*A[k][i];
+                }
+            }
+
+            // Place the k-th row of A into e for the
+            // subsequent calculation of the row transformation.
+
+            e[j] = A[j][k];
+        }
+
+        if (wantu && (k < nct))
+        {
+
+            // Place the transformation in _u for subsequent back
+            // multiplication.
+
+            for (uint64 i = k; i < _size_y; i++)
+            {
+                _u[k][i] = A[k][i];
+            }
+        }
+        if (k < nrt)
+        {
+            // Compute the k-th row transformation and place the
+            // k-th super-diagonal in e[k].
+            // Compute 2-norm without under/overflow.
+            e[k] = 0;
+            for (uint64 i = k+1; i < _size_x; i++)
+            {
+                e[k] = hypot(e[k], e[i]);
+            }
+            if (e[k] != 0.0)
+            {
+                if (e[k+1] < 0.0)
+                {
+                    e[k] = e[k]*(-1);
+                }
+                for (uint64 i = k+1; i < _size_x; i++)
+                {
+                    e[i] = e[i]/e[k];
+                }
+                e[k+1] = e[k+1]+1.0;
+            }
+            e[k] = e[k]*(-1);
+
+            if (k+1 < _size_x && e[k] != 0.0)
+            {
+                // Apply the transformation.
+                for (uint64 i = k+1; i < _size_y; i++)
+                {
+                    work[i] = 0.0;
+                }
+                for (uint64 j = k+1; j < _size_x; j++)
+                {
+                    for (uint64 i = k+1; i < _size_y; i++)
+                    {
+                        work[i] += e[j]*A[j][i];
+                    }
+                }
+                for (uint64 j = k+1; j < _size_x; j++)
+                {
+                    float64 t(-e[j]/e[k+1]);
+                    for (uint64 i = k+1; i < _size_y; i++)
+                    {
+                        A[j][i] += t*work[i];
+                    }
+                }
+            }
+            if (wantv)
+            {
+
+                // Place the transformation in _v for subsequent
+                // back multiplication.
+
+                for (uint64 i = k+1; i < _size_x; i++)
+                {
+                    _v[k][i] = e[i];
+                }
+            }
+        }
+    }
+
+    // Set up the final bidiagonal matrix or order p.
+
+    int64 p = std::min(_size_x, _size_y+1);
+    if (nct < _size_x)
+    {
+        _s[nct] = A[nct][nct];
+    }
+    if (_size_y < static_cast<uint64>(p))
+    {
+        _s[p-1] = 0.0;
+    }
+    if (nrt+1 < static_cast<uint64>(p))
+    {
+        e[nrt] = A[p-1][nrt];
+    }
+    e[p-1] = 0.0;
+
+    // If required, generate_u.
+
+    if (wantu)
+    {
+        for (uint64 j = nct; j < nu; j++)
+        {
+            for (uint64 i = 0; i < _size_y; i++)
+            {
+                _u[j][i] = 0.0;
+            }
+            _u[j][j] = 1.0;
+        }
+        for (int64 k = nct-1; k >= 0; k--)
+        {
+            if (_s[k] != 0.0)
+            {
+                for (uint64 j = k+1; j < nu; j++)
+                {
+                    float64 t(0.0);																						//---------?
+                    for (uint64 i = k; i < _size_y; i++)
+                    {
+                        t = t + _u[k][i]*_u[j][i];
+                    }
+                    t = -t/_u[k][k];
+                    for (uint64 i = k; i < _size_y; i++)
+                    {
+                        _u[j][i] += t*_u[k][i];
+                    }
+                }
+                for (uint64 i = k; i < _size_y; i++)
+                {
+                    _u[k][i] = _u[k][i]*(-1);
+                }
+                _u[k][k] = 1.0 +_u[k][k];
+                for (int64 i = 0; i < k-1; i++)
+                {
+                    _u[k][i] = 0.0;
+                }
+            }
+            else 
+            {
+                for (uint64 i = 0; i < _size_y; i++)
+                {
+                    _u[k][i] = 0.0;
+                }
+                _u[k][k] = 1.0;
+            }
+        }
+    }
+
+    // If required, generate _v.
+
+    if (wantv)
+    {
+        for (int64 k = _size_x-1; k >= 0; k--)
+        {
+            if (k < static_cast<int64>(nrt) && e[k] != 0.0) 
+            {
+                for (uint64 j = k+1; j < nu; j++) 
+                {
+                    float64 t(0.0);
+                    for (uint64 i = k+1; i < _size_x; i++)
+                    {
+                        t +=  _v[k][i]*_v[j][i];
+                    }
+                    t = -t/_v[k][k+1];
+                    for (uint64 i = k+1; i < _size_x; i++)
+                    {
+                        _v[j][i] += + t*_v[k][i];
+                    }
+                }
+            }
+            for (uint64 i = 0; i < _size_x; i++)
+            {
+                _v[k][i] = 0.0;
+            }
+            _v[k][k] = 1.0;
+        }
+    }
+
+    // Main iteration loop for the singular values.
+
+    uint64 pp   = p-1;
+    uint64 iter = 0;
+    //float64 eps = 2.2204e-16; //float64 eps(pow(2.0,-52.0));
+
+
+    while (p > 0)
+    {
+        uint64 kase=0;
+
+        // Here is where a test for too many iterations would go.
+
+        // This section of the program inspects for
+        // negligible elements in the _s and e arrays.  On
+        // completion the variables kase and k are set as follows.
+
+        // kase = 1     if _s(p) and e[k-1] are negligible and k<p
+        // kase = 2     if _s(k) is negligible and k<p
+        // kase = 3     if e[k-1] is negligible, k<p, and
+        //              _s(k), ..., _s(p) are not negligible (qr step).
+        // kase = 4     if e(p-1) is negligible (convergence).
+
+        int64 k;
+        for (k = p-2; k >= -1; k--)
+        {
+            if (k == -1)
+            {
+                break;
+            }
+            if (std::abs(e[k]) <= SVD_EPS*(std::abs(_s[k]) + std::abs(_s[k+1])))
+            {
+                e[k] = 0.0;
+                break;
+            }
+        }
+        if (k == p-2)
+        {
+            kase = 4;
+        } 
+        else 
+        {
+            int64 ks;
+            for (ks = p-1; ks >= k; ks--)
+            {
+                if (ks == k)
+                {
+                    break;
+                }
+
+                float64 t( (ks != p ? std::abs(e[ks]) : 0.) + (ks != k+1 ? std::abs(e[ks-1]) : 0.));
+
+                if (std::abs(_s[ks]) <= SVD_EPS*t)
+                {
+                    _s[ks] = 0.0;
+                    break;
+                }
+            }
+            if (ks == k)
+            {
+                kase = 3;
+            } 
+            else if (ks == p-1)
+            {
+                kase = 1;
+            } 
+            else 
+            {
+                kase = 2;
+                k = ks;
+            }
+        }
+        k++;
+			
+			
+        // Perform the task indicated by kase.
+
+        switch (kase)
+        {
+			// Deflate negligible _s(p).
+			case 1: 
+            {
+				float64 f(e[p-2]);
+				e[p-2] = 0.0;
+				for (int64 j = p-2; j >= k; j--)
+                {
+					float64 t(hypot(_s[j], f));
+					float64 cs(_s[j]/t);
+					float64 sn(f/t);
+					_s[j] = t;
+					if (j != k)
+                    {
+						f = (sn*(-1))*e[j-1];
+						e[j-1] = cs*e[j-1];
+					}
+					if (wantv)
+                    {
+						for (uint64 i = 0; i < _size_x; i++)
+                        {
+							t = cs*_v[j][i] + sn*_v[p-1][i];
+							_v[p-1][i] = (sn*(-1))*_v[j][i] + cs*_v[p-1][i];
+							_v[j][i] = t;
+						}
+					}
+				}
+			}
+            break;
+
+				// Split at negligible _s(k).
+
+			case 2: 
+            {
+				float64 f(e[k-1]);
+				e[k-1] = 0.0;
+				for (int64 j = k; j < p; j++)
+                {
+					float64 t(hypot(_s[j], f));
+					float64 cs(_s[j]/t);
+					float64 sn(f/t);
+					_s[j] = t;
+					f = (sn*(-1))*e[j];
+					e[j] = cs*e[j];
+					if (wantu)
+                    {
+						for (uint64 i = 0; i < _size_y; i++)
+                        {
+							t = cs*_u[j][i] + sn*_u[k-1][i];
+							_u[k-1][i] = (sn*(-1))*_u[j][i] + cs*_u[k-1][i];
+							_u[j][i] = t;
+						}
+					}
+				}
+			}
+            break;
+
+				// Perform one qr step.
+
+			case 3: 
+            {
+				// Calculate the shift.
+
+				float64 scale = std::max(std::max(std::max(std::max(std::abs(_s[p-1]), std::abs(_s[p-2])),
+                                                           std::abs(e[p-2])), std::abs(_s[k])), std::abs(e[k]));
+				float64 sp = _s[p-1]/scale;
+				float64 spm1 = _s[p-2]/scale;
+				float64 epm1 = e[p-2]/scale;
+				float64 sk = _s[k]/scale;
+				float64 ek = e[k]/scale;
+				float64 b = ((spm1 + sp)*(spm1 - sp) + epm1*epm1)/2.0;
+				float64 c = (sp*epm1)*(sp*epm1);
+				float64 shift = 0.0;
+				if ((b != 0.0) || (c != 0.0))
+                {
+					shift = std::sqrt(b*b + c);
+					if (b < 0.0)
+                    {
+						shift = shift*(-1);
+					}
+					shift = c/(b + shift);
+				}
+				float64 f = (sk + sp)*(sk - sp) + shift;
+				float64 g = sk*ek;
+
+				// Chase zeros.
+
+				for (int64 j = k; j < p-1; j++)
+                {
+					float64 t = hypot(f, g);
+					float64 cs = f/t;
+					float64 sn = g/t;
+					if (j != k)
+                    {
+						e[j-1] = t;
+					}
+					f = cs*_s[j] + sn*e[j];
+					e[j] = cs*e[j] - sn*_s[j];
+					g = sn*_s[j+1];
+					_s[j+1] = cs*_s[j+1];
+					if (wantv)
+                    {
+						for (uint64 i = 0; i < _size_x; i++)
+                        {
+							t = cs*_v[j][i] + sn*_v[j+1][i];
+							_v[j+1][i] = (sn*(-1))*_v[j][i] + cs*_v[j+1][i];
+							_v[j][i] = t;
+						}
+					}
+					t = hypot(f, g);
+					cs = f/t;
+					sn = g/t;
+					_s[j] = t;
+					f = cs*e[j] + sn*_s[j+1];
+					_s[j+1] = (sn*(-1))*e[j] + cs*_s[j+1];
+					g = sn*e[j+1];
+					e[j+1] = cs*e[j+1];
+					if (wantu && j < static_cast<int64>(_size_y-1))
+                    {
+						for (uint64 i = 0; i < _size_y; i++)
+                        {
+							t = cs*_u[j][i] + sn*_u[j+1][i];
+							_u[j+1][i] = (sn*(-1))*_u[j][i] + cs*_u[j+1][i];
+							_u[j][i] = t;
+						}
+					}
+				}
+				e[p-2] = f;
+				iter++;
+			}
+            break;
+
+            // Convergence.
+
+			case 4: 
+            {
+				// Make the singular values positive.
+
+				if (_s[k] <= 0.0)
+                {
+					_s[k] = (_s[k] < 0.0 ? -_s[k] : 0.0);
+					if (wantv)
+                    {
+						for (uint64 i = 0; i <= pp; i++)
+                        {
+							_v[k][i] = -_v[k][i];
+						}
+					}
+				}
+
+				// Order the singular values.
+
+				while (k < static_cast<int64>(pp))
+                {
+					if (_s[k] >= _s[k+1])
+                    {
+						break;
+					}
+					float64 t = _s[k];
+					_s[k] = _s[k+1];
+					_s[k+1] = t;
+					if (wantv && k < static_cast<int64>(_size_x-1))
+                    {
+						for (uint64 i = 0; i < _size_x; i++)
+                        {
+							t = _v[k+1][i];
+							_v[k+1][i] = _v[k][i];
+							_v[k][i] = t;
+						}
+					}
+					if (wantu && k < static_cast<int64>(_size_y-1))
+                    {
+						for (uint64 i = 0; i < _size_y; i++)
+                        {
+							t =_u[k+1][i];
+							_u[k+1][i] =_u[k][i];
+							_u[k][i] = t;
+						}
+					}
+					k++;
+				}
+				iter = 0;
+				p--;
+			}
+            break;
+        }
+    }
+		
+}
+
+
+MultiArray<float64,2> SVD::u () const
+{
+	uint64 minm = std::min(_size_y+1, _size_x);
+
+    MultiArray<float64,2> A(_size_y, minm);
+
+	for (uint64 i=0; i < _size_y; i++)
+	for (uint64 j=0; j < minm;    j++)
+    {
+        A[j][i] =_u[j][i];
+
+    }
+    return A;
+}
+
+
+/* Return the right singular vectors */
+
+MultiArray<float64,2> SVD::v() const
+{
+    return _v;
+}
+
+/** Return the one-dimensional array of singular values */
+
+MultiArray<float64,1> SVD::singular_values() const
+{
+	return _s;
+}
+
+/** Return the diagonal matrix of singular values
+ @return     S
+ */
+
+MultiArray<float64,2> SVD::s() const
+{
+	MultiArray<float64,2> A(_size_x, _size_x);
+
+	for (uint64 i = 0; i < _size_x; i++)
+    {
+		for (uint64 j = 0; j < _size_x; j++)
+        {
+			A[j][i] = 0.0;
+		}
+		A[i][i] = _s[i];
+	}
+    return A;
+}
+
+/** Two norm  (max(S)) */
+float64 SVD::norm2() const
+{
+	return _s[0];
+}
+
+/** Two norm of condition number (max(S)/min(S)) */
+
+
+float64 SVD::cond() const
+{
+	return _s[0]/_s[std::min(_size_x,_size_y)-1];
+}
+
+/** Effective numerical matrix rank
+ @return     Number of nonnegligible singular values.
+ */
+uint64 SVD::rank() const
+{
+	//float64 eps = pow(2.0, -52.0);
+	float64 tol = std::max(_size_x, _size_y)*_s[0]*SVD_EPS;
+	uint64 r = 0;
+
+	for (uint64 i = 0; i < _s.dims(0); i++) 
+	{
+		if (_s[i] > tol) 
+		{
+			r++;
+		}
+	}
+	return r;
+}
+
+

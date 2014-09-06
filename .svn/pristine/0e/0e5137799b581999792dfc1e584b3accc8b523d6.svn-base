@@ -1,0 +1,280 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+//!
+//!  \file writevolume.cpp
+//!
+#include <imageplus/io/writevolume.hpp>
+
+#include <cstdio>
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+namespace ipcomp = imageplus::compress;
+
+WriteVolume::WriteVolume():_filename("")
+{
+}
+WriteVolume::WriteVolume( const std::string& filename )
+{
+    _filename=filename;
+}
+WriteVolume::~WriteVolume()
+{
+}
+void WriteVolume::open(const std::string& filename)
+{
+    FILE *fp=fopen(filename.c_str(), "wb");
+    if (fp==NULL) throw ImagePlusError( "ERROR(WriteVolume) : Cannot open  " + filename );
+    else
+    {
+        fclose(fp);
+        _filename=filename;
+    }
+}
+template<typename T>
+void WriteVolume::operator<<(const VolumeRGB<T>& vol) const
+{
+}
+template<typename T>
+void WriteVolume::operator<<( const VolumeGray<T>& vol) const
+{
+    std::string extension;
+    FILE *fp;
+
+    size_t write_size;
+
+
+    //Analyze filename extension in order to define whether x3d or rle format is required
+    extension=_filename.substr(_filename.length()-4,4);
+
+    if (extension.compare(".rle")==0)
+    {
+        //write rle volume file
+        fp=fopen(_filename.c_str(),"wb");
+        if (fp==NULL) throw ImagePlusError("ERROR(WriteVolume) Cannot open file "+ _filename);
+        //data union needed due to RLE compressor
+        union _data_to_compress
+        {
+            const T *data_voxel_original;
+            uint8 *data_voxel_char;
+        }data_to_compress;
+
+        uint16 fileversion;
+        uint32 insize, outsize;
+        file_header *header=new file_header();
+        uint8 *buffer=new uint8[vol.num_total_data_elements()];
+
+        //File version (deprecated: must define use of this short integer)
+        write_size = fwrite(&fileversion,sizeof(uint16),1,fp);
+        if (write_size != 1)
+        {
+            throw ImagePlusError( "ERROR(WriteVolume) : Could not open file version " + _filename );
+        }
+
+
+        //Volume size
+        insize=vol.num_total_data_elements()*sizeof(T);
+
+        //Arrange and write fileHeader
+        header->use_ROI=false; //deprecated
+        header->offset_x=0.0; //deprecated
+        header->offset_y=0.0; //deprecated
+        header->offset_z=0.0; //deprecated
+        header->voxel_size=2.0; //TODO: Determine where to define voxelSize
+        header->cubes_x=vol.size_x();
+        header->cubes_y=vol.size_y();
+        header->cubes_z=vol.size_z();
+        header->data_size=sizeof(T);
+
+        write_size = fwrite(header,sizeof(file_header),1,fp);
+        if (write_size != 1)
+        {
+            throw ImagePlusError( "ERROR(ReadVolume) : Could not write header " + _filename );
+        }
+
+        //Compress volume data
+        ipcomp::Rle cprss;
+        data_to_compress.data_voxel_original=vol(0).data();
+        outsize=cprss.compress(data_to_compress.data_voxel_char,buffer,insize);
+        //write data size
+        write_size = fwrite(&outsize,sizeof(uint32),1,fp);
+        if (write_size != 1)
+        {
+            throw ImagePlusError( "ERROR(ReadVolume) : Could not write data size " + _filename );
+        }
+
+
+        //write volume data
+        write_size = fwrite(buffer,1,outsize,fp);
+        if (write_size != outsize)
+        {
+            throw ImagePlusError( "ERROR(ReadVolume) : Could not write volume data " + _filename );
+        }
+
+        fclose(fp);
+        delete[] header;
+        delete[] buffer;
+    }
+    else if (extension.compare(".x3d")==0)
+    {
+        //write in x3d format
+        float64 _fVoxelSize=2.0; //TODO:determine where to define voxelsize
+        register int32 iLoopX=0,iLoopY=0,iLoopZ=0, vx, vy, vz;
+        int32  lin, col, hgt; //, pln; //AGIL: pln was set but not used, so removed to avoid warnings for GCC 4.6
+        FILE* f;
+        int32 roomSizeX, roomSizeY, roomSizeZ;
+        int32 win2wall, win2floor, door2wall, doorheight, doorwidth;
+        f=fopen(_filename.c_str(),"w");
+        if (f==NULL) throw ImagePlusError("ERROR(WriteVolume) Cannot open file "+ _filename);
+        //Header
+        fprintf(f,"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        fprintf(f,"<!DOCTYPE X3D PUBLIC \"ISO//Web3D//DTD X3D 3.0//EN\" ");
+        fprintf(f,"\"http://www.web3d.org/specifications/x3d-3.0.dtd\">\n\n");
+        fprintf(f,"<X3D profile=\"Immersive\" version=\"3.0\">\n<Scene>\n");
+
+        // draw walls & lines for reference
+        //      UPC Room: 400x520x240cm, 50-80-20-200-90
+        //      ITC Room: 475x592x450cm
+        roomSizeX = 400;//475;//
+        roomSizeY = 520;//592;//520;
+        roomSizeZ = 240;//240;
+        win2wall  =  50;
+        win2floor =  80;
+        door2wall =  20;
+        doorheight= 200;
+        doorwidth =  90;
+        // LIGHT GREEN WALLS, with window and door holes (IndexedFaceSet)
+        fprintf(f,"\t<Shape>\n");
+        fprintf(f,"\t\t<Appearance>\n\t\t\t<Material diffuseColor=\"0.5 1 0.5\"/>\n\t\t</Appearance>\n");
+        fprintf(f,"\t\t<IndexedFaceSet coordIndex=\"0 1 2 3 -1\n");
+        fprintf(f,"\t\t\t\t\t  0  4  8 16 -1\n\t\t\t\t\t 16 9 10 17 -1\n");
+        fprintf(f,"\t\t\t\t\t 17 11  5  1 -1\n\t\t\t\t\t 3 7 4 0 -1\n");
+        fprintf(f,"\t\t\t\t\t  2  6 19 15 -1\n\t\t\t\t\t 14 19 18 13 -1\n");
+        fprintf(f,"\t\t\t\t\t 12 18  7  3 -1\n\t\t\t\t\t 1 5 6 2 -1\">\n");
+        // floor points counter-clockwise (CCW)
+        fprintf(f,"\t\t<Coordinate point=\"   0   0   0,  %d   0   0,  %d  %d   0,   0  %d   0,\n",
+                roomSizeX, roomSizeX, roomSizeY, roomSizeY);
+        // ceiling points CCW
+        fprintf(f,     "\n\t\t\t              0   0  %d,  %d   0  %d,  %d  %d  %d,   0  %d  %d,\n",
+                roomSizeZ, roomSizeX, roomSizeZ, roomSizeX, roomSizeY, roomSizeZ, roomSizeY, roomSizeZ);
+        // window points clockwise (CW)
+        fprintf(f,     "\n\t\t\t             %d   0  %d,  %d   0  %d,  %d   0  %d,  %d   0  %d,\n",
+                win2wall, roomSizeZ, win2wall, win2floor, roomSizeX-win2wall, win2floor, roomSizeX-win2wall, roomSizeZ);
+        // door points CW
+        fprintf(f,     "\n\t\t\t             %d  %d   0,  %d  %d  %d,  %d  %d  %d,  %d  %d   0,\n",
+                door2wall, roomSizeY, door2wall, roomSizeY, doorheight, door2wall+doorwidth, roomSizeY, doorheight, door2wall+doorwidth, roomSizeY);
+        // strange point couples (below window and above door)
+        fprintf(f,     "\n\t\t\t             %d   0   0,  %d   0   0,  %d  %d  %d,  %d  %d  %d\"/>\n",
+                win2wall, roomSizeX-win2wall, door2wall, roomSizeY, roomSizeZ, door2wall+doorwidth, roomSizeY, roomSizeZ);
+        fprintf(f,"\t\t</IndexedFaceSet>\n");
+        fprintf(f,"\t</Shape>\n");
+        // LIGHT YELLOW WIREFRAME (IndexedLineSet)
+        fprintf(f,"\t<Shape>\n");
+        fprintf(f,"\t\t<Appearance>\n\t\t\t<Material diffuseColor=\"1 1 0.5\"/>\n\t\t</Appearance>\n");
+        fprintf(f,"\t\t<IndexedLineSet coordIndex=\"0 1 2 3 -1\n\t\t\t\t\t 0 4 8 9 10 11 5 1 -1\n");
+        fprintf(f,"\t\t\t\t\t 3 7 4 0 -1\n\t\t\t\t\t 2 6 7 3 12 13 14 15 -1\">\n");
+        // floor points CCW
+        fprintf(f,"\t\t<Coordinate point=\"   0   0   0,  %d   0   0,  %d  %d   0,   0  %d   0,\n",
+                roomSizeX, roomSizeX, roomSizeY, roomSizeY);
+        // ceiling points CCW
+        fprintf(f,     "\n\t\t\t              0   0  %d,  %d   0  %d,  %d  %d  %d,   0  %d  %d,\n",
+                roomSizeZ, roomSizeX, roomSizeZ, roomSizeX, roomSizeY, roomSizeZ, roomSizeY, roomSizeZ);
+        // window points CW
+        fprintf(f,     "\n\t\t\t             %d   0  %d,  %d   0  %d,  %d   0  %d,  %d   0  %d,\n",
+                win2wall, roomSizeZ, win2wall, win2floor, roomSizeX-win2wall, win2floor, roomSizeX-win2wall, roomSizeZ);
+        // door points CW
+        fprintf(f,     "\n\t\t\t             %d  %d   0,  %d  %d  %d,  %d  %d  %d,  %d  %d   0,\n",
+                door2wall, roomSizeY, door2wall, roomSizeY, doorheight, door2wall+doorwidth, roomSizeY, doorheight, door2wall+doorwidth, roomSizeY);
+        // strange point couples (below window and above door)
+        fprintf(f,     "\n\t\t\t             %d   0   0,  %d   0   0,  %d  %d  %d,  %d  %d  %d\"/>\n",
+                win2wall, roomSizeX-win2wall, door2wall, roomSizeY, roomSizeZ, door2wall+doorwidth, roomSizeY, roomSizeZ);
+        fprintf(f,"\t\t</IndexedLineSet>\n");
+        fprintf(f,"\t</Shape>\n");
+
+        // define VOXEL at 1,1,1
+        fprintf(f,"<Transform translation=\"1 1 1\">\n");
+        fprintf(f,"\t<Shape DEF=\"VOXEL\">\n\t\t<Box  DEF=\"VOXELB\" size=\"%3.2f %3.2f %3.2f\"/>\n",
+                _fVoxelSize, _fVoxelSize,_fVoxelSize);
+        fprintf(f,"\t\t<Appearance>\n\t\t\t<Material/>\n\t\t</Appearance>\n\t</Shape>\n</Transform>\n");
+        // define CORNER (red) and set one at each one of the four corners
+        fprintf(f,"<Transform translation=\"0 0 0\">\n");
+        fprintf(f,"\t<Shape DEF=\"CORNER\">\n\t\t<Sphere radius=\"%3.2f\"/>\n", 2*_fVoxelSize);
+        fprintf(f,"\t\t<Appearance>\n\t\t\t<Material diffuseColor=\"1 0 0\"/>\n");
+        fprintf(f,"\t\t</Appearance>\n\t</Shape>\n</Transform>\n");
+        fprintf(f,"<Transform translation=\" %d  %d   0\">", roomSizeX, roomSizeY);
+        fprintf(f,"<Shape USE=\"CORNER\"/></Transform>\n");
+        fprintf(f,"<Transform translation=\" %d   0   0\">", roomSizeX);
+        fprintf(f,"<Shape USE=\"CORNER\"/></Transform>\n");
+        fprintf(f,"<Transform translation=\"  0  %d   0\">", roomSizeY);
+        fprintf(f,"<Shape USE=\"CORNER\"/></Transform>\n");
+
+        // main loop
+
+        // set shortcuts
+        lin = vol.size_x();
+        col = vol.size_y();
+        hgt = vol.size_z();
+        //pln = lin * col; // AGIL: pln was set but not used, so removed to avoid warnings in GCC-4.6
+        // loop through voxels
+        for (iLoopZ=0;iLoopZ<hgt;iLoopZ++)
+            for (iLoopY=0;iLoopY<col;iLoopY++)
+                for (iLoopX=0;iLoopX<lin;iLoopX++)
+                {
+                    // check if this is a FG voxel
+                    if (vol(0)[iLoopX][iLoopY][iLoopZ])
+                    {
+                        // if so, it should be on the surface to be visible
+                        if ( (iLoopX==0) || (iLoopX>=lin-1) || (iLoopY==0) || (iLoopY>=col-1) || (iLoopZ==0) || (iLoopZ>=hgt-1) // on walls
+                                || !vol(0)[iLoopX+1][iLoopY][iLoopZ]    // next X is empty
+                                || !vol(0)[iLoopX-1][iLoopY][iLoopZ]    // previous X is empty
+                                || !vol(0)[iLoopX][iLoopY+1][iLoopZ]  // next Y is empty
+                                || !vol(0)[iLoopX][iLoopY-1][iLoopZ]  // previous Y is empty
+                                || !vol(0)[iLoopX][iLoopY][iLoopZ+1]  // next Z empty
+                                || !vol(0)[iLoopX][iLoopY][iLoopZ-1]  // previous Z empty
+                           )
+                        {
+                            // voxel coordinates
+                            vx=static_cast<int32>(iLoopX*_fVoxelSize);
+                            vy=static_cast<int32>(iLoopY*_fVoxelSize);
+                            vz=static_cast<int32>(iLoopZ*_fVoxelSize);
+                            fprintf(f,"<Transform translation=\"%d %d %d\"> ", vx, vy, vz);
+                            fprintf(f,"<Shape USE=\"VOXEL\"/></Transform>\n");
+                            //vCounter++; // count as displayed
+                        }
+                        //else nsCounter++; // count as a non surface (but FG) voxel
+                    }
+                }
+
+
+        // close scene markup and output file
+        fprintf(f,"</Scene>\n</X3D>\n");
+        fclose(f);
+        //cout << "\t ...done: " << vCounter <<" voxels represented (" << nsCounter<< " not on the surface)" <<  endl;
+    }
+    else
+    {
+        throw ImagePlusError("ERROR(WriteVolume): Non-valid volume file extension");
+    }
+
+}
+
+//ReadVolume instantiations
+namespace imageplus
+{
+    namespace io
+    {
+
+        template void WriteVolume::operator<<<uint8> (const VolumeGray<uint8>& ) const;
+        template void WriteVolume::operator<<<uint8> (const VolumeRGB<uint8>& ) const;
+
+        template void WriteVolume::operator<<<int64> (const VolumeGray<int64>& ) const;
+        template void WriteVolume::operator<<<int64> (const VolumeRGB<int64>& ) const;
+
+        template void WriteVolume::operator<<<float64> (const VolumeGray<float64>& ) const;
+        template void WriteVolume::operator<<<float64> (const VolumeRGB<float64>& ) const;
+    }
+}
+

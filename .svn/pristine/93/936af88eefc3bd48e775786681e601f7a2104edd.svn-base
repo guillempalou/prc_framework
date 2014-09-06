@@ -1,0 +1,14 @@
+Import('moduleEnv')
+
+dependences = Split('''
+
+core
+math
+descriptors
+optical_flow
+segmentation
+
+''')
+
+
+Return('dependences')

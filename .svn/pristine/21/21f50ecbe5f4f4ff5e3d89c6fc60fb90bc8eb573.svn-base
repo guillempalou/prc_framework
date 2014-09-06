@@ -1,0 +1,85 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+//!
+//! \file writeyuv.hpp
+//! 
+#ifndef IMAGEPLUS_IO_WRITEYUV_HPP_
+#define IMAGEPLUS_IO_WRITEYUV_HPP_
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/io_types.hpp>
+
+namespace imageplus
+{
+    namespace io
+    {
+        
+        //!
+        //! \brief Write the sequence information to a .dat file.
+        //!
+        //! \author Gerard Guerrero Llobera <algerard@gps.tsc.upc.edu>
+        //!
+        //! \date 09-07-2008
+        //!
+        //! \param[in] datfile : file path to the .dat file.
+        //! \param[in] sizex : x size of the frames in the sequence. 
+        //! \param[in] sizey : y size of the frames in the sequence.
+        //! \param[in] totalframes : number of frames comforming the sequence. 
+        //! \param[in] fps : frames per second.
+        //! \param[in] format : label specifying the format of the pixel samples.
+        //! \param[in] comment : comment to place some information about the sequence.
+        
+        void write_dat_info(const std::string& datfile,
+                                          const uint64& sizex,
+                                          const uint64& sizey,
+                                          const uint64& totalframes,
+                                          const float64& fps,
+                                          const SeqFormat& format,
+                                          const std::string& comment) throw (ImagePlusError);
+
+        
+        //! 
+        //! \brief Write an YUV420 image to a file. 
+        //!
+        //! \author Gerard Guerrero Llobera <algerard@gps.tsc.upc.edu>
+        //!
+        //! \date 08-07-2008
+        //!
+        //! \param[in] image : YUV420 image to write.
+        //! \param[in] frame : frame location within the sequence where we want to place the frame.
+        //! \param[in] fp : fstream object used to write the image.
+                
+        void write_frame_yuv420(const ImageYUV420<uint8>& image, uint64 frame, std::fstream& fp) throw (ImagePlusError);
+
+
+        //! 
+        //! \brief Write an YUV444 image to a file. 
+        //!
+        //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+        //!
+        //! \date 19-02-2009
+        //!
+        //! \param[in] image : YUV444 image to write.
+        //! \param[in] frame : frame location within the sequence where we want to place the frame.
+        //! \param[in] fp : fstream object used to write the image.                
+        void write_frame_yuv444(const ImageYUV<uint8>& image, uint64 frame, std::fstream& fp) throw (ImagePlusError);
+
+        //! 
+        //! \brief Writes an YUV400/Gray image to a YUV file. 
+        //!
+        //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+        //!
+        //! \date 19-02-2009
+        //!
+        //! \param[in] image : YUV400 image to write (multiarray so ImageYUV,ImageYUV420 and ImageGray can be used)
+        //! \param[in] frame : frame location within the sequence where we want to place the frame.
+        //! \param[in] fp : fstream object used to write the image.                
+        void write_frame_yuv400(const MultiArray<uint8,2>& image, uint64 frame, std::fstream& fp) throw (ImagePlusError);
+
+
+    }   //namespace io.
+}   //namespace imageplus.
+
+#endif /*IMAGEPLUS_IO_WRITEYUV_HPP_*/

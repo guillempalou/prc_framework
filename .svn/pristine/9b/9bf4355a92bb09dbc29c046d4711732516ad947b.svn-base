@@ -1,0 +1,649 @@
+/*
+ * video_relative_depth.cpp
+ *
+ *  Created on: Dec 17, 2012
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/partition/hierarchical_region_partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/math/graphs/graph.hpp>
+
+#include <imageplus/optical_flow/flow_io.hpp>
+#include <imageplus/optical_flow/trajectory_tracking.hpp>
+#include <imageplus/optical_flow/occlusions/region_occlusion_error.hpp>
+#include <imageplus/optical_flow/occlusions/detect_occlusion_relations.hpp>
+
+#include <imageplus/bpt/energy_minimization/binary_pruner.hpp>
+#include <imageplus/bpt/pruning/merging_sequence_pruner.hpp>
+#include <imageplus/bpt/pruning/min_area_pruner.hpp>
+
+#include <imageplus/video_segmentation/trajectory_bpt/trajectory.hpp>
+#include <imageplus/video_segmentation/trajectory_bpt/motion_color_distance.hpp>
+#include <imageplus/video_segmentation/optical_flow_fitting/occlusion_cost.hpp>
+#include <imageplus/video_segmentation/optical_flow_fitting/bidirectional_projective_cost.hpp>
+#include <imageplus/video_segmentation/optical_flow_fitting/bidirectional_affine_cost.hpp>
+#include <imageplus/video_segmentation/optical_flow_fitting/model_optical_flow.hpp>
+
+#include <imageplus/monocular_depth/structure_from_motion/bpt_fundamental_matrix_cost.hpp>
+#include <imageplus/monocular_depth/structure_from_motion/self_calibration.hpp>
+#include <imageplus/monocular_depth/structure_from_motion/projective_reconstruction.hpp>
+
+#include <imageplus/graph_cuts/gco/GCoptimization.hpp>
+
+#include <imageplus/monocular_depth/conflict_resolution/join_components_and_order.hpp>
+#include <imageplus/monocular_depth/conflict_resolution/resolve_depth_conflicts.hpp>
+
+#include <boost/filesystem.hpp>
+#include <iomanip>
+#include <iostream>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef VideoSignal<float64,3> 																		VideoType;
+typedef VideoSignal<float64,2>																		OpticalFlowType;
+typedef VideoSignal<uint64,1>																		PartitionIndexType;
+typedef VideoSignal<float64,1>																		ConfidenceMapType;
+
+typedef VideoType::ImageType																		FrameType;
+typedef OpticalFlowType::ImageType																	OpticalFlowFrame;
+typedef PartitionIndexType::ImageType																PartitionIndexFrame;
+typedef ConfidenceMapType::ImageType																ConfidenceMapFrame;
+
+typedef FrameType::coord_type																		coord2d;
+typedef VideoType::coord_type																		coord3d;
+typedef VideoType::value_type																		rgb_type;
+
+typedef HierarchicalRegion<coord3d>																	Region3D;
+typedef video_segmentation::Trajectory<VideoType>													TrajectoryType;
+typedef segmentation::HierarchicalRegionPartition<TrajectoryType>									BPT;
+typedef BPT::PartitionType																			PartitionType;
+
+typedef math::graphs::BoostGraph<math::graphs::kGraphBidirectional, math::graphs::NodeMaxFlowProperties, math::graphs::EdgeMaxFlowProperties>  DOG;
+
+//typedef MeanColorDistanceModel<VideoType, TrajectoryType>	 DistanceModelType;
+typedef video_segmentation::MotionColorDistanceModel<VideoType, TrajectoryType, OpticalFlowType> 	DistanceModelType;
+
+typedef std::vector<math::Matrix> 	FundamentalMatrices;
+
+FrameType convert_map_to_image(ConfidenceMapFrame& s) {
+	typedef ConfidenceMapFrame::coord_type 	coord2d;
+	FrameType res(s.sizes());
+	for (ConfidenceMapFrame::iterator p = s.begin(); p!=s.end(); ++p) {
+		coord2d pos = p.pos();
+		float64 value = (*p)(0); if (value < 0) value=0;
+		res(pos) = value*rgb_type(255,255,255);
+	}
+	return res;
+}
+
+void save_partition(PartitionType& partition, std::string path) {
+	VideoType v = segmentation::to_false_color<VideoType>(partition);
+	for (uint64 k = 0; k < v.length(); k++) {
+		FrameType			frame = v.frame(k);
+		std::ostringstream os;
+		os << path << "/" << std::setw(3) << std::setfill('0') << k << ".png";
+		std::cout << os.str() << std::endl;
+		frame.write(os.str());
+	}
+}
+
+std::set<uint64> prune_with_fundamental_matrix(BPT& bpt, VideoType& video, OpticalFlowType& forward_flows, ConfidenceMapType& reliability, float64 regularizer, uint64 max_levels) {
+
+	descriptors::DescriptorManager manager;
+
+	typedef bpt::FundamentalMatrixCost<BPT,OpticalFlowType> 							FundamentalMatrixCostFunction;
+	typedef bpt::BinaryPruner<BPT,OpticalFlowType,FundamentalMatrixCostFunction>		FPruner;
+
+	FundamentalMatrixCostFunction f_matrix_cost(manager, bpt.max_label(), regularizer);
+	FPruner f_matrix_pruner(f_matrix_cost,false, max_levels);
+
+	f_matrix_cost.set_flows(forward_flows);
+	f_matrix_cost.set_reliability(reliability);
+	f_matrix_pruner.prune_bpt(bpt,forward_flows);
+
+	return f_matrix_pruner.regions();
+}
+
+float64 fundamental_matrix_error(BPT& bpt, OpticalFlowType& flow, ConfidenceMapType& reliability, uint64 region_id) {
+
+	float64 e = -1;
+	math::Vector center(2);
+	center(0) = flow.size_x()/2;
+	center(1) = flow.size_y()/2;
+
+	FundamentalMatrices Fs;
+
+	BPT::RegionType& reg = bpt(region_id);
+	for (int64 r = reg.frame_begin(); r <= reg.frame_end(); r++) {
+		if (r == (int64)flow.length()-1)
+			continue;
+
+		uint64 N = 0;
+		for (BPT::RegionType::iterator c = bpt(region_id).begin(); c != bpt(region_id).end(); ++c) {
+			int64 t = (*c)(2);
+			if (t != r) continue;
+			if (reliability(*c)(0) < 0.99) continue;
+
+			N++;
+		}
+		math::Matrix points1(N,2);
+		math::Matrix points2(N,2);
+		uint64 n=0;
+
+		for (BPT::RegionType::iterator c = bpt(region_id).begin(); c != bpt(region_id).end(); ++c) {
+			int64 t = (*c)(2);
+			if (t != r) continue;
+			if (reliability(*c)(0) < 0.99) continue;
+
+			math::Vector pos = (*c).head(2).cast<float64>();
+
+			//Fill the matrix with their points and their correspondences (x,x+uv)
+			points1.row(n) = (pos - center).transpose(); // - center;
+			points2.row(n) = (pos + flow(*c) - center).transpose();
+			n++;
+		}
+
+		std::cout << "Frame " << r << " points " << N << std::endl;
+		math::Matrix F = monocular_depth::estimate_fundamental_matrix(points1,points2,false,0);
+		float64 ee = monocular_depth::fundamental_matrix_sampson_outliers(points1,points2,F,0.03);
+
+		//std::cout << "Matrix " << std::endl << F << std::endl;
+		if (r == 0) {
+			monocular_depth::ProjectiveReconstruction p;
+			math::Matrix X = p.projective_reconstruction_from_two_views(points1,points2,F);
+			ConfidenceMapFrame depth(flow.size_x(), flow.size_y());
+			for (int64 i = 0; i < points1.rows(); i++) {
+				depth(points1(i,0),points1(i,1))(0) = X(i,2);
+			}
+			FrameType a = convert_map_to_image(depth);
+			a.write("depth.png");
+		}
+
+
+		e = std::max(e,ee);
+		Fs.push_back(F);
+	}
+
+	//monocular_depth::calibrate_constant_focal_length(Fs);
+	for (int64 r = reg.frame_begin(); r <= reg.frame_end(); r++) {
+		if (r == (int64)flow.length()-1)
+			continue;
+
+		ConfidenceMapFrame f_error(flow.size_x(), flow.size_y());
+
+		uint64 ne = 0;
+		uint64 nn = 0;
+
+		for (BPT::RegionType::iterator c = bpt(region_id).begin(); c != bpt(region_id).end(); ++c) {
+			int64 t = (*c)(2);
+			math::Vector pos(2); pos = (*c).head(2).cast<float64>();
+			if (t != r) continue;
+
+			if (reliability(*c)(0) < 0.99)  { f_error((*c)(0),(*c)(1))(0) = 0; continue; }
+
+			math::Vector x1(3); x1(2) = 1;
+			x1.head(2) = (pos - center);
+			math::Vector x2(3); x2(2) = 1;
+			x2.head(2) = (pos + flow(*c) - center);
+
+			math::Vector l1 = Fs[r] * x1; l1(2) = 0;
+			math::Vector l2 = Fs[r].transpose() * x2; l2(2) = 0;
+			float64 e = (x2.transpose() * Fs[r] * x1).squaredNorm() / (l1.squaredNorm() + l2.squaredNorm());
+
+			//std::cout << e << " ";
+			f_error((*c)(0),(*c)(1))(0) = std::sqrt(e/0.03); //1-std::exp(-e/0.1);
+			if (e > 0.03) ne++;
+
+			nn++;
+		}
+		//std::cout << "Matrix " << std::endl <<  Fs[r] << std::endl;
+		//std::cout << ne*1.0/nn << std::endl;
+
+		FrameType frame(f_error.sizes());
+		frame = convert_map_to_image(f_error);
+
+		std::ostringstream os;
+		os << "./f_error/" << r << ".png";
+		frame.write(os.str());
+	}
+
+	//exit(0);
+	std::cout << "Total error for region " << region_id << " -> " << e << std::endl;
+	return e;
+}
+
+
+int main(int argc, char *argv[]) {
+	std::istringstream sstart(argv[1]);
+	std::istringstream send(argv[2]);
+
+	std::istringstream swindow(argv[3]);
+
+	std::string path 		= argv[4];
+	std::string segm_path 	= argv[5];
+	std::string result_path = argv[6];
+
+	uint64 start = 0; sstart >> start;
+	uint64 end = -1; send >> end;
+	int64 window = 0; swindow >> window;
+
+	std::string video_path = path + "/frames";
+	std::string flows_path = path + "/flows";
+	std::string partition_path = segm_path + "/leaves.sgm";
+	std::string mergings_path  = segm_path + "/mergings.txt";
+
+	// create the necessary paths
+	boost::filesystem::path result_path_p(result_path);
+
+	boost::filesystem::create_directory(result_path_p);
+	boost::filesystem::create_directory(result_path_p / "modeled_flows");
+	boost::filesystem::create_directory(result_path_p / "occlusions");
+	boost::filesystem::create_directory(result_path_p / "occlusion_relations");
+	boost::filesystem::create_directory(result_path_p / "depths");
+	boost::filesystem::create_directory(result_path_p / "fg");
+
+	std::cout << "Reading tree" << std::endl;
+	BPT bpt;
+	bpt.load_from_files(partition_path, mergings_path);
+	coord3d sizes = bpt.leaves_partition().sizes();
+
+	uint64 Nframes = sizes(2);
+
+	VideoType video(sizes);
+	OpticalFlowType forward_flows(sizes);
+	OpticalFlowType backward_flows(sizes);
+
+	std::cout << "Reading video with " << Nframes << " frames " << std::endl;
+	for (uint64 k = start; k <= end; k++) {
+		std::ostringstream os;
+		os << video_path << "/frame" << std::setw(3) << std::setfill('0') << k << ".png";
+		//std::cout << "reading " << os.str() << std::endl;
+		video.read_frame(os.str(),k-start); // read frame k and put it to the position k of the current block
+	}
+
+	ColorSpaceConverter<VideoType> converter;
+	converter.convert(video, ColorSpaceLAB);
+
+	// Read forward optical flows
+	std::cout << "Reading forward flow" << std::endl;
+	for (uint64 k = start; k <= end-1; k++) {
+		std::ostringstream os;
+		os << flows_path << "/flow_" << k << "_" << k+1 << ".flo";
+		OpticalFlowFrame flow = forward_flows.frame(k-start);
+		optical_flow::read_optical_flow(flow, os.str());  // read flow k,k+1 and put it to the position k of the current block
+	}
+
+	// Read backward optical flows
+	std::cout << "Reading backward flow" << std::endl;
+	for (uint64 k = start+1; k <= end; k++) {
+		std::ostringstream os;
+		os << flows_path << "/flow_" << k << "_" << k-1 << ".flo";
+		OpticalFlowFrame flow = backward_flows.frame(k-start);
+		optical_flow::read_optical_flow(flow, os.str()); // read flow k,k-1 and put it to the position k of the current block
+	}
+
+
+	optical_flow::TrajectoryTracking<VideoType, OpticalFlowType, PartitionType>::Parameters tracker_pars;
+	tracker_pars.occlusion_lambda = 1;
+	tracker_pars.variation_lambda = 1;
+	tracker_pars.structure_lambda = 1;
+	tracker_pars.color_lambda = 14;
+
+	optical_flow::TrajectoryTracking<VideoType, OpticalFlowType, PartitionType> tracker(video,tracker_pars);
+
+	tracker.calculate(video,forward_flows, backward_flows);
+
+	ConfidenceMapType reliability = tracker.flow_reliability();
+
+	/*********************************************************************************/
+	/* Estimate number of independent objects										*/
+	/*********************************************************************************/
+
+	std::cout << "Estimating number of independent moving objects" << std::endl;
+
+	float64 e = fundamental_matrix_error(bpt,forward_flows,reliability,bpt.max_label());
+
+	for (int64 cas = 7; cas <= argc; cas++) {
+		float64 regularizer = 0.005*e*atoi(argv[cas]); //Nframes*video.size_x()*video.size_y()/1000;
+		uint64 max_levels = 5;
+		std::set<uint64> regs = prune_with_fundamental_matrix(bpt,video,forward_flows,reliability,regularizer,max_levels);
+		std::cout << "There are " << regs.size() << " objects found " << std::endl;
+
+		/*uint64 Nobjects = regs.size();
+
+			std::vector<std::vector<math::Matrix> > object_matrices(Nobjects, std::vector<math::Matrix>(Nframes));
+			uint64 object_id = 0;
+			for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r, ++object_id) {
+				object_matrices[object_id] = estimate_fundamental_matrices_for_region(bpt(*r), forward_flows, reliability);
+			}*/
+
+		PartitionType objects(video.sizes());
+		for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r) {
+			for (BPT::RegionType::iterator p = bpt(*r).begin(); p != bpt(*r).end(); ++p) {
+				objects(*p)(0) = *r;
+			}
+		}
+
+		std::ostringstream os;
+		os << "/objects/" << cas-7 << "/";
+		boost::filesystem::create_directories(result_path_p / os.str());
+		//std::cout << (result_path_p / os.str()).string() << std::endl;
+		save_partition(objects, result_path + os.str());
+	}
+	exit(0);
+
+
+	/*std::cout << "Correcting segmentation mistakes due to color similarity" << std::endl;
+	regs = prune_with_fundamental_matrix(bpt,video,forward_flows,reliability,regularizer);
+
+	for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r) {
+		for (BPT::RegionType::iterator p = bpt(*r).begin(); p != bpt(*r).end(); ++p) {
+			objects(*p)(0) = *r;
+		}
+	}
+
+	boost::filesystem::create_directory(result_path_p / "objects_finer");
+	save_partition(objects, result_path + "/objects_finer");
+
+	std::cout << "Optimizing with " << regs.size() << " regions " << std::endl;
+	optimize_partition(bpt, forward_flows, reliability, regs, objects, object_matrices);
+
+	boost::filesystem::create_directory(result_path_p / "objects_corrected");
+	save_partition(objects, result_path + "/objects_corrected");*/
+
+
+	/*********************************************************************************/
+	/* Begin depth estimation														*/
+	/*********************************************************************************/
+
+
+	//for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r, ++object_id) {
+	//	object_matrices2[object_id] = estimate_fundamental_matrices_for_region(bpt(*r), forward_flows);
+	//}
+
+	//print modeled optical flows
+	std::cout << "Printing modeled flows" << std::endl;
+	OpticalFlowType fwd_modeled(forward_flows.sizes());
+	OpticalFlowType bwd_modeled(backward_flows.sizes());
+
+
+	std::set<uint64> regs;
+	for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r) {
+		for (int64 frame = bpt(*r).frame_begin(); frame <= bpt(*r).frame_end(); ++frame) {
+			OpticalFlowFrame fwd 				= forward_flows.frame(frame);
+			OpticalFlowFrame bwd 				= backward_flows.frame(frame);
+			OpticalFlowFrame fwd_model_frame 	= fwd_modeled.frame(frame);
+			OpticalFlowFrame bwd_model_frame 	= bwd_modeled.frame(frame);
+
+			video_segmentation::projective_flow_model(bpt, fwd, fwd_model_frame,frame, *r);
+			video_segmentation::projective_flow_model(bpt, bwd, bwd_model_frame,frame, *r);
+		}
+	}
+
+	for (uint64 k = 0; k < Nframes-1; k++) {
+		std::ostringstream os;
+		os << result_path << "/modeled_flows/fwd_" << k+start << "_" << k+start+1 << ".png";
+		OpticalFlowFrame flow = fwd_modeled.frame(k);
+		optical_flow::write_flow_image(flow, os.str());  // read flow k,k+1 and put it to the position k of the current block
+	}
+	for (uint64 k = 1; k < Nframes; k++) {
+		std::ostringstream os;
+		os << result_path << "/modeled_flows/fwd_" << k+start << "_" << k+start-1 << ".png";
+		OpticalFlowFrame flow = bwd_modeled.frame(k);
+		optical_flow::write_flow_image(flow, os.str()); // read flow k,k-1 and put it to the position k of the current block
+	}
+
+	//estimate occlusions (optimum threshold at 0.366)
+	float64 optimum_th = 0.366;
+	ConfidenceMapType occlusions(video.sizes());
+	ConfidenceMapType disocclusions(video.sizes());
+
+	// Computing Regon-Based Occlusions
+	PartitionType partition_flow(video.sizes());
+	for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r) {
+		for (BPT::RegionType::iterator p = bpt(*r).begin(); p != bpt(*r).end(); ++p) {
+			partition_flow(*p)(0) = *r;
+		}
+	}
+
+	std::cout << "Computing region based occlusions" << std::endl;
+	for (uint64 k = 0; k < Nframes-1; k++) {
+		ConfidenceMapFrame 		occ    	= occlusions.frame(k);
+		OpticalFlowFrame 		fwd		= fwd_modeled.frame(k);
+		OpticalFlowFrame 		bwd		= backward_flows.frame(k+1);
+
+		ConfidenceMapFrame bij = optical_flow::region_occlusion_error(partition_flow, fwd, bwd, k);
+		occ.channel(0) = bij.channel(0);
+	}
+
+	std::cout << "Computing region based disocclusions " << std::endl;
+	for (uint64 k = 1; k < Nframes; k++) {
+		ConfidenceMapFrame 		disocc 	= disocclusions.frame(k);
+		OpticalFlowFrame 		bkd 	= bwd_modeled.frame(k);
+		OpticalFlowFrame 		fwd		= forward_flows.frame(k-1);
+
+		ConfidenceMapFrame bij = optical_flow::region_occlusion_error(partition_flow, bkd, fwd, k);
+		disocc.channel(0) = bij.channel(0);
+	}
+
+	ConfidenceMapType::iterator p = occlusions.begin();
+	ConfidenceMapType::iterator p_end = occlusions.end();
+	for (;p!=p_end; ++p) {
+		occlusions(p.pos())(0) = (occlusions(p.pos())(0) > optimum_th) ? 1 : 0;
+		disocclusions(p.pos())(0) = (disocclusions(p.pos())(0) > optimum_th) ? 1 : 0;
+	}
+
+	std::cout << "Output occlusion maps" << std::endl;
+	// Write occlusion map
+	for (uint64 k = 0; k < Nframes; k++) {
+		ConfidenceMapFrame of = occlusions.frame(k);
+		ConfidenceMapFrame dof = disocclusions.frame(k);
+		FrameType o    = convert_map_to_image(of);
+		FrameType diso = convert_map_to_image(dof);
+
+		std::ostringstream os;
+		os << result_path << "/occlusions/occ_" << std::setw(3) << std::setfill('0') << k+start << ".png";
+		o.write(os.str()); os.str("");
+
+		os << result_path << "/occlusions/disocc_" << std::setw(3) << std::setfill('0') << k+start << ".png";
+		diso.write(os.str());
+	}
+
+	std::cout << "Estimating occlusion relations" << std::endl;
+
+	std::vector<std::pair<coord3d,coord3d> > relations;
+
+	int64 center = (Nframes-1)/2;
+	for (int64 k = 0; k < (int64)Nframes; k++) {
+
+		if (!((k > center-window) && (k < center+window))) continue;
+
+		ConfidenceMapFrame of = occlusions.frame(k);
+		ConfidenceMapFrame dof = disocclusions.frame(k);
+
+		OpticalFlowFrame fwd_frame_modeled = fwd_modeled.frame(k);
+		OpticalFlowFrame bwd_frame_modeled = bwd_modeled.frame(k);
+
+		// Detect disocclusions
+		if (k > 0) {
+			OpticalFlowFrame fwd_previous = fwd_modeled.frame(k-1);
+			std::vector<std::pair<coord2d,coord2d> > v = optical_flow::detect_occlusion_relations(dof,bwd_frame_modeled,fwd_previous);
+			for (uint64 i = 0; i < v.size(); i++) {
+				coord3d a = coord3d(v[i].first(0),v[i].first(1),k);
+				coord3d b = coord3d(v[i].second(0),v[i].second(1),k);
+				if (disocclusions(b)(0) > 0) continue;
+				relations.push_back(std::pair<coord3d,coord3d>(a,b));
+			}
+		}
+
+		// Detect occlusions
+		if (k < (int64)Nframes-1) {
+			OpticalFlowFrame bwd_next = bwd_modeled.frame(k+1);
+			std::vector<std::pair<coord2d,coord2d> > v = optical_flow::detect_occlusion_relations(of,fwd_frame_modeled, bwd_next);
+			for (uint64 i = 0; i < v.size(); i++) {
+				coord3d a = coord3d(v[i].first(0),v[i].first(1),k);
+				coord3d b = coord3d(v[i].second(0),v[i].second(1),k);
+				if (occlusions(b)(0) > 0) continue;
+				relations.push_back(std::pair<coord3d,coord3d>(a,b));
+			}
+		}
+	}
+
+	//Second pruning according to depth
+
+	typedef bpt::OcclusionCost<BPT,VideoType> 							OcclusionCostFunction;
+	typedef bpt::BinaryPruner<BPT,VideoType,OcclusionCostFunction>		OcclusionPruner;
+
+	descriptors::DescriptorManager manager;
+	for (int64 cas = 7; cas <= argc; cas++) {
+		float64 regularizer = atof(argv[cas]);
+		std::cout << "Doing with regularizer " << regularizer << std::endl;
+
+		OcclusionCostFunction occlusion_cost(manager, bpt.max_label(),0.005*regularizer);
+		OcclusionPruner occlusion_pruner(occlusion_cost,false);
+
+		occlusion_cost.set_occlusion_relations(relations);
+		occlusion_pruner.prune_bpt(bpt,video);
+
+		regs = occlusion_pruner.regions();
+
+		PartitionType& leaves = bpt.leaves_partition();
+
+		DOG dog;
+		std::map<uint64, DOG::Node> nodes;
+		for (std::set<uint64>::iterator r = regs.begin(); r !=regs.end(); ++r) {
+			DOG::Node n = dog.add_node();
+			dog.node_properties(n).id = *r;
+			nodes[*r] = n;
+			for (BPT::RegionType::iterator p = bpt(*r).begin(); p != bpt(*r).end(); ++p) {
+				leaves(*p)(0) = *r;
+			}
+		}
+
+		PartitionIndexType partition(leaves.sizes());
+		for (PartitionIndexType::iterator x = partition.begin(); x != partition.end(); ++x) {
+			(*x)(0) = leaves(x.pos())(0);
+		}
+
+		VideoType occ_relations_video(video.sizes());
+		for (uint64 i = 0; i < relations.size(); i++) {
+			if (leaves(relations[i].first)(0) == leaves(relations[i].second)(0)) continue;
+
+			FrameType occ_relations = occ_relations_video.frame(relations[i].first(2));
+			occ_relations(relations[i].first(0),relations[i].first(1)) = rgb_type(0,0,255);
+			occ_relations(relations[i].second(0), relations[i].second(1)) = rgb_type(0,255,0);
+		}
+
+		for (int64 k = 0; k < (int64)Nframes; k++) {
+			if (!((k > center-window) && (k < center+window))) continue;
+			FrameType			occ_relations = occ_relations_video.frame(k);
+			std::ostringstream os;
+			os << result_path << "/occlusion_relations/relations_" << std::setw(3) << std::setfill('0') << k+start << ".png";
+			occ_relations.write(os.str()); os.str("");
+		}
+
+		std::cout << "Putting occlusion relations " << std::endl;
+		uint64 N = relations.size();
+		float64 max_conf = 0;
+		for (uint64 i = 0; i < N; i++) {
+			coord3d a = relations[i].first;
+			coord3d b = relations[i].second;
+			uint64 ra = leaves(a)(0);
+			uint64 rb = leaves(b)(0);
+			if (ra == rb) continue;
+			DOG::Node na = nodes[ra];
+			DOG::Node nb = nodes[rb];
+			if (!dog.edge_exists(nb,na)) {
+				DOG::Edge e = dog.add_edge(nb,na);
+				dog.edge_properties(e).weight = 1.0/N;
+				dog.edge_properties(e).capacity = 1.0/N;
+				if (max_conf < 1.0/N) max_conf = 1.0/N;
+			} else {
+				DOG::Edge e = dog.edge(nb,na);
+				dog.edge_properties(e).weight += 1.0/N;
+				dog.edge_properties(e).capacity += 1.0/N;
+				if (max_conf < 1.0/N) max_conf = dog.edge_properties(e).capacity;
+			}
+		}
+
+		// Depth order by depth
+		monocular_depth::resolve_depth_conflicts(dog);
+
+		// join disconnected connected according to the distance in the BPT components to enforce consistency
+		optical_flow::TrajectoryTracking<VideoType, OpticalFlowType, PartitionType>::Parameters tracker_pars;
+		tracker_pars.occlusion_lambda = 1;
+		tracker_pars.variation_lambda = 1;
+		tracker_pars.structure_lambda = 2;
+		optical_flow::TrajectoryTracking<VideoType, OpticalFlowType, PartitionType> tracker(video, tracker_pars);
+		tracker.calculate(video,forward_flows, backward_flows);
+
+		//Parameters are not very critical, using 14,4,0.05 for color,motion,area respectively
+		DistanceModelType::Parameters model_pars;
+		model_pars.optical_flow = forward_flows;
+		model_pars.color_damping = (1.0/(14*14));
+		model_pars.motion_damping = 1.0/(4*4);
+		model_pars.area_damping = 1.0 / (video.sizes().prod() * 0.1);
+		model_pars.num_colors = 8;
+		model_pars.flow_reliability = tracker.flow_reliability();
+
+		DistanceModelType distance_model(model_pars);
+		std::map<uint64,std::pair<float64,uint64> > depths =  monocular_depth::join_components_and_order(dog, bpt, video, distance_model);
+
+		// output the depth ordering
+		float64 max_d = 0;
+		float64 min_d = 1e9;
+		for (std::map<uint64,std::pair<float64,uint64> >::iterator d = depths.begin(); d != depths.end(); ++d) {
+			if (max_d < d->second.first) max_d = d->second.first;
+			if (min_d > d->second.first) min_d = d->second.first;
+		}
+
+		float64 dif = max_d - min_d; if (dif == 0) dif = 1;
+		VideoType depth(video.sizes());
+		for (std::map<uint64,std::pair<float64,uint64> >::iterator d = depths.begin(); d != depths.end(); ++d) {
+			uint64 r = d->first;
+			float64 rd = d->second.first;
+			float64 component = d->second.second;
+			rgb_type depth_color = rgb_type::Ones() * 255 * (max_d - rd) / dif;
+			for (BPT::RegionType::iterator p = bpt(r).begin(); p != bpt(r).end(); ++p) {
+				bool border = false;
+
+				typedef PartitionType::general_adjacency_iterator<neighborhood_traits<3>::default_forward_connectivity>::type  adj_iterator;
+				adj_iterator adj		 	=  bpt.leaves_partition().general_adjacency_begin<neighborhood_traits<3>::default_forward_connectivity>(*p);
+				adj_iterator adj_end 		=  bpt.leaves_partition().general_adjacency_end<neighborhood_traits<3>::default_forward_connectivity>(*p);
+
+				for (;adj!=adj_end;++adj) {
+					if (adj.pos()(2) != (*p)(2)) continue;
+					uint64 comp_adj = depths[bpt.leaves_partition()(adj.pos())(0)].second;
+					if (comp_adj != component) border = true;
+				}
+
+				//if (border)
+				//	depth(*p) = rgb_type(0,0,255);
+				//else
+					depth(*p) = depth_color;
+			}
+		}
+		std::ostringstream os;
+		os << result_path << "/depths/" << cas-7;
+
+		boost::filesystem::create_directory(os.str());
+
+		for (uint64 k = 0; k < Nframes; k++) {
+			std::ostringstream os;
+			os << result_path << "/depths/" << cas-7 << "/depth_" << std::setw(3) << std::setfill('0') << k+start << ".png";
+
+			FrameType depth_frame = depth.frame(k);
+			depth_frame.write(os.str());  // read flow k,k+1 and put it to the position k of the current block
+		}
+	} // of regularizers
+}

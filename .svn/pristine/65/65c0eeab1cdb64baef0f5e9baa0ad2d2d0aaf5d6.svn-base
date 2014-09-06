@@ -1,0 +1,56 @@
+/*
+ * self_calibration.hpp
+ *
+ *  Created on: Jun 13, 2013
+ *      Author: gpalou
+ */
+
+#ifndef SELF_CALIBRATION_HPP_
+#define SELF_CALIBRATION_HPP_
+
+#include <imageplus/math/math_types.hpp>
+
+namespace imageplus {
+	namespace monocular_depth {
+
+	inline math::Matrix auto_calibration(std::vector<math::Matrix>& Fs) {
+
+		math::Matrix K(3,3);
+		std::vector<math::Matrix> Ps;
+
+		//Reproject to ensure rank 2
+		std::cout << "number of Fs  " << Fs.size() << std::endl;
+		for (uint64 i = 0; i < Fs.size(); i++) { // get matrix cannonical projections from fundamental matrices
+			math::Matrix F = Fs[i];
+			std::cout << "Computing svd" << std::endl;
+			Eigen::JacobiSVD<math::Matrix> svd(F, Eigen::ComputeFullU | Eigen::ComputeFullV); // compute the right epipol
+
+			std::cout << "Computed svd" << std::endl;
+			math::Vector e = svd.matrixU().col(2); // left null vector
+			math::Matrix Ex(3,3);
+			//matrix cross product
+			Ex << 0, -e(2), e(1), e(2), 0, -e(0), -e(1), e(0), 0;
+
+			math::Matrix P(3,4);
+
+			P.block(0,0,3,3) = Ex*F;
+			P.col(3) = e;
+
+			std::cout << e.transpose() << std::endl;
+			std::cout <<"--------------------" << std::endl;
+			std::cout << P << std::endl;
+			std::cout <<"--------------------" << std::endl;
+		}
+		exit(0);
+
+		//Perform iterative minimization
+
+		return K;
+	}
+
+	}
+}
+
+
+
+#endif /* SELF_CALIBRATION_HPP_ */

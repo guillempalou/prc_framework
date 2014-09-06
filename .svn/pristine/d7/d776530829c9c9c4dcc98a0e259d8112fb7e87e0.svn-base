@@ -1,0 +1,31 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file test_types.test
+ */
+
+#include <imageplus/core/imageplus_types.hpp>
+
+BOOST_AUTO_TEST_SUITE ( types_size_suite );
+
+
+BOOST_AUTO_TEST_CASE( types_size_test )
+{
+    BOOST_CHECK(sizeof(imageplus::uint8)  == 1);
+    BOOST_CHECK(sizeof(imageplus::int8)   == 1);
+    BOOST_CHECK(sizeof(imageplus::uint16) == 2);
+    BOOST_CHECK(sizeof(imageplus::int16)  == 2);
+    BOOST_CHECK(sizeof(imageplus::uint32) == 4);
+    BOOST_CHECK(sizeof(imageplus::int32)  == 4);
+    BOOST_CHECK(sizeof(imageplus::uint64) == 8);
+    BOOST_CHECK(sizeof(imageplus::int64)  == 8);
+    
+    BOOST_CHECK(sizeof(imageplus::float32) == 4);
+    BOOST_CHECK(sizeof(imageplus::float64) == 8);
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

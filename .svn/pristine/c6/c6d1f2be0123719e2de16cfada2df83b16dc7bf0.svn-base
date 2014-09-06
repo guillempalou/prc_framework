@@ -1,0 +1,349 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file read_write_yuv.test
+ */
+
+#include <imageplus/core.hpp>
+#include <readyuv.hpp>
+#include <writeyuv.hpp>
+
+BOOST_AUTO_TEST_SUITE (read_write_yuv_suite);
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::io; 
+
+BOOST_AUTO_TEST_CASE (read_write_dat_info_test)
+{
+    //This test will check the read - write pair of functions
+    //by writing a .dat file info, reading it, and comparing 
+    //the original and retrieved values.
+    uint64 sizex_a = 20;
+    uint64 sizey_a = 10; 
+    uint64 totalframes_a = 1; 
+    float64 fps_a = 1; 
+    SeqFormat format_a = YUV420P; 
+    std::string comment_a = "read/write_dat_info test file.";
+    
+    uint64 sizex_b;
+    uint64 sizey_b; 
+    uint64 totalframes_b; 
+    float64 fps_b; 
+    SeqFormat format_b; 
+    std::string comment_b;
+    
+    //.dat test file path. 
+    const std::string test_file = string(TEST_DATA_PATH_W) + "/io_dat_test.dat";
+    
+    //Writing .dat file: 
+    write_dat_info(test_file, sizex_a, sizey_a, totalframes_a, fps_a, format_a, comment_a);
+    //Reading the written file: 
+    read_dat_info(test_file, sizex_b, sizey_b, totalframes_b, fps_b, format_b, comment_b);
+    
+    BOOST_CHECK(sizex_a == sizex_b);
+    BOOST_CHECK(sizey_a == sizey_b);
+    BOOST_CHECK(totalframes_a == totalframes_b);
+    BOOST_CHECK(fps_a == fps_b);
+    BOOST_CHECK(format_a == format_b);
+    BOOST_CHECK(comment_a == comment_b);  //there's an asimetry introduced by read_dat_info: 
+                                            //when it reads the comment, introduces a 0 character at the beginning of the comment. Why?
+    
+    
+}
+
+BOOST_AUTO_TEST_CASE (single_read_write_frame_yuv400_test)
+{
+    const uint64 sizex  = 20;
+    const uint64 sizey = 10;
+    const uint64 frame_pointer = 0;
+    const std::string filename = string(TEST_DATA_PATH_W) + "/io_single_write_frame_yuv400_test.yuv";
+    
+    std::fstream file;
+    file.open(filename.c_str(),std::ios::out | std::ios::trunc);
+    
+    ImageYUV<uint8> original_image (sizex, sizey);
+    original_image(Y_CHANNEL) = 0;
+    original_image(U_CHANNEL) = 128; 
+    original_image(V_CHANNEL) = 128;
+    write_frame_yuv400(original_image(0), frame_pointer, file);
+    file.close();
+    
+    ImageGray<uint8> read_image = read_frame_yuv400(filename,frame_pointer,sizex,sizey);
+    //Check that the original and recovered images have not been modified by the write-read cycle.
+    
+    BOOST_CHECK(original_image.size_x() == read_image.size_x());
+    BOOST_CHECK(original_image.size_y() == read_image.size_y());
+
+    // Check that any pixel hasn't been modified by the write-read cycle.
+    
+    //Short way of doing things: 
+    BOOST_CHECK(original_image(0) == read_image(0)); 
+    
+}
+
+BOOST_AUTO_TEST_CASE (single_read_write_frame_yuv420_test)
+{
+    const uint64 sizex  = 20;
+    const uint64 sizey = 10;
+    const uint64 frame_pointer = 0;
+    const std::string filename = string(TEST_DATA_PATH_W) + "/io_single_write_frame_yuv420_test.yuv";
+    
+    std::fstream file;
+    file.open(filename.c_str(),std::ios::out | std::ios::trunc);
+    
+    ImageYUV420<uint8> original_image (sizex, sizey);
+    original_image(Y_CHANNEL) = 0;
+    original_image(U_CHANNEL) = 128; 
+    original_image(V_CHANNEL) = 128;
+    write_frame_yuv420(original_image, frame_pointer, file);
+    file.close();
+    
+    ImageYUV420<uint8> read_image = read_frame_yuv420(filename,frame_pointer,sizex,sizey);
+    //Check that the original and recovered images have not been modified by the write-read cycle.
+    
+    BOOST_CHECK(original_image.size_x() == read_image.size_x());
+    BOOST_CHECK(original_image.size_y() == read_image.size_y());
+//    BOOST_CHECK(original_image.dims() != read_image.dims());
+    BOOST_CHECK(original_image.num_total_data_elements() == read_image.num_total_data_elements());
+
+    
+    //Check that any pixel hasn't been modified by the write-read cycle.
+    
+    //Short way of doing things: 
+    BOOST_CHECK(original_image == read_image); //This doesn't works. Why? - it would work -.
+    
+    //Deprecated way of doing things: 
+//    MultiArray<uint8,2> original_ych = original_image(Y_CHANNEL);
+//    MultiArray<uint8,2> read_ych = read_image(Y_CHANNEL);
+//    uint64 y_num_elements = original_ych.num_elements();
+//    for(uint64 i = 0; i < y_num_elements; i++)
+//    {
+//        std::cout << atoi((char *)&read_ych.data()[i]) << "\n";
+//        std::cout << atoi((char *)&original_ych.data()[i]) << "\n";
+//        BOOST_CHECK_MESSAGE(read_ych.data()[i] == original_ych.data()[i],
+//                            "read_ych.data()["<<i<<"] = "<<read_ych.data()[i]<<" != original_ych.data()["<<i<<"] = " << original_ych.data()[i]);
+//    }
+//    MultiArray<uint8,2> original_uch = original_image(U_CHANNEL);
+//    MultiArray<uint8,2> read_uch = read_image(U_CHANNEL);
+//    //Here we introduce an error to check if the case works as expected. 
+//    //read_uch[2][2] = 115;
+//    uint64 u_num_elements = original_uch.num_elements();
+//    for(uint64 i = 0; i < u_num_elements; i++)
+//    {
+//        if(read_uch.data()[i] != original_uch.data()[i])
+//        {
+//            std::cout << read_uch.data()[i] << "\n";
+//            std::cout << original_uch.data()[i]<< "\n";    
+//        }        
+//        BOOST_CHECK_MESSAGE(read_uch.data()[i] == original_uch.data()[i],
+//                            "read_uch.data()["<<i<<"] = "<<read_uch.data()[i]<<" != original_uch.data()["<<i<<"] = " << original_uch.data()[i]);
+//    }
+//    
+//    MultiArray<uint8,2> original_vch = original_image(V_CHANNEL);
+//    MultiArray<uint8,2> read_vch = read_image(V_CHANNEL);
+//    uint64 v_num_elements = original_vch.num_elements();
+//    for(uint64 i = 0; i < v_num_elements; i++)
+//    {
+////        std::cout << atoi((char *)&read_vch.data()[i]) << "\n";
+////        std::cout << atoi((char *)&original_vch.data()[i]) << "\n";
+//        BOOST_CHECK_MESSAGE(read_vch.data()[i] == original_vch.data()[i],
+//                            "read_vch.data()["<<i<<"] = "<<read_vch.data()[i]<<" != original_vch.data()["<<i<<"] = " << original_vch.data()[i]);
+//    }    
+
+    
+}
+
+
+BOOST_AUTO_TEST_CASE (single_read_write_frame_yuv444_test)
+{
+    const uint64 sizex  = 20;
+    const uint64 sizey = 10;
+    const uint64 frame_pointer = 0;
+    const std::string filename = string(TEST_DATA_PATH_W) + "/io_single_write_frame_yuv444_test.yuv";
+    
+    std::fstream file;
+    file.open(filename.c_str(),std::ios::out | std::ios::trunc);
+    
+    ImageYUV<uint8> original_image (sizex, sizey);
+    original_image(Y_CHANNEL) = 0;
+    original_image(U_CHANNEL) = 128; 
+    original_image(V_CHANNEL) = 128;
+    write_frame_yuv444(original_image, frame_pointer, file);
+    file.close();
+    
+    ImageYUV<uint8> read_image = read_frame_yuv444(filename,frame_pointer,sizex,sizey);
+    //Check that the original and recovered images have not been modified by the write-read cycle.
+    
+    BOOST_CHECK(original_image.size_x() == read_image.size_x());
+    BOOST_CHECK(original_image.size_y() == read_image.size_y());
+    BOOST_CHECK(original_image.num_total_data_elements() == read_image.num_total_data_elements());
+
+    // Check that any pixel hasn't been modified by the write-read cycle.
+    
+    //Short way of doing things: 
+    BOOST_CHECK(original_image == read_image); 
+    
+}
+
+
+
+BOOST_AUTO_TEST_CASE (cicled_write_frame_yuv400_test)
+{
+    //Test few write cycles on the same sequence file.
+    //This test serves for the purpose of checking if the 
+    //frame pointer arithmetic involved in writing several frames performs well.
+    const uint64 sizex = 10; 
+    const uint64 sizey = 10; 
+    const uint64 n_frames = 10;
+    
+    
+    std::string test_filename = string(TEST_DATA_PATH_W) + "/io_cicled_write_frame_yuv400_test.yuv";
+    std::fstream fp; 
+    fp.open(test_filename.c_str(), std::ios::out | std::ios::trunc);
+
+    for(uint64 i = 0; i < n_frames; i++)
+    {
+        ImageYUV420<uint8> im (sizex, sizey);
+        im(Y_CHANNEL) = static_cast<uint8>(i);
+        im(U_CHANNEL) = static_cast<uint8>(85+i);
+        im(V_CHANNEL) = static_cast<uint8>(170+i);
+        write_frame_yuv400(im(0), i, fp);
+    }
+    fp.close();
+    //Now retrieve the written images and compare them with the original.
+    for(uint64 i = 0; i < n_frames; i++)
+    {
+        ImageGray<uint8> read_im = read_frame_yuv400(test_filename, i, sizex, sizey);
+
+        
+        //Short way of doing things.
+        ImageYUV420<uint8> im (sizex, sizey);
+        im(Y_CHANNEL) = static_cast<uint8>(i);
+        im(U_CHANNEL) = static_cast<uint8>(85+i);
+        im(V_CHANNEL) = static_cast<uint8>(170+i);
+        
+        BOOST_CHECK(read_im(0) == im(0));
+        
+    }
+}
+
+BOOST_AUTO_TEST_CASE (cicled_write_frame_yuv420_test)
+{
+    //Test few write cycles on the same sequence file.
+    //This test serves for the purpose of checking if the 
+    //frame pointer arithmetic involved in writing several frames performs well.
+    const uint64 sizex = 10; 
+    const uint64 sizey = 10; 
+    const uint64 n_frames = 10;
+    
+    
+    std::string test_filename = string(TEST_DATA_PATH_W) + "/io_cicled_write_frame_yuv420_test.yuv";
+    std::fstream fp; 
+    fp.open(test_filename.c_str(), std::ios::out | std::ios::trunc);
+
+    for(uint64 i = 0; i < n_frames; i++)
+    {
+        ImageYUV420<uint8> im (sizex, sizey);
+        im(Y_CHANNEL) = static_cast<uint8>(i);
+        im(U_CHANNEL) = static_cast<uint8>(85+i);
+        im(V_CHANNEL) = static_cast<uint8>(170+i);
+        write_frame_yuv420(im, i, fp);
+    }
+    fp.close();
+    //Now retrieve the written images and compare them with the original.
+    for(uint64 i = 0; i < n_frames; i++)
+    {
+        ImageYUV420<uint8> read_im = read_frame_yuv420(test_filename, i, sizex, sizey);
+
+        
+        //Short way of doing things.
+        ImageYUV420<uint8> im (sizex, sizey);
+        im(Y_CHANNEL) = static_cast<uint8>(i);
+        im(U_CHANNEL) = static_cast<uint8>(85+i);
+        im(V_CHANNEL) = static_cast<uint8>(170+i);
+        
+        BOOST_CHECK(read_im == im);
+        
+//        //Long - and deprecated - way of doing things.
+//        MultiArray<uint8, 2> read_ych = read_im(Y_CHANNEL);
+//        MultiArray<uint8, 2> read_uch = read_im(U_CHANNEL);
+//        MultiArray<uint8, 2> read_vch = read_im(V_CHANNEL);
+//        
+//        uint64 ych_n_elem = read_ych.num_elements();
+//        uint64 uch_n_elem = read_uch.num_elements();
+//        uint64 vch_n_elem = read_vch.num_elements();
+//        BOOST_CHECK(uch_n_elem == vch_n_elem); //check that channels Cr and Cb have the same number of samples.
+//        
+//        for(uint64 j = 0; j < ych_n_elem; j++)
+//        {
+//            BOOST_CHECK_MESSAGE(read_ych.data()[j] == i, "read_ych.data()["<<j<<"] = "<<read_ych.data()[j]<<" != "<< i);
+//        }
+//        if(uch_n_elem == vch_n_elem) //same number of v and u channel samples. 
+//        {
+//            for(uint64 j = 0; j < uch_n_elem; j++)
+//            {
+//                BOOST_CHECK_MESSAGE(read_uch.data()[j] == i+85, "read_uch.data()["<<j<<"] = "<<read_uch.data()[j]<<" != "<< i+85);
+//                BOOST_CHECK_MESSAGE(read_vch.data()[j] == i+170, "read_vch.data()["<<j<<"] = "<<read_vch.data()[j]<<" != "<< i+170);
+//            }
+//        }
+//        else //although we have an error case of having different u and v channel samples, we check if the contents are well treated. 
+//        {
+//            for(uint64 j = 0; j < uch_n_elem; j++)
+//            {
+//                BOOST_CHECK_MESSAGE(read_uch.data()[j] == i+85, "read_uch.data()["<<j<<"] = "<<read_uch.data()[j]<<" != "<< i+85);
+//            }
+//            for(uint64 j = 0; j < vch_n_elem; j++)
+//            {
+//                BOOST_CHECK_MESSAGE(read_vch.data()[j] == i+170, "read_vch.data()["<<j<<"] = "<<read_vch.data()[j]<<" != "<< i+170);
+//            }            
+//        }
+        
+        
+    }
+}
+
+BOOST_AUTO_TEST_CASE (cicled_write_frame_yuv444_test)
+{
+    //Test few write cycles on the same sequence file.
+    //This test serves for the purpose of checking if the 
+    //frame pointer arithmetic involved in writing several frames performs well.
+    const uint64 sizex = 10; 
+    const uint64 sizey = 10; 
+    const uint64 n_frames = 10;
+    
+    
+    std::string test_filename = string(TEST_DATA_PATH_W) + "/io_cicled_write_frame_yuv444_test.yuv";
+    std::fstream fp; 
+    fp.open(test_filename.c_str(), std::ios::out | std::ios::trunc);
+
+    for(uint64 i = 0; i < n_frames; i++)
+    {
+        ImageYUV<uint8> im (sizex, sizey);
+        im(Y_CHANNEL) = static_cast<uint8>(i);
+        im(U_CHANNEL) = static_cast<uint8>(85+i);
+        im(V_CHANNEL) = static_cast<uint8>(170+i);
+        write_frame_yuv444(im, i, fp);
+    }
+    fp.close();
+    //Now retrieve the written images and compare them with the original.
+    for(uint64 i = 0; i < n_frames; i++)
+    {
+        ImageYUV<uint8> read_im = read_frame_yuv444(test_filename, i, sizex, sizey);
+
+        
+        //Short way of doing things.
+        ImageYUV<uint8> im (sizex, sizey);
+        im(Y_CHANNEL) = static_cast<uint8>(i);
+        im(U_CHANNEL) = static_cast<uint8>(85+i);
+        im(V_CHANNEL) = static_cast<uint8>(170+i);
+        
+        BOOST_CHECK(read_im == im);
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END();
+

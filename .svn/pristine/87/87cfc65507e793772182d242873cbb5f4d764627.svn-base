@@ -1,0 +1,50 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file bayer.test
+//!
+//! \author Marc Vilà <alvila@gps.tsc.upc.edu>
+//!
+//! Tests for function Bayer 
+//!
+
+#include <imageplus/core.hpp>
+#include <bayer.hpp>
+
+BOOST_AUTO_TEST_SUITE ( BayerSuite );
+
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE( BayerRGBTest )
+{
+	MultiArray<uint8,2>	bay(1360, 1024);
+	ImageRGB  <uint8>   rgb( 680,  512);
+	
+//	MultiArray<uint8,2>	bay( 10, 10 );
+//	ImageRGB  <uint8>   rgb(  5,  5 );
+	
+	for (uint64 i=0; i< bay.dims(1); i+=2)
+	{
+		for (uint64 j=1; j< bay.dims(0); j+=2)
+		{
+			bay[j-1][i] 	= 222;
+			bay[j][i] 		= 250;
+			bay[j-1][i+1]	= 252;
+			bay[j][i+1]		= 13;
+		}
+	}
+	
+	convert_bayer(bay, rgb);
+
+	BOOST_CHECK( rgb(RED_CHANNEL)   == 222);
+	BOOST_CHECK( rgb(GREEN_CHANNEL) == 251);
+	BOOST_CHECK( rgb(BLUE_CHANNEL)  ==  13);
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

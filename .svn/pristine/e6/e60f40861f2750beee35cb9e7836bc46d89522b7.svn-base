@@ -1,0 +1,245 @@
+/*
+ * trajectory_tracking.cpp
+ *
+ *  Created on: Feb 5, 2013
+ *      Author: gpalou
+ */
+
+/*
+ * image_test.cpp
+ *
+ *  Created on: Sep 5, 2012
+ *      Author: guillem
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/optical_flow/flow_io.hpp>
+#include <imageplus/optical_flow/trajectory_tracking.hpp>
+
+#include <imageplus/motion_segmentation/trajectory_error/trajectory_error.hpp>
+
+#include <boost/filesystem.hpp>
+#include <imageplus/toolbox/tictoc.hpp>
+
+#include <iostream>
+#include <iomanip>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef VideoSignal<float64,3> 																						VideoType;
+typedef VideoSignal<float64,3>::ImageType																			FrameType;
+typedef VideoSignal<float64,2>																						OpticalFlowType;
+typedef OpticalFlowType::ImageType																					OpticalFlowFrame;
+
+typedef VideoType::coord_type 																						coord3d;
+
+// The vector is of the same type
+typedef VideoType::value_type																						lab_type;
+typedef VideoType::value_type																						rgb_type;
+
+typedef segmentation::Partition<uint64, 3>																						PartitionType;
+
+VideoType convert_map_to_image(VideoSignal<float64,1>& s) {
+	VideoType res(s.sizes());
+	for (VideoSignal<float64,1>::iterator p = s.begin(); p!=s.end(); ++p) {
+		coord3d pos = p.pos();
+		float64 value = (*p)(0);
+
+		res(pos) = value*rgb_type(255,255,255);
+	}
+
+	return res;
+}
+
+
+VideoType print_trajectories(VideoType& v, PartitionType& p) {
+
+	VideoType trajectories(v.sizes());
+
+	PartitionType::iterator pos = p.begin();
+	PartitionType::iterator pos_end = p.end();
+
+	rgb_type red(0,0,255);
+	rgb_type green(0,255,0);
+
+	uint64 num_regs = 0;
+	std::vector<int64> begin_frame;
+	std::vector<int64> end_frame;
+	for (; pos!=pos_end; ++pos) {
+		if (num_regs < (*pos)(0)) num_regs = (*pos)(0);
+	}
+
+	num_regs++;
+	pos = p.begin();
+	float64 Nframes = v.length();
+	begin_frame.resize(num_regs,Nframes);
+	end_frame.resize(num_regs,0);
+	for (; pos!=pos_end; ++pos) {
+		begin_frame[(*pos)(0)] 	= std::min(pos.pos()(2),begin_frame[(*pos)(0)]);
+		end_frame[(*pos)(0)]	= std::max(pos.pos()(2),end_frame[(*pos)(0)]);
+	}
+
+	//std::cout << "Trajectories " << num_regs << std::endl;
+	pos = p.begin();
+	for (; pos!=pos_end; ++pos) {
+		coord3d voxel = pos.pos();
+		lab_type color;
+		uint64 l = end_frame[(*pos)(0)] - begin_frame[(*pos)(0)] + 1;
+		//std::cout << l << " " << pos.pos().transpose() << std::endl;
+		if (l > 1) {
+			float64 perc = l*1.0 / Nframes;
+			color = (1-perc)*red + perc*green;
+		} else {
+			color = 0.4*v(voxel);
+
+		}
+		trajectories(voxel) = color;
+	}
+	//std::cout << "done painting" << std::endl;
+
+	return trajectories;
+}
+
+int main(int argc, char* argv[]) {
+
+	std::istringstream sstart(argv[1]);
+	std::istringstream send(argv[2]);
+	std::istringstream socclusion(argv[3]);
+	std::istringstream svariation(argv[4]);
+	std::istringstream sstructure(argv[5]);
+	std::istringstream scolor(argv[6]);
+
+	std::istringstream spath(argv[7]);
+	std::istringstream sresult(argv[8]);
+	std::string file_name = argv[9];
+
+	uint64 start = 0; sstart >> start;
+	uint64 end = -1; send >> end;
+	float64 pocclusion = 0; socclusion >> pocclusion;
+	float64 pvariation = 0; svariation >> pvariation;
+	float64 pstructure = 0; sstructure >> pstructure;
+	float64 pcolor = 0; 	scolor >> pcolor;
+
+	std::string path; spath >> path;
+	std::string result ; sresult >> result;
+
+	// create the necessary paths
+	boost::filesystem::path result_path(result);
+	boost::filesystem::create_directory(result_path);
+	boost::filesystem::create_directory(result_path / "trajectories");
+	boost::filesystem::create_directory(result_path / "occlusions");
+	boost::filesystem::create_directory(result_path / "flow_variation");
+	boost::filesystem::create_directory(result_path / "flow_reliability");
+	boost::filesystem::create_directory(result_path / "structure_tensor");
+	boost::filesystem::create_directory(result_path / "color_consistency");
+
+	uint64 Nframes = end+1;
+
+	std::cout << "Tracking " << Nframes << " frames" << std::endl;
+	VideoType video(Nframes);
+
+	//Read frames
+	for (uint64 k = 0; k <= end; k++) {
+		std::ostringstream os;
+		os << path << "/frames/frame" << std::setw(3) << std::setfill('0') << k << ".png";
+		video.read_frame(os.str(),k); // read frame k and put it to the position k-i of the current block
+	}
+	ColorSpaceConverter<VideoType> converter;
+	converter.convert(video, ColorSpaceLAB);
+
+	uint64 sx = video.size_x();
+	uint64 sy = video.size_y();
+
+	OpticalFlowType forward_flows(sx,sy,Nframes);
+	OpticalFlowType backward_flows(sx,sy,Nframes);
+
+	// Read forward optical flows
+	for (uint64 k = 0; k <= end-1; k++) {
+		std::ostringstream os;
+		os << path << "/flows/flow_" << k << "_" << k+1 << ".flo";
+		OpticalFlowFrame flow = forward_flows.frame(k);
+		optical_flow::read_optical_flow(flow, os.str());  // read flow k,k+1 and put it to the position k-i of the current block
+	}
+
+	// Read backward optical flows
+	for (uint64 k = 1; k <= end; k++) {
+		std::ostringstream os;
+		os << path << "/flows/flow_" << k << "_" << k-1 << ".flo";
+		OpticalFlowFrame flow = backward_flows.frame(k);
+		optical_flow::read_optical_flow(flow, os.str()); // read flow k,k-1 and put it to the position k-i of the current block
+	}
+
+	// Perform first BPT with motion mean
+
+	PartitionType p(video.sizes());
+
+	optical_flow::TrajectoryTracking<VideoType, OpticalFlowType, PartitionType>::Parameters tracker_pars;
+	tracker_pars.occlusion_lambda 	= pocclusion;
+	tracker_pars.variation_lambda 	= pvariation;
+	tracker_pars.structure_lambda 	= pstructure;
+	tracker_pars.color_lambda 		= pcolor;
+
+	optical_flow::TrajectoryTracking<VideoType, OpticalFlowType, PartitionType> tracker(video,tracker_pars);
+
+	p = tracker.calculate(video,forward_flows, backward_flows);
+
+	VideoSignal<float64,1> var = tracker.flow_variation();
+	VideoSignal<float64,1> str = tracker.structure_tensor();
+	VideoSignal<float64,1> occ = tracker.flow_occlusions();
+	VideoSignal<float64,1> rel = tracker.flow_reliability();
+
+	VideoType flow_map_img 			= convert_map_to_image(var);
+	VideoType flow_occ_img 			= convert_map_to_image(occ);
+	VideoType structure_map_img 	= convert_map_to_image(str);
+	VideoType flow_rel_img			= convert_map_to_image(rel);
+
+	for (uint64 k = 0; k < flow_map_img.length(); k++) {
+		std::ostringstream os;
+		os << result_path.string() << "/occlusions/" << std::setw(5) << std::setfill('0') << k << ".png";
+		flow_occ_img.write_frame(os.str(),k); // read frame k and put it to the position k-i of the current block
+	}
+
+	for (uint64 k = 0; k < flow_map_img.length(); k++) {
+		std::ostringstream os;
+		os << result_path.string() << "/flow_variation/" << std::setw(5) << std::setfill('0') << k << ".png";
+		flow_map_img.write_frame(os.str(),k); // read frame k and put it to the position k-i of the current block
+	}
+
+	for (uint64 k = 0; k < flow_map_img.length(); k++) {
+		std::ostringstream os;
+		os << result_path.string() << "/structure_tensor/" << std::setw(5) << std::setfill('0') << k << ".png";
+		structure_map_img.write_frame(os.str(),k); // read frame k and put it to the position k-i of the current block
+	}
+
+	for (uint64 k = 0; k < flow_map_img.length(); k++) {
+		std::ostringstream os;
+		os << result_path.string() << "/flow_reliability/" << std::setw(5) << std::setfill('0') << k << ".png";
+		//std::cout << result_path.string() << "/flow_reliability/" << std::setw(5) << std::setfill('0') << k << ".png" << std::endl;
+		flow_rel_img.write_frame(os.str(),k); // read frame k and put it to the position k-i of the current block
+	}
+
+	// print trajectories
+	converter.convert(video, ColorSpaceRGB);
+	VideoType trajectories = print_trajectories(video, p);
+	for (uint64 k = 0; k < trajectories.length(); k++) {
+		std::ostringstream os;
+		os << result_path.string() << "/trajectories/" << std::setw(5) << std::setfill('0') << k << ".png";
+		std::cout << os.str() << std::endl;
+		trajectories.write_frame(os.str(),k); // read frame k and put it to the position k-i of the current block
+	}
+
+	p.write_partition(result_path.string() + "/" + file_name);
+
+}

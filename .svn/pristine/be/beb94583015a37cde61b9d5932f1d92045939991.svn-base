@@ -1,0 +1,104 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file threshold.cpp
+//!
+//!  Implementation for thresholding on MultiArray and ImageGray objects
+//!
+
+#include <iostream>
+#include <typeinfo>
+
+#include <imageplus/core/threshold.hpp>
+
+using namespace imageplus;
+
+
+Threshold::Threshold() : _lo(0.0), _hi(255.0)
+{
+}
+
+Threshold::Threshold(float64 lo, float64 hi) throw (ImagePlusError) :
+        _lo(lo), _hi(hi)
+{
+}
+
+template<typename T>
+MultiArray<bool,2> Threshold::implementation( const MultiArray<T,2>& ma) throw (ImagePlusError)
+{
+    MultiArray<bool,2> tmp(ma.dims());
+    bool*    ptmp  = tmp.data();
+    const T* pma   = ma.data();
+
+    for (uint64 i = 0; i < tmp.num_elements(); i++)
+    {
+        if (static_cast<float64>(pma[i]) < _lo || static_cast<float64>(pma[i]) > _hi)
+        {
+            ptmp[i] =  false;
+        }
+        else
+        {
+            ptmp[i] = true;
+        }
+    }
+
+    return tmp;
+}
+
+template<typename T, std::size_t N, std::size_t D>
+ImaVol<bool,N,D> Threshold::implementation( const ImaVol<T,N,D>& iv) throw (ImagePlusError)
+{
+    ImaVol<bool,N,D> tmp(iv.dims());
+
+
+    for (uint64 j = 0; j < N; j++)
+    {
+        bool*    ptmp  = tmp(j).data();
+        const T* piv   = iv(j).data();
+
+        for (uint64 i = 0; i < tmp(j).num_elements(); i++)
+        {
+            if (static_cast<float64>(piv[i]) < _lo || static_cast<float64>(piv[i]) > _hi)
+            {
+                ptmp[i] =  false;
+            }
+            else
+            {
+                ptmp[i] = true;
+            }
+        }
+    }
+
+    return tmp;
+}
+
+
+// threshold instantiations
+namespace imageplus
+{
+
+    template MultiArray<bool,2> Threshold::implementation(const MultiArray<uint8,2>&);
+    template MultiArray<bool,2> Threshold::implementation(const MultiArray<int64,2>&);
+    template MultiArray<bool,2> Threshold::implementation(const MultiArray<float64,2>&);
+
+    template ImaVol<bool,1,2>  Threshold::implementation(const ImaVol<uint8,1,2>&);
+    template ImaVol<bool,1,2>  Threshold::implementation(const ImaVol<int64,1,2>&);
+    template ImaVol<bool,1,2>  Threshold::implementation(const ImaVol<float64,1,2>&);
+
+    template ImaVol<bool,3,2>  Threshold::implementation(const ImaVol<uint8,3,2>&);
+    template ImaVol<bool,3,2>  Threshold::implementation(const ImaVol<int64,3,2>&);
+    template ImaVol<bool,3,2>  Threshold::implementation(const ImaVol<float64,3,2>&);
+
+    template ImaVol<bool,1,3>  Threshold::implementation(const ImaVol<uint8,1,3>&);
+    template ImaVol<bool,1,3>  Threshold::implementation(const ImaVol<int64,1,3>&);
+    template ImaVol<bool,1,3>  Threshold::implementation(const ImaVol<float64,1,3>&);
+
+    template ImaVol<bool,3,3>  Threshold::implementation(const ImaVol<uint8,3,3>&);
+    template ImaVol<bool,3,3>  Threshold::implementation(const ImaVol<int64,3,3>&);
+    template ImaVol<bool,3,3>  Threshold::implementation(const ImaVol<float64,3,3>&);
+
+}
+

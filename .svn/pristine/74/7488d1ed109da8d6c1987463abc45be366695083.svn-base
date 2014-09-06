@@ -1,0 +1,120 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file writevolume.hpp
+//!
+//!  Interface for the WriteVolume class, base class all writing operations involving volume files
+//!  (compressed or uncompressed byte volume or X3D volumes).
+//!
+
+#ifndef IMAGEPLUS_IO_WRITEVOLUME_HPP
+#define IMAGEPLUS_IO_WRITEVOLUME_HPP
+
+#include <string>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readvolume.hpp>
+#include <imageplus/compress/rle.hpp>
+
+namespace imageplus
+{
+
+    namespace io
+    {
+        //!
+        //! \brief Base class for Volume File Writing
+        //!
+        //! \author Adolfo López <alopez@gps.tsc.upc.es>
+        //! \author Cristian Canton <ccanton@gps.tsc.upc.es>
+        //! \author Josep Ramon Casas <josep@gps.tsc.upc.es>
+        //!
+        //! \date 14-01-2008
+        //!
+        //! WriteVolume allows writing files either in normal byte format or X3D format.
+        //! The operator << performs a file extension check to determine the output format.
+        //!
+        //! The following example shows how to use WriteVolume class
+        //! \code
+        //! VolumeGray volume;
+        //! WriteVolume writer("output_file.rle");
+        //! writer << volume;
+        //! writer.open("output_file.x3d");
+        //! writer << volume;
+        //! \endcode
+        //!
+        //! When the file has rle extension, the operator writes the byte volume with the RLE compressor.
+        //! By method open we can change the destination format which implicitly changes the operator
+        //! functionality.
+        //!
+        //! X3D writer code is based on Josep's SoftImage branch version and it has been coded to represent volumetric
+        //! shapes in a UPC Smart Room Model
+        //!
+        class WriteVolume
+        {
+
+            public:
+                //!
+                //! \brief Default constructor. Creates a WriteVolume class with empty output file
+                //!
+                explicit WriteVolume();
+                //!
+                //! \brief Constructor. Creates WriteVolume with a specific output file
+                //!
+                //! \param[in] filename: the name of the file to write to
+                //!
+                explicit WriteVolume( const std::string& filename );
+                //!
+                //! \brief Destructor
+                //!
+                ~WriteVolume();
+                //!
+                //! \brief Check and change of the output file
+                //!
+                //! \param[in] filename: the name of the file to write to
+                //!
+                void open( const std::string& filename );
+                //!
+                //! \brief Operator << for WriteVolume class. Writes an RGB Volume in the file determined
+                //! by the constructor or open method. The volume is written in rle or in x3d format depending
+                //! on the file extension.
+                //!
+                //! param[in] VolumeRGB: Color Volume to be written
+                //!
+                template<typename T>
+                void operator<<( const VolumeRGB<T>&) const;
+                //!
+                //! \brief Operator << for WriteVolume class. Writes a Gray Volume in the file determined
+                //! by the constructor or open method. The volume is written in rle or in x3d format depending
+                //! on the file extension.
+                //!
+                //! param[in] VolumeGray: Grayscale Volume to be written
+                //!
+                template<typename T>
+                void operator<<(const VolumeGray<T>&) const;
+
+            private:
+                //!
+                //! \brief Forbidden copy Constructor
+                //!
+                //! \param[in] cpy : WriteVolume object to copy from
+                //!
+                WriteVolume( const WriteVolume& cpy );
+                
+                //!
+                //! \brief Forbidden assignment operator for WriteVolume class.
+                //!
+                //! \param[in] cpy: Class to be assigned
+                //!
+                //! \return cpy, just to concatenate operations
+                //!
+                const WriteVolume& operator=( const WriteVolume& cpy );
+                
+                //! string storing the file route
+                std::string _filename;
+        };
+    } // namespace io
+} //namespace imageplus
+#endif /*WRITEVOLUME_HPP_*/

@@ -1,0 +1,157 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file region_texture.cpp
+//!
+//!  Methods for region-based tecture coding
+//!
+
+#include <texture/region_texture.hpp>
+#include <imageplus/math/geometry/bbox_math.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+
+
+namespace imageplus
+{
+namespace coding
+{
+namespace texture
+{
+
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    RegionTexture<image_type,num_channels,partition_type>::RegionTexture ()
+    :   _mat(num_channels, MultiArray<float64,2>())
+    {}
+
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    RegionTexture<image_type,num_channels,partition_type>::RegionTexture( const Image<image_type,num_channels>& ima, const ImagePartition<partition_type>& label, partition_type numreg)
+    :   _num_region(numreg),
+        _mat(num_channels, MultiArray<float64,2>())
+    {
+        ASSERT (ima.size_x() == label.size_x() && ima.size_y() == label.size_y(), "Image and label have different size");
+
+        // Find the smallest square in which the region fits
+        _bbox = math::geometry::region_bbox(label, numreg);
+
+        for (uint64 chan = 0; chan < num_channels; chan++)
+        {
+            _mat[chan] = MultiArray<float64,2>(_bbox.side_x(), _bbox.side_y());
+
+            // Translate the region from original to _mat
+            for (int64 i = _bbox.origin().x(); i <= _bbox.opposite().x(); i++)
+            for (int64 j = _bbox.origin().y(); j <= _bbox.opposite().y(); j++)
+            {
+                if  (label[i][j] == numreg)
+                {
+                    _mat[chan][i-_bbox.origin().x()][j-_bbox.origin().y()] = static_cast<float64>(ima(chan)[i][j]);
+                }
+                else
+                {
+                    _mat[chan][i-_bbox.origin().x()][j-_bbox.origin().y()] = -1.0;
+                }
+            }
+#if 0
+            if (_pad_region)
+            {
+                texture_padding (_mat[chan]);
+            }
+#endif
+        }
+    }
+
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    void RegionTexture<image_type,num_channels,partition_type>::extract_region(const Image<image_type,num_channels>& ima, const ImagePartition<partition_type>& label, partition_type numreg)
+    {
+        ASSERT (ima.size_x() == label.size_x() && ima.size_y() == label.size_y(), "Image and label have different size");
+
+        _num_region = numreg;
+
+        // Find the smallest square in which the region fits
+        _bbox = math::geometry::region_bbox(label, _num_region);
+
+        for (uint64 chan = 0; chan < num_channels; chan++)
+        {
+            // Allocate the memory
+            _mat[chan] = MultiArray<float64,2>(_bbox.side_x(), _bbox.side_y());
+
+            // Translate the region from original to _mat
+            for (int64 i = _bbox.origin().x(); i <= _bbox.opposite().x(); i++)
+            for (int64 j = _bbox.origin().y(); j <= _bbox.opposite().y(); j++)
+            {
+                if  (label[i][j] == _num_region)
+                {
+                    _mat[chan][i-_bbox.origin().x()][j-_bbox.origin().y()] = static_cast<float64>(ima(chan)[i][j]);
+                }
+                else
+                {
+                    _mat[chan][i-_bbox.origin().x()][j-_bbox.origin().y()] = -1.0;
+                }
+            }
+#if 0
+            if (_pad_region)
+            {
+                texture_padding (_mat[chan]);
+            }
+#endif
+        }
+    }
+
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    void RegionTexture<image_type,num_channels,partition_type>::save_region (const ImagePartition<partition_type>& label, Image<image_type,num_channels>& coded) const
+    {
+        int64 tmp;
+
+        for (int64 i = _bbox.origin().x(); i <= _bbox.opposite().x(); i++)
+        for (int64 j = _bbox.origin().y(); j <= _bbox.opposite().y(); j++)
+        {
+            if (label[i][j] == _num_region)
+            {
+                for (uint64 chan = 0; chan < num_channels; chan++)
+                {
+                    tmp = math::numeric::mnint<int64>(_mat[chan][i - _bbox.origin().x()][j - _bbox.origin().y()]);
+
+                    tmp = std::max(tmp, static_cast<int64>(0));
+                    tmp = std::min(tmp, static_cast<int64>(255));
+
+                    coded(chan)[i][j] = tmp;
+                }
+            }
+        }
+    }
+
+    template<typename image_type, std::size_t num_channels, typename partition_type>
+    uint64 RegionTexture<image_type,num_channels,partition_type>::size() const
+    {
+        uint64 nd = 0;
+        for (uint64 i = 0; i < _mat[0].dims(0); i++)
+        for (uint64 j = 0; j < _mat[0].dims(1); j++)
+        {
+            if (_mat[0][i][j] != -1.0)
+            {
+                nd++;
+            }
+        }
+        return nd;
+    }
+
+} // ns texture
+} // ns coding
+} // ns imageplus
+
+/*
+ * Instantiations
+ */
+namespace imageplus
+{
+namespace coding
+{
+namespace texture
+{
+    template class RegionTexture<uint8,3,uint32>;
+    template class RegionTexture<uint8,1,uint32>;
+} // ns texture
+} // ns coding
+} // ns imageplus

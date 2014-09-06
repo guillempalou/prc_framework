@@ -1,0 +1,126 @@
+/*
+ * metric_model.hpp
+ *
+ *  Created on: Feb 22, 2013
+ *      Author: gpalou
+ */
+
+#ifndef METRIC_MODEL_HPP_
+#define METRIC_MODEL_HPP_
+
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <imageplus/descriptors/features/features_descriptor.hpp>
+#include <imageplus/bpt/models/bpt_distance_model.hpp>
+
+namespace imageplus
+{
+    namespace bpt
+    {
+
+        //! Class from which any model must inherit to work properly
+        template<uint64 dimensions, class SignalModel, class BPT, typename order_type=float64>
+        class MetricModel : public BaseDistanceModel<SignalModel, BPT, order_type>
+        {
+
+        	typedef typename BPT::RegionType					RegionType;
+
+        public:
+
+        	static const uint64 num_models = dimensions;
+
+        	typedef BaseDistanceModel<SignalModel, BPT, order_type>			DistanceModelType;
+        	typedef std::vector<DistanceModelType*> 						DistanceModels;
+
+        	typedef Eigen::Matrix<float64, dimensions, 1>					vector_type;
+        	typedef Eigen::Matrix<float64, dimensions, dimensions>			metric_type;
+
+        	struct Parameters {
+
+        		metric_type A;
+
+        		DistanceModels	models;
+
+        		Parameters() : A(metric_type::Identity())  {
+
+        		}
+
+        		void save(std::string file) {
+        			std::ofstream ofs(file.c_str());
+        			ofs << A.rows() << " " << A.cols() << std::endl;
+        			ofs << A << std::endl;
+        		}
+
+        		void read(std::string file) {
+        			float64 D,N;
+
+        			std::ifstream ifs(file.c_str());
+        			ifs >> N >> D;
+
+        			A = math::Matrix(N,D);
+
+        			for (uint64 i = 0; i < N; i++)
+        				for (uint64 k = 0; k < D; k++)
+        					ifs >> A(i,k);
+        		}
+        	};
+
+        	static const Parameters default_parameters() {
+        		return Parameters();
+        	}
+
+
+        	MetricModel(const Parameters& pars = default_parameters()) {
+        		_A = pars.A;
+        		_models = pars.models;
+        	}
+
+        	static inline float64 distance(const vector_type& x, const metric_type& A) {
+        		return x.transpose() * A * x;
+        	}
+
+        	//! This function computes the order of a given link (edge of the RAG)
+        	//!
+        	//! \param reg1 : Region of one extremum of the link
+        	//! \param reg2 : Region of the other extremum of the link
+        	//! \param image : Image being processed
+        	//! \param bpt : Partition at the moment of the merging
+        	//! \return The order of the link
+        	vector_type distance_vector(RegionType& reg1, RegionType& reg2, SignalModel& image, BPT& bpt, descriptors::DescriptorManager& manager) {
+
+        		vector_type x;
+
+        		for (uint64 i = 0; i < num_models; i++) {
+        			x(i) = _models[i]->region_distance(reg1,reg2,image,bpt,manager);
+        		}
+
+        		return x;
+        	}
+
+            //! This function computes the order of a given link (edge of the RAG)
+            //!
+            //! \param reg1 : Region of one extremum of the link
+            //! \param reg2 : Region of the other extremum of the link
+            //! \param image : Image being processed
+            //! \param bpt : Partition at the moment of the merging
+            //! \return The order of the link
+            order_type region_distance(RegionType& reg1, RegionType& reg2, SignalModel& image, BPT& bpt, descriptors::DescriptorManager& manager) {
+
+            	vector_type x;
+            	for (uint64 i = 0; i < num_models; i++)
+            		x(i) = _models[i]->region_distance(reg1,reg2,image,bpt,manager);
+
+            	return distance(x,_A);
+            }
+
+        protected:
+
+        	DistanceModels _models;
+
+        	metric_type _A;
+
+        };
+
+    }
+}
+
+#endif /* METRIC_MODEL_HPP_ */

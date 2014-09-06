@@ -1,0 +1,226 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \file readwritemultiarray.test
+//!
+//! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+//!
+//! Tests for classes ReadMultiArray and WriteMultiarray
+//!
+
+#include <limits>
+#include <imageplus/io/readmultiarray.hpp>
+#include <imageplus/io/writemultiarray.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ReadWriteMultiArraySuite );
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+using namespace std;
+
+
+BOOST_AUTO_TEST_CASE( Uint8ReadWriteMultiArrayTest )
+{
+    // filenames
+    std::string filename  = string(TEST_DATA_PATH_W) + "/test_uint8.mult";
+
+    WriteMultiArray wm;
+    ReadMultiArray rm;
+    
+    for (int64 s = 5; s <= 20; s+=5)
+    {
+
+        // D = 1
+        wm.open(filename);
+        MultiArray<uint8,1> m1w(s);
+        imageplus::random(m1w,(uint8)255);
+        wm <<  m1w;
+
+        rm.open(filename);
+        MultiArray<uint8,1> m1r;
+        rm >> m1r;
+
+        BOOST_CHECK( m1w == m1r );
+
+        // D = 2
+        wm.open(filename);
+        MultiArray<uint8,2> m2w(s,2*s);
+        imageplus::random(m2w,(uint8)255);
+        wm <<  m2w;
+
+        rm.open(filename);
+        MultiArray<uint8,2> m2r;
+        rm >> m2r;
+
+        BOOST_CHECK( m2w == m2r );
+
+        // D = 3
+        wm.open(filename);
+        MultiArray<uint8,3> m3w(s,2*s,3*s);
+        imageplus::random(m3w,(uint8)255);
+        wm <<  m3w;
+
+        rm.open(filename);
+        MultiArray<uint8,3> m3r;
+        rm >> m3r;
+
+        BOOST_CHECK( m3w == m3r );
+
+    }
+}
+
+BOOST_AUTO_TEST_CASE( Uint8NoneCompressionReadWriteMultiArrayTest )
+{
+    // filenames
+    std::string filename  = string(TEST_DATA_PATH_W) + "/test_uint8_none.mult";
+
+    WriteMultiArray wm(filename, NONE);
+    ReadMultiArray rm;
+    
+    for (int64 s = 5; s <= 20; s+=5)
+    {
+
+        // D = 1
+        MultiArray<uint8,1> m1w(s);
+        imageplus::random(m1w,(uint8)255);
+        wm <<  m1w;
+
+        rm.open(filename);
+        MultiArray<uint8,1> m1r;
+        rm >> m1r;
+
+        BOOST_CHECK( m1w == m1r );
+
+        // D = 2
+        MultiArray<uint8,2> m2w(s,2*s);
+        imageplus::random(m2w,(uint8)255);
+        wm <<  m2w;
+
+        rm.open(filename);
+        MultiArray<uint8,2> m2r;
+        rm >> m2r;
+
+        BOOST_CHECK( m2w == m2r );
+
+        // D = 3
+        MultiArray<uint8,3> m3w(s,2*s,3*s);
+        imageplus::random(m3w,(uint8)255);
+        wm <<  m3w;
+
+        rm.open(filename);
+        MultiArray<uint8,3> m3r;
+        rm >> m3r;
+
+        BOOST_CHECK( m3w == m3r );
+
+    }
+}
+
+
+
+BOOST_AUTO_TEST_CASE( Uint32ReadWriteMultiArrayTest )
+{
+    // filenames
+    std::string filename  = string(TEST_DATA_PATH_W) + "/test_uint32.mult";
+
+    WriteMultiArray wm;
+    ReadMultiArray rm;
+    
+    for (int64 s = 5; s <= 20; s+=5)
+    {
+        const uint32 MAX_VAL=0xFFFFFFFF;  //2^32 -1
+
+        // D = 1
+        wm.open(filename);
+        MultiArray<uint32,1> m1w(s);
+        imageplus::random(m1w,MAX_VAL);
+        wm <<  m1w;
+
+        rm.open(filename);
+        MultiArray<uint32,1> m1r;
+        rm >> m1r;
+
+        BOOST_CHECK( m1w == m1r );
+
+        // D = 2
+        wm.open(filename);
+        MultiArray<uint32,2> m2w(s,2*s);
+        imageplus::random(m2w,MAX_VAL);
+        wm <<  m2w;
+
+        rm.open(filename);
+        MultiArray<uint32,2> m2r;
+        rm >> m2r;
+
+        BOOST_CHECK( m2w == m2r );
+
+        // D = 3
+        wm.open(filename);
+        MultiArray<uint32,3> m3w(s,2*s,3*s);
+        imageplus::random(m3w,MAX_VAL);
+        wm <<  m3w;
+
+        rm.open(filename);
+        MultiArray<uint32,3> m3r;
+        rm >> m3r;
+
+        BOOST_CHECK( m3w == m3r );
+    }
+}
+
+
+BOOST_AUTO_TEST_CASE( Float64ReadWriteMultiArrayTest )
+{
+    // filenames
+    std::string filename  = string(TEST_DATA_PATH_W) + "/test_float64.mult";
+
+    WriteMultiArray wm;
+    ReadMultiArray rm;   
+  
+    for (int64 s = 5; s <= 20; s+=5)
+    {
+        const float64 MAX_VAL = static_cast< float64 >( 10000 );  // Max float64 (0xFFFFFFFF)
+
+        // D = 1
+        wm.open(filename);
+        MultiArray<float64,1> m1w(s);
+        imageplus::random(m1w,MAX_VAL);
+        wm << m1w;
+
+        rm.open(filename);
+        MultiArray<float64,1> m1r(s);
+        rm >> m1r;
+
+        BOOST_CHECK( m1w == m1r );
+        
+        // D = 2
+        wm.open(filename);
+        MultiArray<float64,2> m2w(s,2*s);
+        imageplus::random(m2w,MAX_VAL);
+        wm <<  m2w;
+
+        rm.open(filename);
+        MultiArray<float64,2> m2r;
+        rm >> m2r;
+
+        BOOST_CHECK( m2w == m2r );
+
+        // D = 3
+        wm.open(filename);
+        MultiArray<float64,3> m3w(s,2*s,3*s);
+        imageplus::random(m3w,MAX_VAL);
+        wm <<  m3w;
+
+        rm.open(filename);
+        MultiArray<float64,3> m3r;
+        rm >> m3r;
+
+        BOOST_CHECK( m3w == m3r );
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

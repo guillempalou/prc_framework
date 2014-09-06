@@ -1,0 +1,119 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file imagergb.test
+ */
+
+#include <imageplus/core/imagergb.hpp>
+#include <imageplus/core/imavol_logical.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ImageRGBSuite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64,
+                           int8,  int16,  int32,  int64,
+                                                float64 > ImageRGBTypes;
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( ImageRGB_Test, T, ImageRGBTypes )
+{
+    /*
+     * Default constructor
+     */
+    ImageRGB<T>  rgb1;
+    BOOST_CHECK( rgb1.size_x() == 0 );
+    BOOST_CHECK( rgb1.size_y() == 0 );
+    
+    /*
+     * Specific constructor from width/height
+     */
+    ImageRGB<T>  rgb2 (4,3);
+    BOOST_CHECK( rgb2.size_x() == 4 );
+    BOOST_CHECK( rgb2.size_y() == 3 );
+    
+    /*
+     * Specific constructor from dims
+     */
+    std::vector <uint64> dims_channel(2);
+    dims_channel[0] = 9;
+    dims_channel[1] = 6;
+
+    std::vector< std::vector <uint64> > dims(3, dims_channel);
+    
+    ImageRGB<T>  rgb3(dims);
+    BOOST_CHECK( rgb3.size_x() == 9 );
+    BOOST_CHECK( rgb3.size_y() == 6 );
+    
+    
+    /*
+     * Assign values
+     */
+    typedef typename ImageRGB<T>::Color Color; 
+    Color c1, c2, c3;
+    
+    c1[0] = 127;    c2[0] =   0;    c2[0] =  64;
+    c1[1] =  64;    c2[1] = 127;    c3[1] =   0;
+    c1[2] =   0;    c2[2] =  64;    c3[2] = 127;
+    
+    for(std::size_t ii=0; ii < rgb2.size_x(); ++ii )
+    {
+        rgb2(Coord<int64,2>(ii,0)) = c1;
+        rgb2(Coord<int64,2>(ii,1)) = c2;
+        rgb2(Coord<int64,2>(ii,2)) = c3;
+    }
+    
+    for(std::size_t ii=0; ii < rgb3.size_x(); ++ii )
+    {
+        rgb3(Coord<int64,2>(ii,0)) = c3;
+        rgb3(Coord<int64,2>(ii,1)) = c2;
+        rgb3(Coord<int64,2>(ii,2)) = c1;
+        rgb3(Coord<int64,2>(ii,3)) = c3;
+        rgb3(Coord<int64,2>(ii,4)) = c2;
+        rgb3(Coord<int64,2>(ii,5)) = c1;
+    }
+
+    /*
+     * Copy constructor
+     */
+    ImageRGB<T>  rgb4 =  rgb2;    
+    BOOST_CHECK( rgb4 == rgb2 );
+    BOOST_CHECK( rgb4.size_x() == 4 );
+    BOOST_CHECK( rgb4.size_y() == 3 );
+    for(std::size_t ii=0; ii < rgb4.size_x(); ++ii )
+    {
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,0)) == c1 );
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,1)) == c2 );
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,2)) == c3 );
+    }
+    
+    /*
+     * Assignment
+     */
+    rgb4 = rgb3;
+    BOOST_CHECK( rgb4 == rgb3 );
+    BOOST_CHECK( rgb4.size_x() == 9 );
+    BOOST_CHECK( rgb4.size_y() == 6 );
+    for(std::size_t ii=0; ii < rgb4.size_x(); ++ii )
+    {
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,0)) == c3 );
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,1)) == c2 );
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,2)) == c1 );
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,3)) == c3 );
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,4)) == c2 );
+        BOOST_CHECK( rgb4(Coord<int64,2>(ii,5)) == c1 );
+    }
+    
+    rgb2 = 2;
+    BOOST_CHECK( rgb2 == T(2) );
+    for(std::size_t jj=0; jj < rgb2.size_y(); ++jj )
+    for(std::size_t ii=0; ii < rgb2.size_x(); ++ii )
+    for(std::size_t ch=0; ch < 3;             ++ch )
+    {
+        BOOST_CHECK (rgb2(Coord<int64,2>(ii,jj))[ch] == 2);
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

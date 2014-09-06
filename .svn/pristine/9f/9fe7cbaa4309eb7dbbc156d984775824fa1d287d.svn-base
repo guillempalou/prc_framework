@@ -1,0 +1,75 @@
+/*
+ * motion_occlusions.hpp
+ *
+ *  Created on: Oct 17, 2011
+ *      Author: guillem
+ */
+
+#ifndef MOTION_OCCLUSIONS_HPP_
+#define MOTION_OCCLUSIONS_HPP_
+
+#include <imageplus/core/signal.hpp>
+
+namespace imageplus {
+	namespace optical_flow {
+
+	template<class OpticalFlowType, class ConfidenceMapType>
+	std::vector<std::pair<typename OpticalFlowType::coord_type,typename OpticalFlowType::coord_type> > detect_occlusion_relations(ConfidenceMapType& occ_map, OpticalFlowType& forward, OpticalFlowType& backward) {
+
+		typedef typename OpticalFlowType::coord_type coord;
+
+		std::vector<std::pair<coord,coord> > occs;
+
+		for (typename ConfidenceMapType::iterator v = occ_map.begin(); v != occ_map.end(); ++v) {
+
+			if ((*v)(0) != 1) continue;
+
+			coord pos = v.pos();
+
+			typename OpticalFlowType::coord_float_type pos_float = pos.template cast<float64>();
+			typename OpticalFlowType::value_type displacement = forward.interpolate_value(pos_float);
+			typename OpticalFlowType::coord_float_type new_pos = pos_float + displacement;
+
+			for (uint64 i = 0; i < 2; i++) pos(i) = round(new_pos(i));
+
+			ImageSignal<float64,1>::coord_type a = pos - forward.lower_point();
+			ImageSignal<float64,1>::coord_type b = forward.upper_point() - pos;
+
+			//Check if the trajectory falls inside the video
+			if (a.minCoeff() < 0 || b.minCoeff() < 0) {
+				continue;
+			}
+
+			// Check if the point should be tracked
+			// check forward/backward consistency
+
+			typename OpticalFlowType::value_type  uv_fwd  	= displacement;
+			typename OpticalFlowType::value_type  uv_bkwd 	= backward.interpolate_value(new_pos);
+
+			typename OpticalFlowType::value_type f = (uv_fwd + uv_bkwd);
+
+			if (f.norm() > 0.7) {
+				new_pos = pos_float + f;
+
+				for (uint64 i = 0; i < 2; i++) pos(i) = round(new_pos(i));
+
+				a = pos - forward.lower_point();
+				b = forward.upper_point() - pos;
+
+				//Check if the trajectory falls inside the video
+				if (a.minCoeff() < 0 || b.minCoeff() < 0) {
+					continue;
+				}
+
+				occs.push_back(std::pair<coord,coord>(v.pos(),pos));
+			}
+		}
+
+		return occs;
+	}
+
+	}
+}
+
+
+#endif /* MOTION_OCCLUSIONS_HPP_ */

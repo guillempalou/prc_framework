@@ -1,0 +1,626 @@
+
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file color_structure.hpp
+//!
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/core/mask.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+#include <imageplus/semantic/observation.hpp>
+#include <fstream>
+
+
+#ifndef IMAGEPLUS_DESCRIPTORS_COLOR_COLOR_STRUCTURE_HPP
+#define IMAGEPLUS_DESCRIPTORS_COLOR_COLOR_STRUCTURE_HPP
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+
+        //!
+        //! \brief Class for visual descriptor that aims at identifying localized color distributions using a small structuring window.
+        //!
+        //! The color structure descriptor represents an image by both the color distribution of the image (similar to a color histogram) and the local spatial structure of the color.
+        //! The additional information about color structure makes the descriptor sensitive to certain image features to which the color histogram is blind.
+        //! The given image must be in the RGB color space.
+        //! Template M refers to the M cell-quantized HMMD color space. It can be 256, 128, 64 or 32.
+        //! Template N refers to the size of the structuring element (width = height = N ).
+        //!
+        //! The user has to use the helper functions defined in visual_descriptors.hpp because of their simplicity.
+        //!
+        //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+        //!
+        //! \date 29-6-2009    
+        template<class InputModel, uint64 M = 256, uint64 N = 8>
+        class ColorStructure : public DescriptorBase
+        {
+        public:
+            
+            //!
+            //! \brief Default constructor
+            //!
+            ColorStructure() : DescriptorBase("ColorStructure",false), _mask()
+            {
+                if((M!=256)&&(M!=128)&&(M!=64)&&(M!=32))
+                {
+                    throw ImagePlusError("Invalid value for M");
+                }
+                if(InputModel::channels != 3)
+                {
+                    throw ImagePlusError("The number of channels must be 3");
+                }
+                _histogram.resize(M);
+                _nq_histogram.resize(M);
+            }        
+            
+            //! \brief Calculates the color structure of a region or image given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the region or image
+            //! \param[in] last : Iterator to the end of the region or image
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            //! \return A reference to the visual descriptor
+            template< class IteratorModel>
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {
+                ASSERT(peer_descs!=0x0, "ColorStructure calculate: peer_descs must be non null");
+
+                const BoundingBox<typename InputModel::CoordType>& bb_coord = peer_descs->calculate(new BoundingBox<typename InputModel::CoordType>(), first, last);
+                _calculate(first,last,bb_coord, peer_descs);
+            }
+            
+            //! \brief Returns the M-bin Color Structure Histogram
+            //!
+            //! \return M-bin CS Histogram
+            //! 
+            const std::vector<float64>& value() const
+            {
+                return _histogram;
+            }
+            
+            //! \brief Returns the M-bin Color Structure Histogram before the quantization
+            //!
+            //! \return M-bin CS Histogram before the quantization
+            //! 
+            const std::vector<float64>& value_nq() const
+            {
+                return _nq_histogram;
+            }
+            
+            //! Writes the value of the descriptor.
+            //! \param[in] os: TXT file we are writing to.
+            void txt_write(std::fstream& os)
+            {
+    	    	os << " " << _histogram.size();
+    	    	for(uint64 ii=0; ii < _histogram.size(); ii++)
+    	    	{
+    	    		os << " " << _histogram[ii];
+    	    	}
+            }
+            
+            //! Reads the value of the descriptor.
+            //! \param[in] is: TXT file we are reading from.
+            void txt_read(std::fstream& is)
+            {
+            	float64 size = 0;
+            	is >> size;
+            	_histogram.resize(size);
+            	for(uint64 ii=0; ii < size; ii++)
+            	{
+            		is >> _histogram[ii];
+            	}
+            }
+            
+            
+        #ifdef USE_XML
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "ColorStructureType";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem;
+                XERCES_CPP_NAMESPACE::DOMText* textElem;
+                std::string append;
+                std::string space(" ");
+                char append2[100];
+                
+                dataElem = doc->createElement(io::fromNative("Values").c_str());
+                vdElem->appendChild(dataElem);
+                sprintf (append2, "%llu", M);
+                vdElem->setAttribute(io::fromNative("numValues").c_str(), io::fromNative(append2).c_str());
+                
+                for(uint64 i=0; i<_histogram.size(); i++ )
+                {
+                    append = append + boost::lexical_cast<std::string>(_histogram[i]) + space;
+                }
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+        
+            }
+
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \returns true if the descriptor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "ColorStructureType");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("ColorStructureType not found");
+                }
+                else
+                {
+                    uint32 numvalues;
+                    XERCES_CPP_NAMESPACE::DOMNamedNodeMap *node_attr = curr_node->getAttributes();
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = node_attr->getNamedItem(io::fromNative("numValues").c_str());
+                    sscanf(io::toNative(curr_node2->getNodeValue()).c_str(), "%u", &numvalues);
+                    _histogram.resize(numvalues);
+                    curr_node2 = io::xml_get_check_son(curr_node, "Values");
+                    std::string text = io::xml_get_text_son(curr_node2, curr_node2);
+                    const char* text2 = text.c_str();
+                    uint32 j = 0;
+                    int pos = 0;
+                    for( j = 0; j < numvalues; j++)
+                    {
+                        std::string value;
+                        value.push_back(text2[pos]);
+                        pos++;
+                        while(text2[pos]!=' ')
+                        {
+                            value.push_back(text2[pos]);
+                            pos++;
+                        }
+                        pos++;
+                        
+                        uint32 val;
+                        sscanf(value.c_str(), "%u", &val);
+                        _histogram[j]=val;
+                    }
+                    read = true;
+                }
+                return read;
+            }
+        #endif
+
+			//! Generate a normalized numeric vector representation of this descriptor.
+			//! \return Vector representation of this descriptor
+            semantic::Observation::FeatureVector fv() const
+            {
+            	semantic::Observation::FeatureVector feature_vector(M);
+            	for (size_t i=0; i<M; i++)
+            		feature_vector[i] = _histogram[i]/255;
+            	return feature_vector;
+            }
+
+
+        private:
+            //! M-bin CS Histogram
+            std::vector<float64> _histogram;
+            
+            //! M-bin CS Histogram before quantization
+            std::vector<float64> _nq_histogram;
+            
+            //! Mask of the region
+            ImaVolMask<2> _mask;
+            
+            //! \brief Calculates the color structure of a region or image given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the region or image
+            //! \param[in] last : Iterator to the end of the region or image
+            //! \param[in] bb_coord : Bounding box coordinates
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors
+            template< class IteratorModel>
+            void _calculate(IteratorModel first, IteratorModel last, const BoundingBox<typename InputModel::CoordType>& bb_coord, CollaborativeDescriptors* peer_descs)
+            {
+                uint64 size_x = bb_coord.side(0);
+                uint64 size_y = bb_coord.side(1);
+                _histogram.assign(M,0);
+                if((size_x > N) && (size_y > N))
+                {
+                    //We build a mask
+                    _mask = peer_descs->calculate(new Mask<typename InputModel::CoordType>(),first,last);
+            
+                    IteratorModel it = first;
+            
+                    //We calculate the subsampling factor
+                    float64 aux = std::sqrt((double)size_x*size_y);
+                    aux = std::log10((double)aux)/std::log10((double)2);
+                    uint64 p = (uint64)std::max(0.0, std::floor(aux-7.5));
+                    uint64 factor_k = 1<<p;
+                    
+                    //We downsample the image and the mask
+                    InputModel image_subsampled;
+                    ImaVolMask<2> mask_subsampled;
+                    size_x = (uint64)std::ceil((double)size_x/factor_k);
+                    size_y = (uint64)std::ceil((double)size_y/factor_k);
+                    image_subsampled.resize(size_x , size_y );
+                    mask_subsampled.resize(size_x , size_y);
+                    typename InputModel::template iterator<> it2 = image_subsampled.colors_begin();
+                    ImaVolMask<2>::iterator<> it_mask = mask_subsampled.colors_begin();
+                    for(it=first;it!=last;++it)
+                    {
+                        if((((*it).position()[0]%factor_k)==0)&&(((*it).position()[1]%factor_k)==0))
+                        {
+                            (*it_mask).value() =_mask[(*it).position()[0]][(*it).position()[1]];
+                            (*it2).value() = (*it).value();
+                            ++it_mask;
+                            ++it2;
+                        }
+                    }
+                    
+                    ImaVol<float64, 3, 2> im_hmmd(size_x, size_y);
+                    typename InputModel::data_type max, min;
+                    
+                    //Conversion to HMMD Color Space which consist of a set of three components {Hue, Diff, Sum}
+                    typename InputModel::template iterator<> it_sub = image_subsampled.colors_begin();
+                    for(; it_sub!=image_subsampled.colors_end(); ++it_sub)
+                    {
+                        if(mask_subsampled((*it_sub).position())[0])
+                        {
+                            typename InputModel::Color rgb_color = (*it_sub).value();
+                            
+                            max = *std::max_element(rgb_color.begin(),rgb_color.end());
+                            min = *std::min_element(rgb_color.begin(),rgb_color.end());
+                            
+                            if(max==min)
+                            {
+                                im_hmmd(0)((*it_sub).position())=0;
+                            }
+                            else
+                            {
+                                if((max==rgb_color[0])&&(rgb_color[1]>=rgb_color[2]))
+                                {
+                                    im_hmmd(0)((*it_sub).position())=60*(float64)(rgb_color[1]-rgb_color[2])/(max-min);
+                                }
+                                else if((max==rgb_color[0])&&(rgb_color[1]<rgb_color[2]))
+                                {
+                                    im_hmmd(0)((*it_sub).position())=360+60*(float64)(rgb_color[1]-rgb_color[2])/(max-min);
+                                }
+                                else if(max==rgb_color[1])
+                                {
+                                    im_hmmd(0)((*it_sub).position())=60*(2.0 + (float64)(rgb_color[2]-rgb_color[0])/(max-min));
+                                }
+                                else
+                                {
+                                    im_hmmd(0)((*it_sub).position())=60*(4.0 + (float64)(rgb_color[0]-rgb_color[1])/(max-min));
+                                }
+                            }
+                            
+                            im_hmmd(1)((*it_sub).position()) = (max-min);
+                            im_hmmd(2)((*it_sub).position()) = (float64)(max+min)/2;
+                        }
+                    }
+                    
+                    //We obtain the image representation in the M cell-quantized HMMD color space
+                    ImaVol<uint64, 1, 2> im_hmmd_quant;
+                    
+                    switch(M)
+                    {
+                    case 256:
+                        _quantization_hmmd_256(im_hmmd, im_hmmd_quant);
+                        break;
+                        
+                    case 128:
+                        _quantization_hmmd_128(im_hmmd, im_hmmd_quant);
+                        break;
+                        
+                    case 64:
+                        _quantization_hmmd_64(im_hmmd, im_hmmd_quant);
+                        break;
+                        
+                    default:
+                        _quantization_hmmd_32(im_hmmd, im_hmmd_quant);
+                        
+                    }
+            
+                    //We create the NxN structuring element 
+                    Neighborhood2D ngb;
+                    ngb.resize(N*N);
+                    for(std::size_t j=0; j<N; j++)
+                    {
+                        for(std::size_t i = 0; i < N; i++)
+                        {
+                            ngb[N*j+i]=Neighborhood2D::CoordType( i, j );
+                        }
+                    }
+                    
+                    //We obtain the histogram
+                    std::vector<bool> count;
+                    count.resize(M);
+                    for(ImaVol<uint64, 1, 2>::iterator<> it2 = im_hmmd_quant.colors_begin(); it2!=im_hmmd_quant.colors_end(), (*it2).position()[1] < (int64)(size_y-(N-1)) ;++it2)
+                    {
+                        if((*it2).position()[0]<(int64)(size_x - (N-1)))
+                        {
+                            for(ImaVol<uint64, 1, 2>::iterator<>::pixel_type::neighbor_iterator nit = (*it2).local_begin(ngb); nit != (*it2).local_end(ngb); ++nit)
+                            {
+                                if(mask_subsampled((*nit).position())[0])
+                                {
+                                    if(!(count[(*nit).value(0)]))
+                                    {
+                                        count[(*nit).value(0)] = true;
+                                        _histogram[(*nit).value(0)]++;
+                                    }
+                                }
+                            }
+                            count.assign(M, false);
+                        }
+                    }
+                    
+                    //We normalize the histogram
+                    float64 divisor = (float64)((size_x-N+1)*(size_y-N+1));
+                    for(uint64 i = 0; i < M; i++)
+                    {
+                        _histogram[i] = _histogram[i]/divisor;
+                        _nq_histogram[i] = _histogram[i];
+                    }
+                    
+                    //We nonlinearly quantize the normalized values to eight bits
+                    for (uint64 i = 0 ; i < M; i++) 
+                    {
+                        if (_histogram[i]<0.000000001)
+                        {
+                            _histogram[i] = 0;
+                        }
+                        else if (_histogram[i]<0.037) 
+                        {
+                            _histogram[i] = 1 + math::numeric::mnint<uint8>( (_histogram[i]-0.000000001)/(0.037-0.000000001) * 24);
+                        } 
+                        else if (_histogram[i]<0.08)
+                        {
+                            _histogram[i]  = 26 + math::numeric::mnint<uint8>( (_histogram[i]-0.037)/(0.08-0.037) * 19);
+                        }
+                        else if (_histogram[i]<0.195) 
+                        {
+                            _histogram[i]  = 46  + math::numeric::mnint<uint8>( (_histogram[i]-0.08)/(0.195-0.08) * 34);
+                        } 
+                        else if (_histogram[i]<0.32) 
+                        {
+                            _histogram[i]  = 81 + math::numeric::mnint<uint8>( (_histogram[i]-0.195)/(0.32-0.195) * 34);
+                        } 
+                        else
+                        {
+                            _histogram[i]  = 116 + math::numeric::mnint<uint8>( (_histogram[i]-0.32)/(1-0.32) * 139);
+                        }      
+                    }
+                }
+    
+                
+            }
+           
+            //! \brief It calculates the image representation in the 256 cell-quantized HMMD color space
+            //!
+            //! \param[in] im_hmmd : Image in the HMMD color space which we want to quantize.
+            //! \param[out] im_hmmd_quant : The image representation in the 256 cell-quantized HMMD color space
+            void _quantization_hmmd_256(ImaVol<float64,3,2>& im_hmmd, ImaVol<uint64, 1, 2>& im_hmmd_quant)
+            {
+                im_hmmd_quant.resize(im_hmmd.size_x(),im_hmmd.size_y());
+                uint64 scale = std::numeric_limits<typename InputModel::data_type>::max()+1;
+                ImaVol<uint64, 1, 2>::iterator<> it_out = im_hmmd_quant.colors_begin();
+                ImaVol<float64, 3, 2>::iterator<> it_in = im_hmmd.colors_begin();
+                for(; it_out!= im_hmmd_quant.colors_end(); ++it_out,++it_in)
+                {
+                    ImaVol<float64, 3, 2>::Color color = (*it_in).value();
+                    
+                    if(color[1] < 6)
+                    {
+                        (*it_out).value() = (uint64)std::floor(color[2]/(scale/32));
+                    }
+                    else if ((color[1]>=6)&&(color[1]<20))
+                    {
+                        (*it_out).value() = 32 + 8 * (uint64)std::floor(color[0]/(360.0/4.0)) + (uint64)std::floor(color[2]/(scale/8));
+                    }
+                    else if ((color[1]>=20)&&(color[1]<60))
+                    {
+                        (*it_out).value() = 64 + 4 * (uint64)std::floor(color[0]/(360.0/16.0)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                    else if ((color[1]>=60)&&(color[1]<110))
+                    {
+                        (*it_out).value() = 128 + 4 * (uint64)std::floor(color[0]/(360.0/16.0)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                    else
+                    {
+                        (*it_out).value() = 192 + 4 * (uint64)std::floor(color[0]/(360.0/16.0)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                }
+        
+            }
+            
+            //! \brief It calculates the image representation in the 128 cell-quantized HMMD color space
+            //!
+            //! \param[in] im_hmmd : Image in the HMMD color space which we want to quantize.
+            //! \param[out] im_hmmd_quant : The image representation in the 128 cell-quantized HMMD color space
+            void _quantization_hmmd_128(ImaVol<float64,3,2>& im_hmmd, ImaVol<uint64, 1, 2>& im_hmmd_quant)
+            {
+                im_hmmd_quant.resize(im_hmmd.size_x(),im_hmmd.size_y());
+                uint64 scale = std::numeric_limits<typename InputModel::data_type>::max()+1;
+                ImaVol<uint64, 1, 2>::iterator<> it_out = im_hmmd_quant.colors_begin();
+                ImaVol<float64, 3, 2>::iterator<> it_in = im_hmmd.colors_begin();
+                for(; it_out!= im_hmmd_quant.colors_end(); ++it_out,++it_in)
+                {
+                    ImaVol<float64, 3, 2>::Color color = (*it_in).value();
+                    
+                    if(color[1] < 6)
+                    {
+                        (*it_out).value() = (uint64)std::floor(color[2]/(scale/16));
+                    }
+                    else if ((color[1]>=6)&&(color[1]<20))
+                    {
+                        (*it_out).value() = 16 + 4 * (uint64)std::floor(color[0]/(scale/4)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                    else if ((color[1]>=20)&&(color[1]<60))
+                    {
+                        (*it_out).value() = 32 + 4 * (uint64)std::floor(color[0]/(scale/8)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                    else if ((color[1]>=60)&&(color[1]<110))
+                    {
+                        (*it_out).value() = 64 + 4 * (uint64)std::floor(color[0]/(scale/8)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                    else
+                    {
+                        (*it_out).value() = 96 + 4 * (uint64)std::floor(color[0]/(scale/8)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                }
+                
+            }
+            
+            //! \brief It calculates the image representation in the 64 cell-quantized HMMD color space
+            //!
+            //! \param[in] im_hmmd : Image in the HMMD color space which we want to quantize.
+            //! \param[out] im_hmmd_quant : The image representation in the 64 cell-quantized HMMD color space
+            void _quantization_hmmd_64(ImaVol<float64,3,2>& im_hmmd, ImaVol<uint64, 1, 2>& im_hmmd_quant)
+            {
+                im_hmmd_quant.resize(im_hmmd.size_x(),im_hmmd.size_y());
+                uint64 scale = std::numeric_limits<typename InputModel::data_type>::max()+1;
+                ImaVol<uint64, 1, 2>::iterator<> it_out = im_hmmd_quant.colors_begin();
+                ImaVol<float64, 3, 2>::iterator<> it_in = im_hmmd.colors_begin();
+                for(; it_out!= im_hmmd_quant.colors_end(); ++it_out,++it_in)
+                {
+                    ImaVol<float64, 3, 2>::Color color = (*it_in).value();
+                    
+                    if(color[1] < 6)
+                    {
+                        (*it_out).value() = (uint64)std::floor(color[2]/(scale/8));
+                    }
+                    else if ((color[1]>=6)&&(color[1]<20))
+                    {
+                        (*it_out).value() = 8 + 4 * (uint64)std::floor(color[0]/(scale/4)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                    else if ((color[1]>=20)&&(color[1]<60))
+                    {
+                        (*it_out).value() = 24 + 4 * (uint64)std::floor(color[0]/(scale/4)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                    else if ((color[1]>=60)&&(color[1]<110))
+                    {
+                        (*it_out).value() = 40 + 2 * (uint64)std::floor(color[0]/(scale/8)) + (uint64)std::floor(color[2]/(scale/2));
+                    }
+                    else
+                    {
+                        (*it_out).value() = 56 + (uint64)std::floor(color[0]/(scale/8));
+                    }
+                }
+                
+            }
+            
+            //! \brief It calculates the image representation in the 32 cell-quantized HMMD color space
+            //!
+            //! \param[in] im_hmmd : Image in the HMMD color space which we want to quantize.
+            //! \param[out] im_hmmd_quant : The image representation in the 32 cell-quantized HMMD color space
+            void _quantization_hmmd_32(ImaVol<float64,3,2>& im_hmmd, ImaVol<uint64, 1, 2>& im_hmmd_quant)
+            {
+                im_hmmd_quant.resize(im_hmmd.size_x(),im_hmmd.size_y());
+                uint64 scale = std::numeric_limits<typename InputModel::data_type>::max()+1;
+                ImaVol<uint64, 1, 2>::iterator<> it_out = im_hmmd_quant.colors_begin();
+                ImaVol<float64, 3, 2>::iterator<> it_in = im_hmmd.colors_begin();
+                for(; it_out!= im_hmmd_quant.colors_end(); ++it_out,++it_in)
+                {
+                    ImaVol<float64, 3, 2>::Color color = (*it_in).value();
+                    
+                    if(color[1] < 6)
+                    {
+                        (*it_out).value() = (uint64)std::floor(color[2]/(scale/8));
+                    }
+                    else if ((color[1]>=6)&&(color[1]<60))
+                    {
+                        (*it_out).value() = 8 + 4 * (uint64)std::floor(color[0]/(scale/4)) + (uint64)std::floor(color[2]/(scale/4));
+                    }
+                    else if ((color[1]>=60)&&(color[1]<110))
+                    {
+                        (*it_out).value() = 24 + (uint64)std::floor(color[0]/(scale/4));
+                    }
+                    else
+                    {
+                        (*it_out).value() = 28 + (uint64)std::floor(color[0]/(scale/4));
+                    }
+                }
+                
+            }
+        };
+        
+        
+        
+        //! \brief Calculates the result of the dissimilarity measure consisting in L1-norm between two color structure descriptors
+        //!
+        //! \param[in] h1 : Histogram values for color strucuture descriptor 1
+        //! \param[in] h2 : Histogram values for color strucuture descriptor 2
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_color_structure( const std::vector<float64>& h1, const std::vector<float64>& h2);
+        
+        //! \brief Calculates the result of the dissimilarity measure consisting in L2-norm between two color structure descriptors
+        //!
+        //! \param[in] h1 : Histogram values for color strucuture descriptor 1
+        //! \param[in] h2 : Histogram values for color strucuture descriptor 2
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_cs_euclidean( const std::vector<float64>& h1, const std::vector<float64>& h2);
+        
+        //! \brief Calculates the result of the dissimilarity measure consisting in Jeffrey divergence between two color structure descriptors
+        //!
+        //! \param[in] h1 : Histogram values for color strucuture descriptor 1
+        //! \param[in] h2 : Histogram values for color strucuture descriptor 2
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_cs_jeffrey( const std::vector<float64>& h1, const std::vector<float64>& h2);
+        
+        //! \brief Calculates the result of the dissimilarity measure consisting in Histogram Intersection between two color structure descriptors
+        //!
+        //! \param[in] h1 : Histogram values for color strucuture descriptor 1
+        //! \param[in] h2 : Histogram values for color strucuture descriptor 2
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_cs_hist_intersection( const std::vector<float64>& h1, const std::vector<float64>& h2);
+        
+        //! \brief Calculates the result of the dissimilarity measure consisting in L1-norm between two color structure descriptors extracted from an XML file
+        //!
+        //! \param[in] h1_q : Histogram values for color strucuture descriptor 1 extracted from an XML file
+        //! \param[in] h2_q : Histogram values for color strucuture descriptor 2 extracted from an XML file
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_color_structure( const std::vector<uint32>& h1_q, const std::vector<uint32>& h2_q);
+        
+        //! \brief Calculates the result of the dissimilarity measure consisting in L2-norm between two color structure descriptors extracted from an XML file
+        //!
+        //! \param[in] h1_q : Histogram values for color strucuture descriptor 1 extracted from an XML file
+        //! \param[in] h2_q : Histogram values for color strucuture descriptor 2 extracted from an XML file
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_cs_euclidean( const std::vector<uint32>& h1_q, const std::vector<uint32>& h2_q);
+        
+        //! \brief Calculates the result of the dissimilarity measure consisting in Jeffrey divergence between two color structure descriptors extracted from an XML file
+        //!
+        //! \param[in] h1_q : Histogram values for color strucuture descriptor 1 extracted from an XML file
+        //! \param[in] h2_q : Histogram values for color strucuture descriptor 2 extracted from an XML file
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_cs_jeffrey( const std::vector<uint32>& h1_q, const std::vector<uint32>& h2_q);
+        
+        //! \brief Calculates the result of the dissimilarity measure consisting in Histogram Intersection between two color structure descriptors extracted from an XML file
+        //!
+        //! \param[in] h1_q : Histogram values for color strucuture descriptor 1 extracted from an XML file
+        //! \param[in] h2_q : Histogram values for color strucuture descriptor 2 extracted from an XML file
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_cs_hist_intersection( const std::vector<uint32>& h1_q, const std::vector<uint32>& h2_q);
+        
+    } // Namespace descriptors
+}// Namespace imageplus
+
+#endif
+

@@ -1,0 +1,64 @@
+/*
+ * evaluate_partition_3d.cpp
+ *
+ *  Created on: Jan 8, 2013
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+#include <imageplus/segmentation/measures/segmentation_covering.hpp>
+#include <imageplus/segmentation/measures/covering_score.hpp>
+#include <imageplus/segmentation/measures/boundary_recall.hpp>
+
+#include <iomanip>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef ImageSignal<float64,3> 					ImageType;
+typedef VideoSignal<float64,3> 					VideoType;
+typedef segmentation::Partition<uint64,3>		PartitionType;
+
+typedef ImageType::coord_type coord2d;
+typedef ImageType::value_type rgb_type;
+
+int main(int argc, char *argv[]) {
+
+	std::istringstream 	sstart(argv[1]);
+	std::istringstream 	send(argv[2]);
+	std::string path 	= argv[3];
+	std::string path_gt	= argv[4];
+
+	uint64 start = 0; sstart >> start;
+	uint64 end = -1; send >> end;
+	uint64 Nframes = end - start + 1;
+
+	VideoType video1(Nframes);
+	for (uint64 k = start; k <= end; k++) {
+		std::ostringstream os;
+		os << path << "/" << std::setw(5) << std::setfill('0') << k << ".png";
+		video1.read_frame(os.str(),k-start); // read frame k and put it to the position k of the current block
+	}
+
+	VideoType video2(Nframes);
+	for (uint64 k = start; k <= end; k++) {
+		std::ostringstream os;
+		os << path_gt << "/" << std::setw(5) << std::setfill('0') << k << ".png";
+		video2.read_frame(os.str(),k-start); // read frame k and put it to the position k of the current block
+	}
+
+	PartitionType p1 = segmentation::to_partition<PartitionType>(video1);
+	PartitionType p2 = segmentation::to_partition<PartitionType>(video2);
+
+	float64 sc = segmentation::segmentation_covering(p1,p2);
+	float64 ps = segmentation::covering_score(p1,p2);
+	float64 br = segmentation::boundary_recall(p1,p2);
+
+	std::cout << p1.max_label() + 1 << " " << sc << " " << ps << " " << br << std::endl;
+}

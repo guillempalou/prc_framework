@@ -1,0 +1,197 @@
+/*
+ * motion_mean.hpp
+ *
+ *  Created on: Oct 16, 2012
+ *      Author: guillem
+ */
+
+#ifndef MOTION_MEAN_HPP_
+#define MOTION_MEAN_HPP_
+
+#include <imageplus/descriptors/descriptor_base.hpp>
+#include <imageplus/math/math_types.hpp>
+
+#include <imageplus/descriptors/color/color_volume.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Area visual descriptor
+        //!
+        //! \author Jordi Pont <jpont@gps.tsc.upc.edu>, Guillem Palou <guillem.palou@gmail.com>
+        //!
+        //! \date 02-06-2009
+    	template<class Signal>
+        class TemporalMean : public DescriptorBase
+        {
+        public:
+
+        	//! base structur for descriptors using parameters
+        	struct ColorMeanDescriptorParameters {
+        	};
+
+        	typedef ColorMeanDescriptorParameters 	Parameters;
+
+            //! Type to refer to the type of data which will be returned by this descriptor
+
+        	typedef typename Signal::value_float_type	motion_type;
+            typedef typename Area::type					area_type;
+            typedef typename Signal::coord_type			coord_type;
+
+            struct MotionMeanType {
+            	std::vector<motion_type> value_volume;
+            	std::vector<coord_type> centroid_volume;
+            	std::vector<area_type> area;
+            	int64 begin_frame;
+            	int64 end_frame;
+
+            	inline std::vector<float64>  reliability() const {
+            		std::vector<float64> v(area.size());
+            		for (uint64 i = 0; i < area.size(); i++) v[i] = value_volume[i](0) / area[i];
+            		return v;
+            	}
+
+            	inline motion_type mean(int64 frame) const {
+            		return value_volume[frame - begin_frame] / area[frame - begin_frame];
+            	}
+
+            	inline coord_type centroid(int64 frame) const {
+            		return centroid_volume[frame - begin_frame] / area[frame - begin_frame];
+            	}
+
+            	int64 length() const {
+            		return end_frame - begin_frame + 1;
+            	}
+            };
+
+            typedef MotionMeanType						type;
+
+            //! function returning the id given a set of parameters
+            //! \param[in] pars: parameters to the descriptors (null in this case)
+            static const std::string id(const Parameters& pars = default_parameters()) {
+            	return "motion_mean";
+            }
+
+            //! Default parameters for descriptors
+            static const Parameters default_parameters() {
+            	return Parameters();
+            }
+
+            //!
+            //! \brief Default constructor
+            //!
+            TemporalMean(const Parameters& pars = default_parameters()) : DescriptorBase(true) {};
+
+            //! Virtual destructor
+            ~TemporalMean(){};
+
+            //! \brief Calculates the area of a region, given a pair of iterators.
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class SignalModel, class RegionModel >
+            void calculate(SignalModel& signal, RegionModel& region, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+                _value.begin_frame 	= region.frame_begin();
+                _value.end_frame 	= region.frame_end();
+
+                _value.area.clear();
+                _value.value_volume.clear();
+                _value.centroid_volume.clear();
+
+                _value.value_volume.resize(_value.length(),motion_type::Zero());
+                _value.centroid_volume.resize(_value.length(),coord_type::Zero());
+                _value.area.resize(_value.length(),0);
+
+                typedef typename RegionModel::coord_type 			coord_type;
+                typedef typename Signal::value_float_type			value_type;
+                for (typename RegionModel::iterator p = region.begin(); p != region.end(); ++p) {
+                	const coord_type& pos 		= (*p);
+                	const value_type& motion 	= signal(pos);
+                	int64 frame = pos(2);
+
+                	_value.value_volume[frame - _value.begin_frame] += motion;
+                	_value.centroid_volume[frame - _value.begin_frame] += pos;
+                	_value.area[frame - _value.begin_frame]++;
+                }
+
+                //for (int64 i = 0; i < _value.length(); i++) {
+                //	std::cout << "(" << _value.value_volume[i].transpose() << ") " << _value.area[i] << " " << _value.begin_frame + i << std::endl;
+                //}
+                //std::cout << " ******** " << std::endl;
+            }
+
+            //!
+            //! \brief Calculates recursively area of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template<class SignalModel, class RegionModel, class ChildContainer>
+            void recursive_calculate(SignalModel& signal, RegionModel& region, ChildContainer& childs, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+            	_value.begin_frame 	= 1e9;
+            	_value.end_frame 	= -1;
+
+            	_value.area.clear();
+            	_value.value_volume.clear();
+            	_value.centroid_volume.clear();
+
+            	std::vector<const type*> child_values;
+                for (typename ChildContainer::iterator child = childs.begin(); child != childs.end(); ++child) {
+                	const type& child_value = manager->calc_descriptor<TemporalMean<SignalModel> >(signal,(RegionModel&)**child, pars);
+                	child_values.push_back(&child_value);
+                	_value.begin_frame 	= std::min(_value.begin_frame, child_value.begin_frame);
+                	_value.end_frame 	= std::max(_value.end_frame, child_value.end_frame);
+                }
+
+                _value.centroid_volume.resize(_value.length(),coord_type::Zero());
+                _value.value_volume.resize(_value.length(),motion_type::Zero());
+                _value.area.resize(_value.length(),0);
+
+                for (uint64 i = 0; i < child_values.size(); i++) {
+                	const type& child = *child_values[i];
+                	int64 l = child.length();
+                	for (int64 k = 0; k < l; k++) {
+                		int64 frame = (k + child.begin_frame) - _value.begin_frame;
+
+                		_value.centroid_volume[frame] 		+= child.centroid_volume[k];
+                		_value.value_volume[frame] 		+= child.value_volume[k];
+                		_value.area[frame] 				+= child.area[k];
+                	}
+                }
+                if (motion_type::RowsAtCompileTime == 10) {
+                std::cout << "Calculating " << region.label() << std::endl;
+                for (uint64 i = 0; i < child_values.size(); i++) {
+                	const type& child = *child_values[i];
+                	int64 l = child.length();
+                	std::cout << "child " << child.begin_frame << " " << child.end_frame << std::endl;
+                	for (int64 k = 0; k < l; k++) {
+                		std::cout << child.value_volume[k].transpose()/child.area[k] << std::endl;
+                	}
+                }
+                std::cout << "current reg" << " " << _value.begin_frame << " " << _value.end_frame << std::endl;
+                for (int64 k = _value.begin_frame; k <= _value.end_frame; k++) {
+                	std::cout << _value.mean(k).transpose() << std::endl;
+                }
+                std::cout << "----" << std::endl;
+                }
+            }
+
+            const type& value() const {
+            	return _value;
+            }
+
+        private:
+            //! temporal mean
+            type _value;
+
+        };
+    }
+}
+
+#endif /* MOTION_MEAN_HPP_ */

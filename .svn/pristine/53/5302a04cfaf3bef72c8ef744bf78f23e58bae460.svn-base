@@ -1,0 +1,135 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file canny.hpp
+//!
+//!  Interface for Canny Edge detection
+//!
+#ifndef IMAGEPLUS_FILTERS_CANNY_HPP
+#define IMAGEPLUS_FILTERS_CANNY_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/math.hpp>
+#include <imageplus/filters/linear_convolution.hpp>
+
+namespace imageplus
+{
+	namespace filters
+	{
+//		//! \brief Method for edge tracing from a given pixel coordinate. Used by the Canny Edge Detector.
+//		//!
+//		//! \author Adolfo López <alopez@gps.tsc.upc.edu>
+//		//!
+//		//! \param[in] out : Gray Image where edges must be traced
+//		//! \param[in] x_shift : Tracing step in the X-axis
+//		//! \param[in] y_shift : Tracing step in the Y-axis
+//		//! \param[in] x : X coordinate of the current pixel under analysis
+//		//! \param[in] y : Y coordinate of the curernt pixel under analysis
+//		//! \param[in] dir : Direction where edge should be found (with respect to the given pixel).
+//		//! \param[in] lower_threshold : Low limit for gradient strength to consider that a pixel belongs to the edge.
+//		//! \param[in] gradient : Table with the gradient strength for all the pixels of the given image.
+//		//! \param[in] directions : Table with the directions (computed with X and Y gradients) for all the pixels of the given image.
+//		//!
+//		template <typename T>
+//		void find_edge(ImageGray<T> & out, int64 x_shift, int64 y_shift, const uint64 x, const uint64 y, const float64 dir, const int32 lower_threshold,
+//		const MultiArray<float64,2> & gradient, const MultiArray<int64,2> & directions);
+//
+//		//! \brief Suppression of non-maximum pixels of an edge. Used by the Canny Edge Detector.
+//		//!
+//		//! \author Adolfo López <alopez@gps.tsc.upc.edu>
+//		//!
+//		//! \param[in] out : Gray Image where edges have been traced
+//		//! \param[in] x_shift : Tracing step in the X-axis
+//		//! \param[in] y_shift : Tracing step in the Y-axis
+//		//! \param[in] x : X coordinate of the current pixel under analysis
+//		//! \param[in] y : Y coordinate of the curernt pixel under analysis
+//		//! \param[in] dir : Direction where edge should be found (with respect to the given pixel).
+//		//! \param[in] lower_threshold : Low limit for gradient strength to consider that a pixel belongs to the edge.
+//		//! \param[in] gradient : Table with the gradient strength for all the pixels of the given image.
+//		//! \param[in] directions : Table with the directions (computed with X and Y gradients) for all the pixels of the given image.
+//		//!
+//		template<typename T>
+//		void suppress_non_max(ImageGray<T> & out, int64 x_shift, int64 y_shift, const uint64 x, const uint64 y, const float64 dir,
+//		const int32 lower_threshold, MultiArray<float64,2> & gradient, const MultiArray<int64,2> & directions);
+//
+//		//! \brief Canny Edge Detector
+//		//!
+//		//! \author Adolfo López <alopez@gps.tsc.upc.edu>
+//		//!
+//		//! The Canny edge detection algorithm is known to many as the optimal edge detector.
+//		//! It first smoothes the image to eliminate and noise. It then finds the
+//		//! image gradient to highlight regions with high spatial derivatives. The algorithm then tracks along
+//		//! these regions and suppresses any pixel that is not at the maximum.
+//		//! A hysteresis is used to track along the remaining pixels that have not been suppressed. It uses two thresholds:
+//		//! - If the magnitude is below the lower threshold, it is set to zero (made a nonedge).
+//		//! - If the magnitude is above the upper threshold, it is made an edge.
+//		//! - If the magnitude is between the 2 thresholds, then it is set to zero unless there is a path from this pixel
+//		//!  to a pixel with a gradient above the upper threshold.
+//		//!
+//		//! \param[in] im : Gray Image where edges must be detected.
+//		//! \param[in] upper_threshold : Hysteresis upper threshold.
+//		//! \param[in] lower_threshold : Hysteresis lower threshold.
+//		//!
+//		//! return Gray Image with the detected edges
+//
+//		template <typename T>
+//		ImageGray<T> canny_edge_detector(const ImageGray<T> & im, const int32 upper_threshold, const int32 lower_threshold);
+
+		//! \brief Suppression of non-maximum pixels of an edge. Used by the Canny Edge Detector.
+		//!
+		//! \param[in] grad : Table with the gradient strength for all the pixels of the given image.
+		//! \param[in] directions : Table with the directions (computed with X and Y gradients) for all the pixels of the given image.
+		//!
+		//! \return Matrix with non-suppressed maxima
+	    //!
+	    //! \see canny
+		//!
+        //! \author Adolfo Lopez <alopez@gps.tsc.upc.edu>
+        //!
+		MultiArray<float64, 2> suppression(const MultiArray<float64, 2> & grad, const MultiArray<int64,2> & directions);
+
+		//! \brief Maximum edge hysteresis thresholding. Used by the Canny Edge Detector.
+		//!
+		//! \author Adolfo López <alopez@gps.tsc.upc.edu>
+		//!
+		//!
+		//! \param[in] grad : Table with the maxima gradient strength for all the pixels of the given image.
+		//! \param[in] upper_threshold : Hysteresis upper threshold.
+		//! \param[in] lower_threshold : Hysteresis lower threshold.
+		//! \param[out] out : Resulting edge image
+		//!
+		//!
+		template<typename T>
+		void hysteresis(const MultiArray<float64, 2> & grad, int32 upper_threshold, int32 lower_threshold, MultiArray<T, 2> & out);
+
+		//! \brief Canny Edge Detector
+		//!
+		//! The Canny edge detection algorithm is known to many as the optimal edge detector.
+		//! It first smoothes the image to eliminate and noise. It then finds the
+		//! image gradient to highlight regions with high spatial derivatives. The algorithm then tracks along
+		//! these regions and suppresses any pixel that is not at the maximum.
+		//! A hysteresis is used to track along the remaining pixels that have not been suppressed. It uses two thresholds:
+		//! - If the magnitude is below the lower threshold, it is set to zero (made a nonedge).
+		//! - If the magnitude is above the upper threshold, it is made an edge.
+		//! - If the magnitude is between the 2 thresholds, then it is set to zero unless there is a path from this pixel
+		//!  to a pixel with a gradient above the upper threshold.
+		//!
+		//! \param[in] im : Gray Image where edges must be detected.
+		//! \param[in] upper_threshold : Hysteresis upper threshold.
+		//! \param[in] lower_threshold : Hysteresis lower threshold.
+		//! \param[in] sigma : Standard deviation for the Gaussian blur that preceeds the edge detection.
+		//! \return Gray Image with the detected edges
+		//!
+		//! \author Adolfo Lopez <alopez@gps.tsc.upc.edu>
+		//!
+
+		template <typename T>
+		ImageGray<T> canny(const ImageGray<T> & im, int32 upper_threshold, int32 lower_threshold, float64 sigma);
+
+	}
+}
+
+#endif

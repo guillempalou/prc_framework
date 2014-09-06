@@ -1,0 +1,56 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file quadratic_function.test
+//!
+//!  Tests for the math operations on BBox classs
+//!
+
+#include <imageplus/math/algebra/robust_regression.hpp>
+#include <cmath>
+
+BOOST_AUTO_TEST_SUITE ( robust_regression );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::algebra;
+
+
+BOOST_AUTO_TEST_CASE ( test_robust_regression )
+{
+
+	uint64 N = 100;
+	Matrix A(N,2);
+
+	for (uint64 i = 0; i < N; i++) {
+		A(i,0) = i;
+		A(i,1) = i + 3*((i % 10) == 0); // introduce a high noise
+	}
+
+	Vector t = A.col(0);
+	Vector l = A.col(1);
+
+	Matrix X(t.rows(),2);
+	X.col(0) = t;
+	X.col(1).fill(1);
+
+	RobustRegression<numeric::L1Robust> ls1;
+	RobustRegression<numeric::HuberRobust> ls2;
+
+	ls1.fit(X,l);
+	ls2.fit(X,l);
+
+	BOOST_CHECK_CLOSE(ls1.solution()(0),1, 1);
+	BOOST_CHECK_SMALL(ls1.solution()(1),0.2);
+
+	BOOST_CHECK_CLOSE(ls2.solution()(0),1, 1);
+	BOOST_CHECK_SMALL(ls2.solution()(1),0.2);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+
+

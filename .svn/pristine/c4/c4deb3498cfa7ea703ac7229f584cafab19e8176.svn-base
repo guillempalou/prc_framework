@@ -1,0 +1,234 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+/*!
+ * 
+ * \file capture_ip.cpp
+ */
+
+#ifdef USE_SMARTFLOW
+
+#define IMAGEPLUS_TOOL_CONFIG_NAME  captureip
+#include <imageplus/toolbox/tool_config.hpp>
+
+
+#include <imageplus/io/writesequence.hpp>
+#include <imageplus/io/captureip.hpp>
+
+
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace std;
+
+/*
+ * To catch the CTRL-C signal
+ */
+#include <signal.h>
+
+volatile bool running = true;
+void stop_handler(int signal)
+{  
+    running = false;
+}
+
+
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+    
+    "This client captures images from an IP camera (Prosilica Cams) and stores them to the disk.\n";
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+	"This client captures images from an IP camera (Prosilica Cams) and stores them to the disk.\n" + 
+	"IMPORTANT NOTES:\n" +
+	"  - Be sure to configure your ethenet connection to work with a MTU of 8228 bytes.\n"
+	"  - Althought the tool has the framerate, width and height options, they are still UNSUPPORTED by driver";
+    
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+    // options
+	uint32 framerate;
+	uint32 width;
+	uint32 height;
+    
+    // flags
+    
+    // arguments
+    string IP;
+    string image_filenames;
+    
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+    framerate			= 20;
+    width              	= 1360; //680;//160;
+    height             	= 1024; //512;// 64;
+    
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description 
+    // and an optional abreviature
+    //
+    IMAGEPLUS_TOOL_CONFIG_OPTION_ABV( framerate   	, "the capture frame rate (NOT SUPPORTED)"              , 	'r' );
+    IMAGEPLUS_TOOL_CONFIG_OPTION_ABV( width 		, "widht of the camera sensor (bayer) (NOT SUPPORTED)"  , 	'w' );
+    IMAGEPLUS_TOOL_CONFIG_OPTION_ABV( height   		, "height of the camera sensor (bayer) (NOT SUPPORTED)"	, 	'h' );
+    
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description 
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description. 
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments 
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //   
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( IP	           , "the IP adress of the camera"	);    
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT(	image_filenames, "output images will be stored following this format (printf style)" );
+
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //  
+    IMAGEPLUS_TOOL_CONFIG_READ( framerate       );
+    IMAGEPLUS_TOOL_CONFIG_READ( width           );
+    IMAGEPLUS_TOOL_CONFIG_READ( height          );
+    
+	IMAGEPLUS_TOOL_CONFIG_READ( IP        	    );
+    IMAGEPLUS_TOOL_CONFIG_READ( image_filenames	);
+    
+        
+//
+// This is the "main" function of your client.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the client with "--help" to see your configuration.
+//
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{
+    /*
+     * Configuration
+     */
+	CaptureIP   	    cap ( cfg.IP, cfg.width, cfg.height, cfg.framerate );
+    ImageRGB<uint8>     rgb ( cfg.width/2, cfg.height/2);
+    MultiArray<uint8,2> bay ( cfg.width, cfg.height);
+    
+    WriteSequence 	wseq( cfg.image_filenames );
+    ofstream 		ofile;
+    Timestamp 		ts;
+    
+    bool bayer_mode = false;
+    
+    /*
+     * Control the exit function
+     */
+    signal(SIGINT, stop_handler);
+    
+    
+    boost::filesystem::path image_filenames(cfg.image_filenames );
+    
+    /*
+     * Select the capture mode RGB / Bayer by the files extension
+     */
+    if( boost::filesystem::extension(image_filenames) == ".bay" ) 
+    {
+        bayer_mode=true;
+        std::cout << "Writting in Bayer format: " << boost::filesystem::extension(image_filenames) << std::endl; 
+    }
+    else
+    {
+        bayer_mode=false;
+        std::cout << "Writting in RGB format: " << boost::filesystem::extension(image_filenames) << std::endl;
+    }
+
+    /*
+     * Open the timestamp file: seq.index 
+     */
+    
+    boost::filesystem::path index_file = (image_filenames.remove_leaf())/="seq.index";
+    ofile.open( index_file.string().c_str() , ofstream::trunc );
+	
+	if( !ofile.is_open() )
+	{
+		cout << "Error openning one of the files to write" << endl;
+		exit(1);
+	}
+	else
+	{
+	    std::cout << "Timestamps file: " << index_file << std::endl;
+	}
+	
+	/*
+	 * Staring capture
+	 */
+    cap.start();
+    
+    //
+    // Main loop
+    //
+    uint16 frame=0;
+    while(running) 
+    {
+        if( bayer_mode )
+        {
+            cap >> bay >> ts;
+            wseq << bay;
+        }
+        else
+        {
+            cap >> rgb >> ts;
+            wseq << rgb;
+        }
+
+        /*
+         * Write Timestamp
+         */
+        ofile <<                                                ts 
+              << "\t" << std::setfill(' ') << std::setw(6)   << frame
+              << "\t" << std::setfill(' ') << std::setw(6)   << 0 /* For CHIL project compatibility */
+              << endl;
+        
+        /*
+         * Update frame
+         */
+        ++frame;
+    }
+    
+    // End client
+    cap.stop();
+    return (0);
+}
+
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_TOOL_CONFIG_END()
+
+
+#else
+
+#include <iostream>
+
+int main(int argc, char* argv[])
+{
+    std::cout << "Please, to run this client you should build it with the flag USE_SMARTFLOW." << std::endl;
+}
+ 
+#endif // USE_SMARTFLOW

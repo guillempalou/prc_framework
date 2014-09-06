@@ -1,0 +1,153 @@
+/*!
+ * \example hello_partition.cpp
+ *
+ * This is an example of how to use the class Partition.
+ * 
+ * See the \ref partition "Getting Started Guide" for more information.
+ */
+#include <imageplus/core.hpp>
+#include <imageplus/segmentation/overlay.hpp> // For overlay_contour()
+
+
+using namespace imageplus;
+
+void hello_partition()
+{
+	/* It is recommended to start your code with some type definitions.*/
+	typedef RegionContour<Coord2D<int64> >  RegionType;  // Type of region we will work with
+	typedef RegionType::contour_container		 Contours;				   // List containing all the disconnected contours between 2 neighbor regions
+	typedef RegionType::coords_container		 ContourCoords;			   // List containing all the coordinates of a single contour
+	
+	/* Let us first define the partition we want to handle (you will usually read it using PRL or build it).
+	 * Each pixel is assigned an identifier for that region (not necessarily consecutive). */
+    ImagePartition<> im_part(3,3);
+    im_part[0][0] = 1;     im_part[1][0] = 1;     im_part[2][0] = 2;
+    im_part[0][1] = 1;     im_part[1][1] = 2;     im_part[2][1] = 2;
+    im_part[0][2] = 3;     im_part[1][2] = 4;     im_part[2][2] = 5;
+
+    /* We can print the image_partition. */
+    std::cout << "Partition we are working with:" << std::endl;
+    std::cout << im_part;
+    
+    /* We can now construct our Partition.
+     * Note that the class Partition has a "RegionModel" as a template.
+     * This is a common practice in Generic Programming. Basically, Partition will work with any class
+     * that follows that fulfill the RegionModel concept. More about this below. */
+    Partition<RegionType> my_partition(im_part);
+      
+    /* A possible way to acces a specific region is via its numeric identifier.
+     * In order not to make copies, references should be used as follows.
+     * For instance, let us analize region number 2. */
+    RegionType& my_reg = my_partition[2];
+    
+    /* Once we are focused in a region, we can use it to loop through it as explained 
+     * before, or to calculate region descriptors as it will be presented later */
+    
+    /* Partition adds the functionallity to know the neighbors of a given region.
+     * Let us iterate through the neighbors of region 2 */
+    std::cout << "Neighbors of region 2: ";
+
+    /* We define an iterator that is initialized with the function neighbors_begin() */
+    RegionType::neighbor_iterator neigh_it = my_reg.neighbors_begin();
+
+    /* We iterate through all the neighbors of region 2 until neighbors_end() is reached */
+    for(; neigh_it!=my_reg.neighbors_end(); ++neigh_it)
+    {
+    	/* When dereferencig using * we get a pointer to the neighboring region.
+    	 * Note that the value NULL represents the border of the region. */
+    	if(*neigh_it!=NULL)
+    		std::cout << (*neigh_it)->label() << ",";
+    	else
+    		std::cout << "Border,";
+    }
+    std::cout << std::endl;
+
+    /* We can also check whether a specific region is a neighbor of another one.
+     * We use the function neighbors_find() with a pointer to the region we want 
+     * to check, for instance region 3. */ 
+    neigh_it = my_reg.neighbors_find(&my_partition[3]);
+
+    /* An iterator to the end is returned if the neighbor is not found.*/
+    if(neigh_it==my_reg.neighbors_end())
+    	std::cout << "Region 3 is not a neighbor of region " <<  my_reg.label() << "." << std::endl << std::endl;
+    else
+    	std::cout << "Region 3 is a neighbor of region "     <<  my_reg.label() << "." << std::endl << std::endl;
+
+    /* A possible direct application to iterating through neighbors is look for hole regions.
+     * If a region has only one neighbor, then it is a hole. */
+    
+    /* Going back to the RegionModel concept, recall that in our case we have used RegionContour
+     * as region model.
+     * One of the properties of this class is that it stores additional information about 
+     * the neighborhood.
+     * All this information is stored in the "link_data" accessed by link_data() in the neighbor_iterator.
+     * 
+     * In this case, for instance, one may access the coordinates of the contour between any pair of neighbors.
+     * If we are interested, for instance, in the contour between regions 1 and 2 we may use the following code.*/
+    neigh_it = my_reg.neighbors_find(&my_partition[1]);
+
+    /* Now  neigh_it.link_data()->neighbor_coords()  contains the list of disconnected contours between the two regions.
+     * In particular, the size of the contour between them is as follows:*/
+    Contours& contour_list = neigh_it.link_data()->neighbor_coords();
+    std::cout << "We have " << contour_list.size() << " connected contours between regions 1 and 2";
+    std::cout << " and its size is " << contour_list.begin()->size() << std::endl;
+    
+    /* Now, if we want more complex contours, we can change the partition to be
+     * the one below */
+
+    ImagePartition<> im_part2(3,3);
+    im_part2[0][0] = 1;     im_part2[1][0] = 1;     im_part2[2][0] = 3;
+    im_part2[0][1] = 1;     im_part2[1][1] = 2;     im_part2[2][1] = 3;
+    im_part2[0][2] = 3;     im_part2[1][2] = 3;     im_part2[2][2] = 3;
+    Partition<RegionType> my_partition2(im_part2);
+    
+    /* We will check the neighbors of the region 1 and we will see that 
+     * there are two disconnected contours between region 1 and 3 */
+    my_reg = my_partition[1];
+    neigh_it = my_reg.neighbors_find(&my_partition2[3]);
+    
+    /*We will get, as before, the contours between regions 1 and 3*/
+    contour_list = neigh_it.link_data()->neighbor_coords();
+    
+    /*Now, if we check the size of the contours, we should get 2.
+     * The two contours are the two contact points at the upper-right and lower-left corners of the partition */
+    std::cout << "Now we have " << contour_list.size() << " connected contours between regions 1 and 3";
+    /*And each contour is of size 1*/
+    std::cout << "The size of the contours is " << contour_list.begin()->size() << " and " <<  (++contour_list.begin())->size() << std::endl;
+    
+    /* Going a little farther, one can make use of the function overlay_contour to 
+     * overlay in white a contour on an image using iterators*/
+    ImageGray<uint8> my_image(im_part.dims());
+    ImageGray<uint8>::Color color = 255;
+    segmentation::overlay_contour(contour_list, my_image, color);
+    std::cout << "The plot of the boundary between regions 1 and 2 on an image is:" << std::endl;
+    std::cout << my_image << std::endl;
+    
+    /* Note how the pixels overlaid by the method correspond to those swept by the boundary when moved half pixel 
+     * up and half pixel left */
+    
+}
+
+/*
+ * 
+ *  Expected output of the example
+ * 
+ * 
+ 
+Partition we are working with:
+Channel 0:
+      1    1    2
+      1    2    2
+      3    4    5
+
+Neighbors of region 2: Border,1,4,5,
+Region 3 is not a neighbor of region 2.
+
+The size of the boundary between regions 1 and 2 is: 3
+The plot of the boundary between regions 1 and 2 on an image is:
+Channel 0:
+    255  255    0
+    255    0    0
+      0    0    0
+
+ */

@@ -1,0 +1,111 @@
+/*
+ * color_mean.hpp
+ *
+ *  Created on: Sep 3, 2012
+ *      Author: guillem
+ */
+
+#ifndef COLOR_MEAN_HPP_
+#define COLOR_MEAN_HPP_
+
+
+#include <imageplus/descriptors/descriptor_base.hpp>
+#include <imageplus/math/math_types.hpp>
+#include <imageplus/descriptors/color/color_volume.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Area visual descriptor
+        //!
+        //! \author Jordi Pont <jpont@gps.tsc.upc.edu>, Guillem Palou <guillem.palou@gmail.com>
+        //!
+        //! \date 02-06-2009
+    	template<class Signal>
+        class ColorMean : public DescriptorBase
+        {
+        public:
+
+        	//! base structur for descriptors using parameters
+        	struct ColorMeanDescriptorParameters {
+        	};
+
+        	typedef ColorMeanDescriptorParameters 	Parameters;
+
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef typename ColorVolume<Signal>::type	type;
+
+            typedef typename ColorVolume<Signal>::type	color_volume_type;
+            typedef typename Area::type					area_type;
+
+            //! function returning the id given a set of parameters
+            //! \param[in] pars: parameters to the descriptors (null in this case)
+            static const std::string id(const Parameters& pars = default_parameters()) {
+            	return "color_mean";
+            }
+
+            //! Default parameters for descriptors
+            static const Parameters default_parameters() {
+            	return Parameters();
+            }
+
+            //!
+            //! \brief Default constructor
+            //!
+            ColorMean(const Parameters& pars = default_parameters()) : DescriptorBase(true), _value(type::Zero()){};
+
+            //! Virtual destructor
+            ~ColorMean(){};
+
+            //! \brief Calculates the area of a region, given a pair of iterators.
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class SignalModel, class RegionModel >
+            void calculate(SignalModel& signal, RegionModel& region, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+                //ASSERT(manager!=0x0, "Area calculate: manager must be non null");
+
+                _value = type::Zero();
+
+                const color_volume_type& 	color_volume 		= manager->calc_descriptor<ColorVolume<Signal> >(signal, region);
+                const area_type& 			area 				= manager->calc_descriptor<Area>(signal, region);
+
+                _value = color_volume / area;
+
+            }
+
+            //!
+            //! \brief Calculates recursively area of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template<class SignalModel, class RegionModel, class ChildContainer>
+            void recursive_calculate(SignalModel& signal, RegionModel& region, ChildContainer& childs, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+                 _value = type::Zero();
+
+                 const color_volume_type& 	color_volume 		= manager->calc_descriptor<ColorVolume<Signal> >(signal,region);
+                 const area_type& 			area 				= manager->calc_descriptor<Area>(signal,region);
+
+                 _value += color_volume/area;
+            }
+
+            const type& value() const {
+            	return _value;
+            }
+
+        private:
+            //! Area of the region
+            type _value;
+
+        };
+    }
+}
+
+#endif /* COLOR_MEAN_HPP_ */

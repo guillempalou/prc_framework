@@ -1,0 +1,66 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file imagegray.cpp
+ */
+
+#include <imageplus/core/imagegray.hpp>
+
+namespace imageplus
+{
+    template<typename T>
+    ImageGray<T>::ImageGray()
+    :   Base()
+    {}
+
+    template<typename T>
+    ImageGray<T>::ImageGray(const ImaVol<T,1,2>& copy)
+    :   Base(copy)
+    {}
+
+    template<typename T>
+    ImageGray<T>::ImageGray(std::size_t width, std::size_t height)
+    :   Base(width,height)
+    {}
+
+    template<typename T>
+    ImageGray<T>::ImageGray(const std::vector< std::vector<uint64> >& dims)
+    :   Base(dims)
+    {}
+
+    template<typename T>
+    const ImageGray<T>& ImageGray<T>::operator=( const ImaVol<T,1,2>& copy )
+    {
+        Base::operator=(copy);
+        return *this;
+    }
+
+    template<typename T>
+    const ImageGray<T>& ImageGray<T>::operator=( const T& scalar )
+    {
+        Base::operator=(scalar);
+        return *this;
+    }
+} // namespace imageplus
+
+
+/*
+ * Template instantiations
+ */
+namespace imageplus
+{
+    template class ImageGray<uint8>;
+    template class ImageGray<uint16>;
+    template class ImageGray<uint32>;
+    template class ImageGray<uint64>;
+
+    template class ImageGray<int8>;
+    template class ImageGray<int16>;
+    template class ImageGray<int32>;
+    template class ImageGray<int64>;
+
+    template class ImageGray<float64>;
+}

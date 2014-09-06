@@ -1,0 +1,112 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file core/geometric_region.hpp
+//!
+//!
+#ifndef IMAGEPLUS_CORE_GEOMETRIC_REGION_HPP
+#define IMAGEPLUS_CORE_GEOMETRIC_REGION_HPP
+
+#include <vector>
+#include <deque>
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/visual_descriptors.hpp>
+
+
+namespace imageplus
+{
+    //!
+    //! \brief Class to handle a geometric region, i.e., a vector of coordinates
+    //!     
+    template<class PositionModel, class ContainerBase = std::deque<PositionModel> >
+    class GeometricRegion : public  ContainerBase
+    {
+    public:
+        
+        const static std::size_t dimensions = PositionModel::dimensions; /*!< Coords dimensions */
+    
+        typedef          PositionModel                  PositionType;          /*!< Type of position (coordinates) used */
+        typedef          ContainerBase                  ContainerType;         /*!< Type of container used  */
+        
+        typedef typename ContainerType::      iterator        position_iterator; //!< Region iterator
+        typedef typename ContainerType::const_iterator  const_position_iterator; //!< Const region iterator
+        
+    
+        //!
+        //! \brief Default constructor
+        //!
+        IMAGEPLUS_INLINE
+        GeometricRegion() : ContainerType()
+        {
+        }
+        
+        //!
+        //! \brief Constructor with the dimension of the Coords
+        //!
+        //! \param[in] initial_size : Initial number of coordinates
+        IMAGEPLUS_INLINE
+        GeometricRegion(std::size_t initial_size)
+                : ContainerType(initial_size)
+        {
+        }
+        
+        //!
+        //! \brief Constructor with the dimension of the Coords
+        //!
+        virtual ~GeometricRegion()
+        {
+            
+        }
+        
+        /*! \brief Function to iterate along this region coordinates. You should not work with this method directly see Region and RegionContour instead
+         * 
+         * \return iterator to the first coordinate contained in the region
+         */
+        position_iterator position_begin() {
+        	return this->begin();
+        }
+        
+        /*! \brief Function to iterate along this region coordinates. You should not work with this method directly see Region and RegionContour instead
+         * 
+         * \return iterator to the end of the coordinates
+         */
+        position_iterator position_end() {
+        	return this->end();
+        }
+        
+        /*! \brief Function to iterate along this region coordinates. You should not work with this method directly see Region and RegionContour instead
+         * 
+         * \return const iterator to the first coordinate contained in the region
+         */
+        const_position_iterator position_begin() const {
+        	return this->begin();
+        }
+
+        /*! \brief Function to iterate along this region coordinates. You should not work with this method directly see Region and RegionContour instead
+         * 
+         * \return const iterator to the end of the coordinates
+         */
+        const_position_iterator position_end() const {
+        	return this->end();
+        }
+        
+        //!
+        //! Copy operator from base class
+        //!
+        //! \param[in] copy: Object to be copied
+        //!
+        //! \return copy, to concatenate
+        //!
+        const ContainerBase& operator=(const ContainerBase& copy)
+        {
+            ContainerBase::operator=(copy);
+            return copy;
+        }
+    };
+}
+
+#endif

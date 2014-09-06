@@ -1,0 +1,343 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imagepartition.hpp
+//!
+//!  Interface for ImagePartition class
+//!
+
+#ifndef IMAGEPLUS_CORE_IMAGEPARTITION_HPP
+#define IMAGEPLUS_CORE_IMAGEPARTITION_HPP
+
+#include <limits>
+#include <set>
+
+#include <boost/multi_array.hpp>
+
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/image.hpp>
+
+#include <boost/config.hpp>
+#include <boost/bimap/bimap.hpp>
+#include <boost/bimap/multiset_of.hpp>
+#include <boost/bimap/list_of.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \brief class for partition images
+    //!
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 12-2-2008
+    //!
+    //! The purpose of this class is not to add new functionality for image partitions
+    //! but to help type safety
+    //! The declaration should be:
+    //! \code
+    //!    ImagePartition a(4,4);
+    //! \endcode
+    //!
+    //! This creates a partition image of int16 values with size 4x4.
+    //!
+    //! The access of a pixel is done as the ImaVol class:
+    //! \code
+    //!    a(0)[1][3] = 0 // Access to pixel (x=1,y=3)
+    //!    a(PARTITION_CHANNEL)[1][3] = 0 // Access to pixel (x=1,y=3)
+    //! \endcode
+    //! or directly (and equally fast):
+    //! \code
+    //!    a[1][3] = 0 // Access to pixel (x=1,y=3)
+    //! \endcode
+    //!
+    //! See file multiarray.hpp to a more detail explanation on access
+    //!
+    template<typename T=uint32>
+    class ImagePartition :public Image <T,1>
+    {
+        public:
+            //!
+            //! \brief Default constructor
+            //!
+            ImagePartition();
+
+            //!
+            //! \brief Constructor for 2 dimensions
+            //!
+            //! \param[in] x : X size of the image
+            //! \param[in] y : Y size of the image
+            //!
+            ImagePartition(uint64 x, uint64 y);
+
+            //!
+            //! \brief Copy constructor for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this imavol
+            //!
+            ImagePartition(const ImaVol<T,1,2>& copy);
+
+            //!
+            //! \brief Copy constructor for Image
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this image
+            //!
+            ImagePartition(const Image<T,1>& copy);
+
+            //!
+            //! \brief Copy constructor for ImagePartition
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this ImagePartition
+            //!
+            ImagePartition( const ImagePartition& copy );
+
+            //!
+            //! \brief Constructor with a vector of dimentions
+            //!
+            //! \param[in] dims: Vector of vectors with the dimension of each channel
+            //!
+            explicit ImagePartition(const std::vector< std::vector<uint64> >& dims);
+
+            //!
+            //! \brief Destructor
+            //!
+            virtual ~ImagePartition();
+
+            //!
+            //! \brief Assignment operator for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this imavol
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            const ImagePartition<T>& operator=( const ImaVol<T,1,2>& copy );
+
+            //!
+            //! \brief Assignment operator for Image
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this Image
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            const ImagePartition<T>& operator=( const Image<T,1>& copy );
+
+            //!
+            //! \brief Assignment operator for ImagePartition
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this ImagePartition
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            const ImagePartition<T>& operator=( const ImagePartition& copy );
+
+            //!
+            //! \brief Assigment operator for values (fills the entire image)
+            //!
+            //! \param[in] val : Value to fill all pixel
+            //!
+            //! \return Reference to value to a = b = 1; works
+            //!
+            const T& operator=( const T& val );
+            
+            //!
+            //! \brief Overload of operator[] to be able to use imagepartition[x][y] instead of imagepartition(0)[x][y]
+            //!
+            //! \param[in] pos : coordenate X of the image
+            //!
+            //! \todo Solve the [] acces when in the "const" case
+            //! 
+            //! \return Reference to sub_array with 1 dimension (to be able to access coordinate Y)
+            //!
+            IMAGEPLUS_INLINE 
+            boost::detail::multi_array::sub_array<T,1> operator[]( std::size_t pos )
+            {
+                return (*this)(0)[pos];
+            }
+
+            //!
+            //! \brief Overload of operator[] to be able to use imagepartition[x][y] instead of imagepartition(0)[x][y]
+            //!
+            //! \param[in] pos : coordenate X of the image
+            //!
+            //! \return Reference to sub_array with 1 dimension (to be able to access coordinate Y)
+            //!
+            IMAGEPLUS_INLINE 
+            boost::detail::multi_array::const_sub_array<T,1> operator[]( std::size_t pos ) const
+            {
+                return (*this)(0)[pos];
+            }
+    };
+    
+    
+    
+    //! Boost bidirectional map to create a LUT
+    //! See http://www.boost.org/doc/libs/1_35_0/libs/bimap/doc/html/boost_bimap/one_minute_tutorial.html
+    typedef boost::bimaps::bimap<
+            boost::bimaps::multiset_of< uint32, std::less<uint32> >,
+            boost::bimaps::multiset_of< uint32, std::less<uint32> >
+        > part_bimap;
+    
+    //! Map into the bidirectional map
+    typedef part_bimap::value_type map;
+    
+    
+    //! Boost bidirectional map  to create a list of areas
+    //! See http://www.boost.org/doc/libs/1_35_0/libs/bimap/doc/html/boost_bimap/one_minute_tutorial.html
+    typedef boost::bimaps::bimap<
+            boost::bimaps::multiset_of< uint32, std::less<uint32> >,
+            boost::bimaps::list_of< uint64 > 
+        > partition_table;
+    
+    //! Map into the bidirectional map
+    typedef partition_table::value_type table_entry;
+    
+    
+    //! It relabels the partition following a scanning order from left to right and from up to down
+    //!
+    //! \param[in]  partition_in  : Original partition
+    //! \param[out] partition_out : Relabeled partition
+    //! \param[out] bimap         : The partition bimap (left -> Original, right -> Relabeled)
+    //! \param[in]  init		  : Value of the first label in the relabeled partition
+    //! \return Number of regions in the partition
+    template<typename T>
+    T relabel(const ImaVol<T,1,2>& partition_in, ImaVol<T,1,2>& partition_out, part_bimap& bimap, T init = 1);
+
+    //! It relabels the partition following a scanning order from left to right and from up to down
+    //!
+    //! \param[in]  partition_in  : Original partition
+    //! \param[out] partition_out : Relabeled partition             
+    //! \param[in]  init		  : Value of the first label in the relabeled partition
+    //! \return Number of regions in the partition
+    template<typename T>
+    T relabel(const ImagePartition<T>& partition_in, ImagePartition<T>& partition_out, T init = 1);
+    
+    /*!
+     * \param first : Iterator to the first pixel to count
+     * \param last  : Iterator to the last pixel to count
+     *
+     * \tparam ColorIteratorModel : ColorIterator type that return labels (typically from ImagePartition)
+     *
+     * \returns the number of regions that the iterators sweep between first and last.
+     *
+     * \warning It is assumed that the iterators return a label or unique identifier.
+     */
+    template<class ColorIteratorModel>
+    typename ColorIteratorModel::data_type num_regions(ColorIteratorModel first, ColorIteratorModel last)
+    {
+        std::set<typename ColorIteratorModel::data_type> appeared;
+        for(; first!=last; ++first)
+        {
+            appeared.insert((*first).value(PARTITION_CHANNEL));
+        }
+        return appeared.size();
+    }    
+    
+    //! It creates a bidirectional map between the original region labels and their area.
+    //!
+    //! \param[in] part_in : Original partition whose region areas will be computed
+    //! \return The partition table (left -> Region label, right-> Area)
+    //!
+    template<typename T>
+    partition_table region_areas(const ImagePartition<T>& part_in);
+    
+         
+    //!
+    //! \brief Workaround class to define a function "mean_of_regions"
+    //!
+    class mean_of_regions
+    {
+    public:          
+        
+        //!
+        //! \brief Given a partition and an image, it returns an image where each region is represented by its mean  
+        //!
+        //! \param[in] image_in     : Input image
+        //! \param[in] partition_in : Input partition
+        //! \param[in] image_out    : Image of region means
+        //!
+        template<typename T1, std::size_t N, typename T2>
+        mean_of_regions(const Image<T1, N>& image_in, const ImagePartition<T2>& partition_in, Image<T1, N>& image_out)
+        {
+            ASSERT(image_out.size_x()==image_in.size_x(), "mean_of_regions: The x sizes of the images are not the same.");
+            ASSERT(image_out.size_y()==image_in.size_y(), "mean_of_regions: The y sizes of the images are not the same.");
+            ASSERT(image_out.size_x()==partition_in.size_x(), "mean_of_regions: The x sizes of the images and the partition are not the same.");
+            ASSERT(image_out.size_y()==partition_in.size_y(), "mean_of_regions: The y sizes of the images and the partition are not the same.");
+            
+            part_bimap bimap;
+            
+            ImagePartition<T2> partition_temp(partition_in);
+            relabel(partition_temp, partition_temp, bimap);
+         
+            uint64 n_regions = bimap.size();
+            std::vector<reg_model<N> > regions(n_regions);
+            
+            uint64 part_size_x = partition_in.size_x();
+            uint64 part_size_y = partition_in.size_y();
+            uint64 curr_region;
+            
+            for (uint64 jj = 0; jj < part_size_y; jj++) 
+            {
+                for (uint64 ii = 0; ii < part_size_x; ii++) 
+                {
+                    curr_region = partition_temp[ii][jj]-1;
+                    for (uint64 kk=0; kk<N; kk++)
+                    {
+                        regions[curr_region].vol[kk] += image_in(kk)[ii][jj];
+                    }
+                    regions[curr_region].area++;
+                }
+            }
+            
+            for (uint64 jj = 0; jj < n_regions; jj++) 
+            {
+                for (uint64 kk=0; kk<N; kk++)
+                {
+                    regions[jj].vol[kk] = regions[jj].vol[kk] / regions[jj].area;
+                }                  
+            }
+            
+            for (uint64 jj = 0; jj < part_size_y; jj++) 
+            {
+                for (uint64 ii = 0; ii < part_size_x; ii++) 
+                {
+                    curr_region = partition_temp[ii][jj]-1;
+                    for (uint64 kk=0; kk<N; kk++)
+                    {
+                        image_out(kk)[ii][jj] = regions[curr_region].vol[kk];
+                    }
+                }
+            }
+          
+        }
+        
+       
+        
+    private:
+            
+        //! Structure used in the "mean_of_regions" function
+        template<std::size_t N>
+        struct reg_model
+        {
+            //! Area of the region
+            uint64    area;
+            
+            //! Volume of each channel
+            uint64    vol[N];
+            
+            //! Default constructor
+            reg_model()
+            {
+                area = 0;
+                for(uint64 ii=0; ii<N; ii++)
+                {
+                    vol[ii]  = 0;
+                }
+            }
+        };
+    };
+}
+
+#endif
+

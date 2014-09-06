@@ -1,0 +1,86 @@
+/*
+ * signature.hpp
+ *
+ *  Created on: Mar 7, 2012
+ *      Author: guillem
+ */
+
+#ifndef SIGNATURE_HPP_
+#define SIGNATURE_HPP_
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/math/math_types.hpp>
+#include <vector>
+
+namespace imageplus {
+	namespace math {
+		namespace statistics {
+
+		//! Class representing a signature
+		//! \author Guillem Palou <guillem.palou@upc.edu>
+		//! \date 10-04-2012
+		template<class Feature = Vector>
+		class Signature {
+
+		public:
+			//! Feature Type
+			typedef Feature					FeatureType;
+			//! Features
+			typedef std::vector<Feature> 	Features;
+
+			//! Number of elements of the signature
+			//! \return The number of elements
+			const uint64 elements() const {return features.size();}
+
+			//! features vector
+			Features			 	features;
+
+			//! Weight of every feature
+			Vector 					weights;
+		};
+
+		//! Class to calculate the distance between two elements of a signature. It's defined perceptually See
+		//! Shepard, R. N. (1987); "Toward a universal law of generalization for psychological science." Science, 237, 1317--1323.
+		//! \author Guillem Palou <guillem.palou@upc.edu>
+		//! \date 10-04-2012
+		template<class Feature = Vector, class Weights = Vector>
+		class PerceptualDistance {
+
+		public:
+
+			typedef Feature		FeatureType;
+
+			//!Default constructor
+			PerceptualDistance() {
+
+			}
+
+			//! Constructor assigning a weight to each feature channel
+			PerceptualDistance(const Weights& w) : _weights(w) {
+
+			}
+
+			//! Constructor assigning a constant weight to every feature channel
+			PerceptualDistance(uint64 ch, float64 w) : _weights(ch) {
+				_weights.fill(w);
+			}
+
+			//! Distance between two feature points
+			float64 distance(Feature& a, Feature& b) {
+				Feature dif = a-b;
+
+				Feature n = dif.array().square() * _weights.array().square();
+
+				return 1 - std::exp(-std::sqrt(n.sum()));
+			}
+		private:
+			//! weight vector
+			Weights _weights;
+		};
+
+		}
+	}
+}
+
+
+#endif /* SIGNATURE_HPP_ */

@@ -1,0 +1,127 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file matrices.cpp
+//!
+//!  Utility matrices
+//!
+
+#include <imageplus/core.hpp>
+
+#include <imageplus/math/numeric/products.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+#include <imageplus/math/numeric/matrices.hpp>
+
+
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+template<typename T>
+MultiArray<T,2> imageplus::math::numeric::identity_matrix(uint64 size)
+{
+    MultiArray<T,2> I(size,size); I = 0;
+    for (uint64 i = 0; i < size; i++)
+    {
+        I[i][i] = static_cast<T>(1);
+    }
+    return I;
+}
+
+
+template<typename T>
+bool imageplus::math::numeric::is_upper_triangular(const MultiArray<T,2>& ma)
+{
+    uint64 dim_y = ma.dims(1);
+
+    for (uint64 j = 0; j < dim_y; j++)
+    {
+        for (uint64 i = 0; i < j; i++)
+        {
+            if (ma[i][j] != static_cast<T>(0))
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+template<typename T>
+bool imageplus::math::numeric::is_simmetric(const MultiArray<T,2>& ma)
+{
+    uint64 dim_x = ma.dims(0);
+    uint64 dim_y = ma.dims(1);
+
+    if (dim_x != dim_y)
+    {
+        return false;
+    }
+
+    for (uint64 j = 0; j < dim_y; j++)
+    {
+        for (uint64 i = 0; i < j; i++)
+        {
+            if (ma[i][j] != ma[j][i])
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+template<typename T>
+bool imageplus::math::numeric::is_orthogonal(const MultiArray<T,2>& ma)
+{
+    MultiArray<T,2> QQT;
+    MultiArray<T,2> id;
+
+    uint64 size = ma.dims(0);
+    if (ma.dims(1) != size)
+    {
+        return false;
+    }
+
+    QQT = prod(ma,trans(ma));
+    id  = identity_matrix<T>(size);
+
+    if (QQT == id)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            template MultiArray<uint8,2>   identity_matrix<uint8>( uint64 ) ;
+            template MultiArray<int64,2>   identity_matrix<int64>( uint64 ) ;
+            template MultiArray<float64,2> identity_matrix<float64>( uint64 ) ;
+
+            template bool is_upper_triangular(const MultiArray<uint8,  2>& ) ;
+            template bool is_upper_triangular(const MultiArray<int64,  2>& ) ;
+            template bool is_upper_triangular(const MultiArray<float64,2>& ) ;
+
+            template bool is_simmetric(const MultiArray<uint8,  2>& ) ;
+            template bool is_simmetric(const MultiArray<int64,  2>& ) ;
+            template bool is_simmetric(const MultiArray<float64,2>& ) ;
+
+            template bool is_orthogonal(const MultiArray<uint8,  2>& ) ;
+            template bool is_orthogonal(const MultiArray<int64,  2>& ) ;
+            template bool is_orthogonal(const MultiArray<float64,2>& ) ;
+                    
+        }
+    }
+}
+

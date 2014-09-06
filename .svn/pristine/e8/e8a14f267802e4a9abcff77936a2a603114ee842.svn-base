@@ -1,0 +1,931 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file border.test
+//!
+//! Tests for Border class 
+//!
+#include <imageplus/core/imagepartition.hpp>
+#include <imageplus/core/imagergb.hpp>
+#include <imageplus/core/region_contour.hpp>
+#include <imageplus/core/partition.hpp>
+#include <imageplus/core/border.hpp> 
+
+#include <imageplus/core/partition_functions.hpp> 
+
+BOOST_AUTO_TEST_SUITE ( Descriptors_Border_Suite );
+
+using namespace imageplus;
+
+BOOST_AUTO_TEST_CASE( Border_test)
+{    
+    RegionContour<Coord2D<int64> > my_reg;
+    my_reg.push_back(Coord2D<int64>(1,0));
+    my_reg.push_back(Coord2D<int64>(1,1));
+    my_reg.push_back(Coord2D<int64>(1,2));
+    my_reg.push_back(Coord2D<int64>(2,2));
+    
+    typedef ImageRGB<uint8> InputType;
+
+    ImageRGB<uint8> my_image(3,3);
+    my_image(RED_CHANNEL) = 1;
+    my_image(BLUE_CHANNEL) = 2;
+    my_image(GREEN_CHANNEL) = 3;
+    my_image(RED_CHANNEL)[0][0] = 25;
+    my_image(BLUE_CHANNEL)[0][1] = 100;
+    my_image(GREEN_CHANNEL)[2][2] = 6;
+    
+    Coord2D<int64> borders2d;
+    borders2d[0] = 2;
+    borders2d[1] = 1;
+    InputType::Color padding_value = 33;
+    
+    // The whole image
+    const Border<InputType>& desc = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image);
+    
+    MultiArray<uint8,2> channel1_ok(7,5);
+    channel1_ok = 33;
+    channel1_ok[2][1] = 25;  channel1_ok[3][1] = 1;  channel1_ok[4][1] = 1;
+    channel1_ok[2][2] = 1;  channel1_ok[3][2] = 1;  channel1_ok[4][2] = 1;
+    channel1_ok[2][3] = 1;  channel1_ok[3][3] = 1;  channel1_ok[4][3] = 1;
+    
+    BOOST_CHECK(desc(RED_CHANNEL) == channel1_ok);
+
+    MultiArray<uint8,2> channel2_ok(7,5);
+    channel2_ok = 33;
+    channel2_ok[2][1] = 2;   channel2_ok[3][1] = 2;  channel2_ok[4][1] = 2;
+    channel2_ok[2][2] = 100; channel2_ok[3][2] = 2;  channel2_ok[4][2] = 2;
+    channel2_ok[2][3] = 2;   channel2_ok[3][3] = 2;  channel2_ok[4][3] = 2;
+    
+    BOOST_CHECK(desc(BLUE_CHANNEL) == channel2_ok);
+
+    MultiArray<uint8,2> channel3_ok(7,5);
+    channel3_ok = 33;
+    channel3_ok[2][1] = 3;  channel3_ok[3][1] = 3;  channel3_ok[4][1] = 3;
+    channel3_ok[2][2] = 3;  channel3_ok[3][2] = 3;  channel3_ok[4][2] = 3;
+    channel3_ok[2][3] = 3;  channel3_ok[3][3] = 3;  channel3_ok[4][3] = 6;
+    
+    BOOST_CHECK(desc(GREEN_CHANNEL) == channel3_ok);
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc.id(), "Border_33_33_33_2_1");
+
+    // Check that coords are preserved
+    BOOST_CHECK(desc(  RED_CHANNEL)[-1][-1] == 33);
+    BOOST_CHECK(desc(  RED_CHANNEL)[ 0][ 0] == 25);
+    BOOST_CHECK(desc(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc(GREEN_CHANNEL)[ 2][ 2] ==  6);
+    
+    
+    // The whole image with another padding value do not interfere
+    padding_value = 27;
+    const Border<InputType>& desc1 = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image);
+    
+    channel1_ok = 27;
+    channel1_ok[2][1] = 25;  channel1_ok[3][1] = 1;  channel1_ok[4][1] = 1;
+    channel1_ok[2][2] = 1;  channel1_ok[3][2] = 1;  channel1_ok[4][2] = 1;
+    channel1_ok[2][3] = 1;  channel1_ok[3][3] = 1;  channel1_ok[4][3] = 1;
+    
+    BOOST_CHECK(desc1(RED_CHANNEL) == channel1_ok);
+    
+    channel2_ok = 27;
+    channel2_ok[2][1] = 2;   channel2_ok[3][1] = 2;  channel2_ok[4][1] = 2;
+    channel2_ok[2][2] = 100; channel2_ok[3][2] = 2;  channel2_ok[4][2] = 2;
+    channel2_ok[2][3] = 2;   channel2_ok[3][3] = 2;  channel2_ok[4][3] = 2;
+    
+    BOOST_CHECK(desc1(BLUE_CHANNEL) == channel2_ok);
+
+    channel3_ok = 27;
+    channel3_ok[2][1] = 3;  channel3_ok[3][1] = 3;  channel3_ok[4][1] = 3;
+    channel3_ok[2][2] = 3;  channel3_ok[3][2] = 3;  channel3_ok[4][2] = 3;
+    channel3_ok[2][3] = 3;  channel3_ok[3][3] = 3;  channel3_ok[4][3] = 6;
+    
+    BOOST_CHECK(desc1(GREEN_CHANNEL) == channel3_ok);
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc1.id(), "Border_27_27_27_2_1");
+    
+    // Check that coords are preserved
+    BOOST_CHECK(desc1(  RED_CHANNEL)[-1][-1] == 27);
+    BOOST_CHECK(desc1(  RED_CHANNEL)[ 0][ 0] == 25);
+    BOOST_CHECK(desc1(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc1(GREEN_CHANNEL)[ 2][ 2] ==  6);
+    
+    // A region
+    padding_value = 33;
+    const Border<InputType>& desc2 = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image, my_reg);
+    
+    MultiArray<uint8,2> channel1_ok2(6,5);
+    channel1_ok2 = 33;
+    channel1_ok2[2][1] = 1; 
+    channel1_ok2[2][2] = 1;
+    channel1_ok2[2][3] = 1;   channel1_ok2[3][3] = 1;
+    
+    BOOST_CHECK(desc2(RED_CHANNEL) == channel1_ok2);
+    
+    MultiArray<uint8,2> channel2_ok2(6,5);
+    channel2_ok2 = 33;
+    channel2_ok2[2][1] = 2;
+    channel2_ok2[2][2] = 2;
+    channel2_ok2[2][3] = 2;   channel2_ok2[3][3] = 2;
+    
+    BOOST_CHECK(desc2(BLUE_CHANNEL) == channel2_ok2);
+
+    MultiArray<uint8,2> channel3_ok2(6,5);
+    channel3_ok2 = 33;
+    channel3_ok2[2][1] = 3;
+    channel3_ok2[2][2] = 3;
+    channel3_ok2[2][3] = 3;  channel3_ok2[3][3] = 6;
+    
+    BOOST_CHECK(desc2(GREEN_CHANNEL) == channel3_ok2);
+
+    
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc2.id(), "Border_33_33_33_2_1");
+    
+    
+    // Check iterators (they just iterate through non-border pixels)
+    Border<InputType>::const_iterator<> it = desc2.colors_begin();
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+    
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+    
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+    
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),6);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+    
+    BOOST_CHECK(it==desc2.colors_end());
+    
+    
+    
+    // Check that coords are preserved
+    BOOST_CHECK(desc2(  RED_CHANNEL)[-1][-1] == 33);
+    BOOST_CHECK(desc2(  RED_CHANNEL)[ 0][ 0] == 33);
+    BOOST_CHECK(desc2(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc2(GREEN_CHANNEL)[ 2][ 2] ==  6);
+}
+
+
+BOOST_AUTO_TEST_CASE( Border_copy_constructor_test)
+{
+    RegionContour<Coord2D<int64> > my_reg;
+    my_reg.push_back(Coord2D<int64>(1,0));
+    my_reg.push_back(Coord2D<int64>(1,1));
+    my_reg.push_back(Coord2D<int64>(1,2));
+    my_reg.push_back(Coord2D<int64>(2,2));
+
+    typedef ImageRGB<uint8> InputType;
+
+    ImageRGB<uint8> my_image(3,3);
+    my_image(RED_CHANNEL) = 1;
+    my_image(BLUE_CHANNEL) = 2;
+    my_image(GREEN_CHANNEL) = 3;
+    my_image(RED_CHANNEL)[0][0] = 25;
+    my_image(BLUE_CHANNEL)[0][1] = 100;
+    my_image(GREEN_CHANNEL)[2][2] = 6;
+
+    Coord2D<int64> borders2d;
+    borders2d[0] = 2;
+    borders2d[1] = 1;
+    InputType::Color padding_value = 33;
+
+    // The whole image using copy constructor
+    Border<InputType> desc = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image);
+
+    MultiArray<uint8,2> channel1_ok(7,5);
+    channel1_ok = 33;
+    channel1_ok[2][1] = 25;  channel1_ok[3][1] = 1;  channel1_ok[4][1] = 1;
+    channel1_ok[2][2] = 1;  channel1_ok[3][2] = 1;  channel1_ok[4][2] = 1;
+    channel1_ok[2][3] = 1;  channel1_ok[3][3] = 1;  channel1_ok[4][3] = 1;
+
+    BOOST_CHECK(desc(RED_CHANNEL) == channel1_ok);
+
+    MultiArray<uint8,2> channel2_ok(7,5);
+    channel2_ok = 33;
+    channel2_ok[2][1] = 2;   channel2_ok[3][1] = 2;  channel2_ok[4][1] = 2;
+    channel2_ok[2][2] = 100; channel2_ok[3][2] = 2;  channel2_ok[4][2] = 2;
+    channel2_ok[2][3] = 2;   channel2_ok[3][3] = 2;  channel2_ok[4][3] = 2;
+
+    BOOST_CHECK(desc(BLUE_CHANNEL) == channel2_ok);
+
+    MultiArray<uint8,2> channel3_ok(7,5);
+    channel3_ok = 33;
+    channel3_ok[2][1] = 3;  channel3_ok[3][1] = 3;  channel3_ok[4][1] = 3;
+    channel3_ok[2][2] = 3;  channel3_ok[3][2] = 3;  channel3_ok[4][2] = 3;
+    channel3_ok[2][3] = 3;  channel3_ok[3][3] = 3;  channel3_ok[4][3] = 6;
+
+    BOOST_CHECK(desc(GREEN_CHANNEL) == channel3_ok);
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc.id(), "Border_33_33_33_2_1");
+
+    // Check that coords are preserved
+    BOOST_CHECK(desc(  RED_CHANNEL)[-1][-1] == 33);
+    BOOST_CHECK(desc(  RED_CHANNEL)[ 0][ 0] == 25);
+    BOOST_CHECK(desc(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc(GREEN_CHANNEL)[ 2][ 2] ==  6);
+
+
+    // The whole image with another padding value do not interfere
+    padding_value = 27;
+    Border<InputType> desc1 = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image);
+
+    channel1_ok = 27;
+    channel1_ok[2][1] = 25;  channel1_ok[3][1] = 1;  channel1_ok[4][1] = 1;
+    channel1_ok[2][2] = 1;  channel1_ok[3][2] = 1;  channel1_ok[4][2] = 1;
+    channel1_ok[2][3] = 1;  channel1_ok[3][3] = 1;  channel1_ok[4][3] = 1;
+
+    BOOST_CHECK(desc1(RED_CHANNEL) == channel1_ok);
+
+    channel2_ok = 27;
+    channel2_ok[2][1] = 2;   channel2_ok[3][1] = 2;  channel2_ok[4][1] = 2;
+    channel2_ok[2][2] = 100; channel2_ok[3][2] = 2;  channel2_ok[4][2] = 2;
+    channel2_ok[2][3] = 2;   channel2_ok[3][3] = 2;  channel2_ok[4][3] = 2;
+
+    BOOST_CHECK(desc1(BLUE_CHANNEL) == channel2_ok);
+
+    channel3_ok = 27;
+    channel3_ok[2][1] = 3;  channel3_ok[3][1] = 3;  channel3_ok[4][1] = 3;
+    channel3_ok[2][2] = 3;  channel3_ok[3][2] = 3;  channel3_ok[4][2] = 3;
+    channel3_ok[2][3] = 3;  channel3_ok[3][3] = 3;  channel3_ok[4][3] = 6;
+
+    BOOST_CHECK(desc1(GREEN_CHANNEL) == channel3_ok);
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc1.id(), "Border_27_27_27_2_1");
+
+    // Check that coords are preserved
+    BOOST_CHECK(desc1(  RED_CHANNEL)[-1][-1] == 27);
+    BOOST_CHECK(desc1(  RED_CHANNEL)[ 0][ 0] == 25);
+    BOOST_CHECK(desc1(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc1(GREEN_CHANNEL)[ 2][ 2] ==  6);
+
+    // A region
+    padding_value = 33;
+    Border<InputType> desc2 = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image, my_reg);
+
+    MultiArray<uint8,2> channel1_ok2(6,5);
+    channel1_ok2 = 33;
+    channel1_ok2[2][1] = 1;
+    channel1_ok2[2][2] = 1;
+    channel1_ok2[2][3] = 1;   channel1_ok2[3][3] = 1;
+
+    BOOST_CHECK(desc2(RED_CHANNEL) == channel1_ok2);
+
+    MultiArray<uint8,2> channel2_ok2(6,5);
+    channel2_ok2 = 33;
+    channel2_ok2[2][1] = 2;
+    channel2_ok2[2][2] = 2;
+    channel2_ok2[2][3] = 2;   channel2_ok2[3][3] = 2;
+
+    BOOST_CHECK(desc2(BLUE_CHANNEL) == channel2_ok2);
+
+    MultiArray<uint8,2> channel3_ok2(6,5);
+    channel3_ok2 = 33;
+    channel3_ok2[2][1] = 3;
+    channel3_ok2[2][2] = 3;
+    channel3_ok2[2][3] = 3;  channel3_ok2[3][3] = 6;
+
+    BOOST_CHECK(desc2(GREEN_CHANNEL) == channel3_ok2);
+
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc2.id(), "Border_33_33_33_2_1");
+
+
+    // Check iterators (they just iterate through non-border pixels)
+    Border<InputType>::iterator<> it = desc2.colors_begin();
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),6);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+
+    BOOST_CHECK(it==desc2.colors_end());
+
+
+
+    // Check that coords are preserved
+    BOOST_CHECK(desc2(  RED_CHANNEL)[-1][-1] == 33);
+    BOOST_CHECK(desc2(  RED_CHANNEL)[ 0][ 0] == 33);
+    BOOST_CHECK(desc2(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc2(GREEN_CHANNEL)[ 2][ 2] ==  6);
+}
+
+
+
+BOOST_AUTO_TEST_CASE( Border_operator_equal_test)
+{
+    RegionContour<Coord2D<int64> > my_reg;
+    my_reg.push_back(Coord2D<int64>(1,0));
+    my_reg.push_back(Coord2D<int64>(1,1));
+    my_reg.push_back(Coord2D<int64>(1,2));
+    my_reg.push_back(Coord2D<int64>(2,2));
+
+    typedef ImageRGB<uint8> InputType;
+
+    ImageRGB<uint8> my_image(3,3);
+    my_image(RED_CHANNEL) = 1;
+    my_image(BLUE_CHANNEL) = 2;
+    my_image(GREEN_CHANNEL) = 3;
+    my_image(RED_CHANNEL)[0][0] = 25;
+    my_image(BLUE_CHANNEL)[0][1] = 100;
+    my_image(GREEN_CHANNEL)[2][2] = 6;
+
+    Coord2D<int64> borders2d;
+    borders2d[0] = 2;
+    borders2d[1] = 1;
+    InputType::Color padding_value = 33;
+
+    // The whole image using operator =
+    Border<InputType> desc(borders2d, padding_value);
+    desc = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image);
+
+    MultiArray<uint8,2> channel1_ok(7,5);
+    channel1_ok = 33;
+    channel1_ok[2][1] = 25;  channel1_ok[3][1] = 1;  channel1_ok[4][1] = 1;
+    channel1_ok[2][2] = 1;  channel1_ok[3][2] = 1;  channel1_ok[4][2] = 1;
+    channel1_ok[2][3] = 1;  channel1_ok[3][3] = 1;  channel1_ok[4][3] = 1;
+
+    BOOST_CHECK(desc(RED_CHANNEL) == channel1_ok);
+
+    MultiArray<uint8,2> channel2_ok(7,5);
+    channel2_ok = 33;
+    channel2_ok[2][1] = 2;   channel2_ok[3][1] = 2;  channel2_ok[4][1] = 2;
+    channel2_ok[2][2] = 100; channel2_ok[3][2] = 2;  channel2_ok[4][2] = 2;
+    channel2_ok[2][3] = 2;   channel2_ok[3][3] = 2;  channel2_ok[4][3] = 2;
+
+    BOOST_CHECK(desc(BLUE_CHANNEL) == channel2_ok);
+
+    MultiArray<uint8,2> channel3_ok(7,5);
+    channel3_ok = 33;
+    channel3_ok[2][1] = 3;  channel3_ok[3][1] = 3;  channel3_ok[4][1] = 3;
+    channel3_ok[2][2] = 3;  channel3_ok[3][2] = 3;  channel3_ok[4][2] = 3;
+    channel3_ok[2][3] = 3;  channel3_ok[3][3] = 3;  channel3_ok[4][3] = 6;
+
+    BOOST_CHECK(desc(GREEN_CHANNEL) == channel3_ok);
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc.id(), "Border_33_33_33_2_1");
+
+    // Check that coords are preserved
+    BOOST_CHECK(desc(  RED_CHANNEL)[-1][-1] == 33);
+    BOOST_CHECK(desc(  RED_CHANNEL)[ 0][ 0] == 25);
+    BOOST_CHECK(desc(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc(GREEN_CHANNEL)[ 2][ 2] ==  6);
+
+
+    // The whole image with another padding value do not interfere
+    padding_value = 27;
+    Border<InputType> desc1(borders2d, padding_value);
+    desc1 =  calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image);
+
+    channel1_ok = 27;
+    channel1_ok[2][1] = 25;  channel1_ok[3][1] = 1;  channel1_ok[4][1] = 1;
+    channel1_ok[2][2] = 1;  channel1_ok[3][2] = 1;  channel1_ok[4][2] = 1;
+    channel1_ok[2][3] = 1;  channel1_ok[3][3] = 1;  channel1_ok[4][3] = 1;
+
+    BOOST_CHECK(desc1(RED_CHANNEL) == channel1_ok);
+
+    channel2_ok = 27;
+    channel2_ok[2][1] = 2;   channel2_ok[3][1] = 2;  channel2_ok[4][1] = 2;
+    channel2_ok[2][2] = 100; channel2_ok[3][2] = 2;  channel2_ok[4][2] = 2;
+    channel2_ok[2][3] = 2;   channel2_ok[3][3] = 2;  channel2_ok[4][3] = 2;
+
+    BOOST_CHECK(desc1(BLUE_CHANNEL) == channel2_ok);
+
+    channel3_ok = 27;
+    channel3_ok[2][1] = 3;  channel3_ok[3][1] = 3;  channel3_ok[4][1] = 3;
+    channel3_ok[2][2] = 3;  channel3_ok[3][2] = 3;  channel3_ok[4][2] = 3;
+    channel3_ok[2][3] = 3;  channel3_ok[3][3] = 3;  channel3_ok[4][3] = 6;
+
+    BOOST_CHECK(desc1(GREEN_CHANNEL) == channel3_ok);
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc1.id(), "Border_27_27_27_2_1");
+
+    // Check that coords are preserved
+    BOOST_CHECK(desc1(  RED_CHANNEL)[-1][-1] == 27);
+    BOOST_CHECK(desc1(  RED_CHANNEL)[ 0][ 0] == 25);
+    BOOST_CHECK(desc1(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc1(GREEN_CHANNEL)[ 2][ 2] ==  6);
+
+    // A region
+    padding_value = 33;
+    Border<InputType> desc2(borders2d, padding_value);
+    desc2 = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image, my_reg);
+
+    MultiArray<uint8,2> channel1_ok2(6,5);
+    channel1_ok2 = 33;
+    channel1_ok2[2][1] = 1;
+    channel1_ok2[2][2] = 1;
+    channel1_ok2[2][3] = 1;   channel1_ok2[3][3] = 1;
+
+    BOOST_CHECK(desc2(RED_CHANNEL) == channel1_ok2);
+
+    MultiArray<uint8,2> channel2_ok2(6,5);
+    channel2_ok2 = 33;
+    channel2_ok2[2][1] = 2;
+    channel2_ok2[2][2] = 2;
+    channel2_ok2[2][3] = 2;   channel2_ok2[3][3] = 2;
+
+    BOOST_CHECK(desc2(BLUE_CHANNEL) == channel2_ok2);
+
+    MultiArray<uint8,2> channel3_ok2(6,5);
+    channel3_ok2 = 33;
+    channel3_ok2[2][1] = 3;
+    channel3_ok2[2][2] = 3;
+    channel3_ok2[2][3] = 3;  channel3_ok2[3][3] = 6;
+
+    BOOST_CHECK(desc2(GREEN_CHANNEL) == channel3_ok2);
+
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc2.id(), "Border_33_33_33_2_1");
+
+
+    // Check iterators (they just iterate through non-border pixels)
+    Border<InputType>::iterator<> it = desc2.colors_begin();
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),6);
+    BOOST_CHECK(it!=desc2.colors_end());
+
+    ++it;
+
+    BOOST_CHECK(it==desc2.colors_end());
+
+
+
+    // Check that coords are preserved
+    BOOST_CHECK(desc2(  RED_CHANNEL)[-1][-1] == 33);
+    BOOST_CHECK(desc2(  RED_CHANNEL)[ 0][ 0] == 33);
+    BOOST_CHECK(desc2(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc2(GREEN_CHANNEL)[ 2][ 2] ==  6);
+}
+
+
+
+BOOST_AUTO_TEST_CASE( Border_global_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;    my_im_part[1][0] = 10;    my_im_part[2][0] = 25;
+    my_im_part[0][1] = 25;    my_im_part[1][1] = 10;    my_im_part[2][1] = 25;
+    my_im_part[0][2] = 25;    my_im_part[1][2] = 10;    my_im_part[2][2] = 10;
+    
+    ImageRGB<uint8> my_image(3,3);
+    my_image(RED_CHANNEL) = 1;
+    my_image(BLUE_CHANNEL) = 2;
+    my_image(GREEN_CHANNEL) = 3;
+    my_image(RED_CHANNEL)[0][0] = 25;
+    my_image(BLUE_CHANNEL)[0][1] = 100;
+    my_image(GREEN_CHANNEL)[2][2] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(25, 10, 30, my_part);
+
+    Coord2D<int64> borders2d;
+    borders2d[0] = 2;
+    borders2d[1] = 1;
+    InputType::Color padding_value = 33;
+    
+    // The whole image
+    const Border<InputType>& desc = calc_descriptor(new Border<InputType>(borders2d, padding_value, true), my_image);
+    
+    MultiArray<uint8,2> channel1_ok(7,5);
+    channel1_ok = 33;
+    channel1_ok[2][1] = 25;  channel1_ok[3][1] = 1;  channel1_ok[4][1] = 1;
+    channel1_ok[2][2] = 1;  channel1_ok[3][2] = 1;  channel1_ok[4][2] = 1;
+    channel1_ok[2][3] = 1;  channel1_ok[3][3] = 1;  channel1_ok[4][3] = 1;
+    
+    BOOST_CHECK(desc(RED_CHANNEL) == channel1_ok);
+
+    MultiArray<uint8,2> channel2_ok(7,5);
+    channel2_ok = 33;
+    channel2_ok[2][1] = 2;   channel2_ok[3][1] = 2;  channel2_ok[4][1] = 2;
+    channel2_ok[2][2] = 100; channel2_ok[3][2] = 2;  channel2_ok[4][2] = 2;
+    channel2_ok[2][3] = 2;   channel2_ok[3][3] = 2;  channel2_ok[4][3] = 2;
+    
+    BOOST_CHECK(desc(BLUE_CHANNEL) == channel2_ok);
+
+    MultiArray<uint8,2> channel3_ok(7,5);
+    channel3_ok = 33;
+    channel3_ok[2][1] = 3;  channel3_ok[3][1] = 3;  channel3_ok[4][1] = 3;
+    channel3_ok[2][2] = 3;  channel3_ok[3][2] = 3;  channel3_ok[4][2] = 3;
+    channel3_ok[2][3] = 3;  channel3_ok[3][3] = 3;  channel3_ok[4][3] = 6;
+    
+    BOOST_CHECK(desc(GREEN_CHANNEL) == channel3_ok);
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc.id(), "Border_global_33_33_33_2_1");
+
+    
+    // The whole image with another padding value do not interfere
+    padding_value = 27;
+    const Border<InputType>& desc1 = calc_descriptor(new Border<InputType>(borders2d, padding_value, true), my_image);
+    
+    channel1_ok = 27;
+    channel1_ok[2][1] = 25;  channel1_ok[3][1] = 1;  channel1_ok[4][1] = 1;
+    channel1_ok[2][2] = 1;  channel1_ok[3][2] = 1;  channel1_ok[4][2] = 1;
+    channel1_ok[2][3] = 1;  channel1_ok[3][3] = 1;  channel1_ok[4][3] = 1;
+    
+    BOOST_CHECK(desc1(RED_CHANNEL) == channel1_ok);
+    
+    channel2_ok = 27;
+    channel2_ok[2][1] = 2;   channel2_ok[3][1] = 2;  channel2_ok[4][1] = 2;
+    channel2_ok[2][2] = 100; channel2_ok[3][2] = 2;  channel2_ok[4][2] = 2;
+    channel2_ok[2][3] = 2;   channel2_ok[3][3] = 2;  channel2_ok[4][3] = 2;
+    
+    BOOST_CHECK(desc1(BLUE_CHANNEL) == channel2_ok);
+
+    channel3_ok = 27;
+    channel3_ok[2][1] = 3;  channel3_ok[3][1] = 3;  channel3_ok[4][1] = 3;
+    channel3_ok[2][2] = 3;  channel3_ok[3][2] = 3;  channel3_ok[4][2] = 3;
+    channel3_ok[2][3] = 3;  channel3_ok[3][3] = 3;  channel3_ok[4][3] = 6;
+    
+    BOOST_CHECK(desc1(GREEN_CHANNEL) == channel3_ok);
+
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc1.id(), "Border_global_27_27_27_2_1");
+    
+    
+    // A region
+    padding_value = 33;
+    const Border<InputType>& desc2 = calc_descriptor(new Border<InputType>(borders2d, padding_value, true), my_image, my_part[10]);
+    
+    MultiArray<uint8,2> channel1_ok2(7,5);
+    channel1_ok2 = 33;
+    channel1_ok2[3][1] = 1; 
+    channel1_ok2[3][2] = 1;
+    channel1_ok2[3][3] = 1;   channel1_ok2[4][3] = 1;
+    
+    BOOST_CHECK(desc2(RED_CHANNEL) == channel1_ok2);
+    
+    MultiArray<uint8,2> channel2_ok2(7,5);
+    channel2_ok2 = 33;
+    channel2_ok2[3][1] = 2;
+    channel2_ok2[3][2] = 2;
+    channel2_ok2[3][3] = 2;   channel2_ok2[4][3] = 2;
+    
+    BOOST_CHECK(desc2(BLUE_CHANNEL) == channel2_ok2);
+
+    MultiArray<uint8,2> channel3_ok2(7,5);
+    channel3_ok2 = 33;
+    channel3_ok2[3][1] = 3;
+    channel3_ok2[3][2] = 3;
+    channel3_ok2[3][3] = 3;  channel3_ok2[4][3] = 6;
+    
+    BOOST_CHECK(desc2(GREEN_CHANNEL) == channel3_ok2);
+
+    
+    // Check that the identifier is correctly formed
+    BOOST_CHECK_EQUAL(desc2.id(), "Border_global_33_33_33_2_1");
+    
+    
+    // Check iterators (they just iterate through non-border pixels)
+    Border<InputType>::const_iterator<> it = desc2.colors_begin();
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+    BOOST_CHECK(!desc2.is_border((*it).position()));
+    
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+    BOOST_CHECK(!desc2.is_border((*it).position()));
+    
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),3);
+    BOOST_CHECK(it!=desc2.colors_end());
+    BOOST_CHECK(!desc2.is_border((*it).position()));
+    
+    ++it;
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),1);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL),2);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL),6);
+    BOOST_CHECK(it!=desc2.colors_end());
+    BOOST_CHECK(!desc2.is_border((*it).position()));
+
+    ++it;
+    BOOST_CHECK(!(it!=desc2.colors_end()));
+    
+    
+    // Check that coords are preserved
+    BOOST_CHECK(desc2(  RED_CHANNEL)[-1][-1] == 33);
+    BOOST_CHECK(desc2(  RED_CHANNEL)[ 0][ 0] == 33);
+    BOOST_CHECK(desc2(  RED_CHANNEL)[ 1][ 0] ==  1);
+    BOOST_CHECK(desc2(GREEN_CHANNEL)[ 2][ 2] ==  6);
+}
+
+
+BOOST_AUTO_TEST_CASE( Border_neighbor_iterators_test)
+{  
+    ImageRGB<uint8> my_image(2,2);
+    my_image(RED_CHANNEL) = 1;
+    my_image(GREEN_CHANNEL) = 2;
+    my_image(BLUE_CHANNEL) = 3;
+    my_image(RED_CHANNEL)[0][0] = 25;
+    my_image(GREEN_CHANNEL)[0][1] = 100;
+    my_image(BLUE_CHANNEL)[1][1] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    Coord2D<int64> borders2d;
+    borders2d[0] = 1;
+    borders2d[1] = 1;
+
+    InputType::Color padding_value = 33;
+    const Border<InputType>& im_border = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image);
+
+    Border<InputType>::const_iterator<> it = im_border.colors_begin();
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),25);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL), 2);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL), 3);
+    BOOST_CHECK(it!=im_border.colors_end());
+    BOOST_CHECK(!im_border.is_border((*it).position()));
+    BOOST_CHECK((*it).position()[0] == 0);
+    BOOST_CHECK((*it).position()[1] == 0);
+    
+    Neighborhood2D ngb;
+    ngb.resize(2);
+    ngb[0]=Neighborhood2D::CoordType( 0,-1);
+    ngb[1]=Neighborhood2D::CoordType(-1, 0);
+    
+    Border<InputType>::const_iterator<>::pixel_type::neighbor_iterator nit = (*it).local_begin(ngb);
+    Border<InputType>::const_iterator<>::pixel_type::neighbor_iterator nit_end = (*it).local_end(ngb);
+    
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL),33);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 0);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1],-1);
+    BOOST_CHECK(im_border.is_border((*nit).position()));
+    
+    ++nit;
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL),33);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0],-1);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 0);
+    BOOST_CHECK(im_border.is_border((*nit).position()));
+    
+    ++nit;
+    BOOST_CHECK(nit == nit_end);
+    
+    
+    // Next pixel
+    ++it;
+    nit = (*it).local_begin(ngb);
+    nit_end = (*it).local_end(ngb);
+        
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL),33);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 1);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1],-1);
+    BOOST_CHECK(im_border.is_border((*nit).position()));
+        
+    ++nit;
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),25);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL), 2);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL), 3);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 0);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 0);
+    BOOST_CHECK(!im_border.is_border((*nit).position()));
+        
+    ++nit;
+    BOOST_CHECK(nit == nit_end);
+    
+    
+    // Next pixel
+    ++it;
+    nit = (*it).local_begin(ngb);
+    nit_end = (*it).local_end(ngb);
+        
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),25);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL), 2);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL), 3);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 0);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 0);
+    BOOST_CHECK(!im_border.is_border((*nit).position()));
+
+    ++nit;
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL),33);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0],-1);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 1);
+    BOOST_CHECK(im_border.is_border((*nit).position()));
+
+    ++nit;
+    BOOST_CHECK(nit == nit_end);
+    
+    
+    // Next pixel
+    ++it;
+    nit = (*it).local_begin(ngb);
+    nit_end = (*it).local_end(ngb);
+        
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL), 1);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL), 2);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL), 3);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 1);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 0);
+    BOOST_CHECK(!im_border.is_border((*nit).position()));
+
+    ++nit;
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),  1);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL),100);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL),  3);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 0);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 1);
+    BOOST_CHECK(!im_border.is_border((*nit).position()));
+
+    ++nit;
+    BOOST_CHECK(nit == nit_end);
+    
+    ++it;
+    BOOST_CHECK(!(it != im_border.colors_end()));
+}
+
+
+
+BOOST_AUTO_TEST_CASE( Border_neighbor_iterators_in_region_test)
+{  
+    ImageRGB<uint8> my_image(2,2);
+    my_image(RED_CHANNEL) = 1;
+    my_image(GREEN_CHANNEL) = 2;
+    my_image(BLUE_CHANNEL) = 3;
+    my_image(RED_CHANNEL)[0][0] = 25;
+    my_image(GREEN_CHANNEL)[0][1] = 100;
+    my_image(BLUE_CHANNEL)[1][1] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    Coord2D<int64> borders2d;
+    borders2d[0] = 1;
+    borders2d[1] = 1;
+
+
+    InputType::Color padding_value = 33;
+    const Border<InputType>& im_border = calc_descriptor(new Border<InputType>(borders2d, padding_value), my_image);
+
+    GeometricShape<int32, 2> gs2d(2);
+    gs2d[0]=GeometricShape<int32, 2>::CoordType(0,0);
+    gs2d[1]=GeometricShape<int32, 2>::CoordType(1,1);
+    
+    Border<InputType>::const_iterator<GeometricShape<int32, 2> > it = im_border.colors_begin(gs2d);
+    BOOST_CHECK_EQUAL((*it).value(RED_CHANNEL),25);
+    BOOST_CHECK_EQUAL((*it).value(GREEN_CHANNEL), 2);
+    BOOST_CHECK_EQUAL((*it).value(BLUE_CHANNEL), 3);
+    BOOST_CHECK(it!=im_border.colors_end(gs2d));
+    BOOST_CHECK(!im_border.is_border((*it).position()));
+    BOOST_CHECK((*it).position()[0] == 0);
+    BOOST_CHECK((*it).position()[1] == 0);
+    
+    Neighborhood2D ngb;
+    ngb.resize(2);
+    ngb[0]=Neighborhood2D::CoordType( 0,-1);
+    ngb[1]=Neighborhood2D::CoordType(-1, 0);
+    
+    Border<InputType>::const_iterator<GeometricShape<int32, 2> >::pixel_type::neighbor_iterator nit = (*it).local_begin(ngb);
+    Border<InputType>::const_iterator<GeometricShape<int32, 2> >::pixel_type::neighbor_iterator nit_end = (*it).local_end(ngb);
+    
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL),33);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 0);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1],-1);
+    BOOST_CHECK(im_border.is_border((*nit).position()));
+    
+    ++nit;
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL),33);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL),33);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0],-1);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 0);
+    BOOST_CHECK(im_border.is_border((*nit).position()));
+    
+    ++nit;
+    BOOST_CHECK(nit == nit_end);
+    
+    // Next pixel
+    ++it;
+    nit = (*it).local_begin(ngb);
+    nit_end = (*it).local_end(ngb);
+        
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL), 1);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL), 2);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL), 3);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 1);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 0);
+    BOOST_CHECK(!im_border.is_border((*nit).position()));
+
+    ++nit;
+    BOOST_CHECK(nit != nit_end);
+    BOOST_CHECK_EQUAL((*nit).value(RED_CHANNEL),  1);
+    BOOST_CHECK_EQUAL((*nit).value(GREEN_CHANNEL),100);
+    BOOST_CHECK_EQUAL((*nit).value(BLUE_CHANNEL),  3);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[0], 0);
+    BOOST_CHECK_EQUAL((int32)(*nit).position()[1], 1);
+    BOOST_CHECK(!im_border.is_border((*nit).position()));
+
+    ++nit;
+    BOOST_CHECK(nit == nit_end);
+    
+    ++it;
+    BOOST_CHECK(!(it != im_border.colors_end(gs2d)));
+}
+
+
+BOOST_AUTO_TEST_CASE( Border_exceptions_test)
+{    
+    Coord2D<int64> borders2d;
+    borders2d[0] = 1;
+    borders2d[1] = 1;
+    ImageRGB<uint8>::Color padding_value = 33;
+    
+    Border<ImageRGB<uint8> > my_border(borders2d, padding_value);
+    CollaborativeDescriptors desc1;
+    CollaborativeDescriptors desc2;
+    CollaborativeDescriptors desc3;
+    
+    BOOST_CHECK_THROW(my_border.recursive_calculate(desc1, desc2, &desc3), std::exception);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

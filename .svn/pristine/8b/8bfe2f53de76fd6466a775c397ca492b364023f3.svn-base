@@ -1,0 +1,765 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file homogeneous_texture.hpp
+//!
+//!
+#ifndef IMAGEPLUS_DESCRIPTORS_HOMOGENEOUS_TEXTURE_HPP
+#define IMAGEPLUS_DESCRIPTORS_HOMOGENEOUS_TEXTURE_HPP
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/descriptors/color/auxiliar.hpp>
+#include <imageplus/core/bounding_box.hpp>
+#include <imageplus/math/transforms/fourier.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+
+#ifdef USE_FFTW3
+    	//! Homogeneous texture
+    	//! \todo Document
+        template<class InputModel>
+        class HomogeneousTexture : public DescriptorBase
+        {
+        public:
+            
+            //!
+            //! \brief Default constructor
+            //!
+            HomogeneousTexture() : DescriptorBase("HomogeneousTexture",false)
+            {
+                for (std::size_t i=0; i!=30; i++) 
+                {
+                	_energies[i] = 0;
+                	_energy_deviations[i] = 0;
+                }
+                _mean = 0;
+                _deviation = 0;
+            }        
+       
+     
+            
+            //! \brief Calculates 
+            //!
+            //! \param[in] first : Iterator to the beginning of the region or image
+            //! \param[in] last : Iterator to the end of the region or image
+            //! \param[in] peer_descs : Pointer to CollVD, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            //! \return A reference to the visual descriptor
+            template< class IteratorModel>
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {        
+                ASSERT(peer_descs!=0x0, "HomogeneousTexture calculate: peer_descs must be non null");
+
+            	uint8 i,r,s;
+            	boost::array<float64, 5>  w_s;//the center frequency for radial directions
+            	boost::array<float64, 5>  sigma_w_s;//the standart deviations of the Gabor function in the radial directions
+            	boost::array<float64, 6>  theta_r;//the center frequency for angular directions
+            	float64  sigma_theta_r = (float64) ( 30/(2. * std::pow(2. * log(2.0), 0.5)));//the standart deviation of the Gabor function in the angular directions
+            	
+            	for (i=0; i<5; i++){
+            		w_s[i] = (float64) (3/std::pow(2., 2+i));
+            		sigma_w_s[i] = (float64) (1/(std::pow(2., 2+i) * std::pow(2. * log(2.), 0.5)));
+            	}
+            	for (i=0; i<6; i++){
+            		theta_r[i] = (float64) (30*i) ; 
+            	}
+            	
+                uint64 size_x;
+                uint64 size_y;
+                IteratorModel it = first;
+
+                const BoundingBox<typename InputModel::CoordType>& bb_coord = peer_descs->calculate(new BoundingBox<typename InputModel::CoordType>(), first, last);
+                size_x = bb_coord.opposite()[0]-bb_coord.origin()[0]+1;
+                size_y = bb_coord.opposite()[1]-bb_coord.origin()[1]+1;
+                
+                MultiArray<std::complex<float64>,2> image_in(size_x,size_y);
+                uint64 offset_x = -bb_coord.origin()[0];
+                uint64 offset_y = -bb_coord.origin()[1];
+                
+                const ImageGray<typename InputModel::data_type>& im_gray = peer_descs->calculate(new VDImageGray<InputModel>(), first, last);
+                for(;it!=last;++it)
+                {
+                    image_in[(*it).position()[0]+offset_x][(*it).position()[1]+offset_y]=std::complex<float64>((float64)im_gray(0)[(*it).position()[0]][(*it).position()[1]], 0.0);
+                }
+
+    			float64 gray_volume = 0.0;
+    			float64 squared_gray_volume = 0.0;
+    			
+                for(uint64 jj=0; jj<size_y;jj++)
+    			{
+    				for(uint64 ii=0; ii<size_x; ii++)
+    				{
+    					gray_volume += real(image_in[ii][jj]);
+    					squared_gray_volume += std::pow(real(image_in[ii][jj]),2.0);
+    				}
+    			}
+                
+                _mean = gray_volume/((float64)(size_x*size_y));
+                _deviation = std::sqrt(squared_gray_volume/((float64)(size_x*size_y)) - std::pow(_mean,2));
+                
+                MultiArray<std::complex<float64>,2> fft_out = math::transforms::fft(image_in);
+                boost::array<uint64, 2> centroid;
+                centroid[0]=size_x/2;
+                centroid[1]=size_y/2;
+                MultiArray<std::complex<float64>,2> fft_centered(size_x,size_y);
+                for(uint64 jj=0; jj<size_y;jj++)
+                {
+                	for(uint64 ii=0; ii<size_x;ii++)
+                	{
+                		fft_centered[(ii+centroid[0])%size_x][(jj+centroid[1])%size_y] = fft_out[ii][jj];
+                	}
+                }
+                
+                for (r=0;r<6;r++)
+                {
+            		for(s=0;s<5;s++) 
+            		{ 
+            			float64 p=0.0;
+            			float64 gabor_image;
+            			MultiArray<std::complex<float64>,2> h_image(size_x,size_y);
+            			for(uint64 jj=0; jj<size_y;jj++)
+            			{
+            				for(uint64 ii=0; ii<size_x; ii++)
+            				{
+            					boost::array<float64, 2> polar_coord;
+            					polar_coord = _to_polar(centroid, ii, jj);
+            					polar_coord[1] =  polar_coord[1] * 180 / M_PI;
+            					if(polar_coord[0]<=1.0)
+            					{
+                					gabor_image = exp((-1.0)*std::pow(polar_coord[0]-w_s[s],2)/(2.0*std::pow(sigma_w_s[s],2)))*exp((-1.0)*std::pow(polar_coord[1]-theta_r[r],2)/(2.0*std::pow(sigma_theta_r,2)));
+                					h_image[ii][jj] = fft_centered[ii][jj] * gabor_image * polar_coord[0];
+                					p += std::pow(abs(h_image[ii][jj]),2.0);
+                					
+            					}
+            				}
+            			}
+
+            			_energies[6*s+r] = std::log10(1.0+p);
+            			float64 q=0.0;
+            			for(uint64 jj=0; jj<size_y;jj++)
+            			{
+            				for(uint64 ii=0; ii<size_x; ii++)
+            				{
+            					q += std::pow(std::pow(abs(h_image[ii][jj]),2.0)-p,2.0);
+            				}
+            			}
+            			q = std::pow(q,0.5);
+            			_energy_deviations[6*s+r] = std::log10(1.0+q);
+            		}
+                }
+            }
+            
+            /*!
+             * \returns energies
+             */
+            const boost::array<float64, 30>& energies() const
+            {
+                return _energies;
+            }
+
+            /*!
+             * \returns energy_deviations
+             */
+            const boost::array<float64, 30>& energy_deviations() const
+            {
+                return _energy_deviations;
+            }
+            
+            /*!
+             * \returns mean
+             */
+            const float64 mean() const
+            {
+                return _mean;
+            }
+            
+            /*!
+             * \returns deviation
+             */
+            const float64 deviation() const
+            {
+                return _deviation;
+            }
+            
+            
+            
+        #ifdef USE_XML
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "HomogeneousTextureType";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem;
+//                XERCES_CPP_NAMESPACE::DOMElement* dataElem2;
+                XERCES_CPP_NAMESPACE::DOMText* textElem;
+                std::string append;
+                std::string space(" ");
+                Quantizer<float64> q_dev(1.31,109.48,256);
+                
+                Quantizer<float64> q_en1(11.70,21.52,256);
+                Quantizer<float64> q_en2(11.69,19.95,256);
+                Quantizer<float64> q_en3(11.90,20.38,256);
+                Quantizer<float64> q_en4(12,22.13,256);
+                Quantizer<float64> q_en5(12,20.18,256);
+                Quantizer<float64> q_en6(11.94,20.00,256);
+                Quantizer<float64> q_en7(9.93,22.30,256);
+                Quantizer<float64> q_en8(9.73,20.32,256);
+                Quantizer<float64> q_en9(9.73,20.66,256);
+                Quantizer<float64> q_en10(9.80,21.46,256);
+                Quantizer<float64> q_en11(10.08,20.16,256);
+                Quantizer<float64> q_en12(10.43,20.28,256);
+                Quantizer<float64> q_en13(8.30,20.82,256);
+                Quantizer<float64> q_en14(8.07,19.09,256);
+                Quantizer<float64> q_en15(7.96,20.84,256);
+                Quantizer<float64> q_en16(7.94,20.49,256);
+                Quantizer<float64> q_en17(8.52,20.76,256);
+                Quantizer<float64> q_en18(8.67,19.26,256);
+                Quantizer<float64> q_en19(7.00,19.37,256);
+                Quantizer<float64> q_en20(7.86,18.63,256);
+                Quantizer<float64> q_en21(7.59,18.68,256);
+                Quantizer<float64> q_en22(6.75,19.79,256);
+                Quantizer<float64> q_en23(7.80,18.71,256);
+                Quantizer<float64> q_en24(7.64,18.88,256);
+                Quantizer<float64> q_en25(6.55,18.39,256);
+                Quantizer<float64> q_en26(8.89,18.01,256);
+                Quantizer<float64> q_en27(8.89,18.00,256);
+                Quantizer<float64> q_en28(6.16,18.08,256);
+                Quantizer<float64> q_en29(8.81,18.05,256);
+                Quantizer<float64> q_en30(8.89,17.96,256);
+                
+                boost::array<Quantizer<float64>, 30> q_en;
+                q_en[0]=q_en1;
+                q_en[1]=q_en2;
+                q_en[2]=q_en3;
+                q_en[3]=q_en4;
+                q_en[4]=q_en5;
+                q_en[5]=q_en6;
+                q_en[6]=q_en7;
+                q_en[7]=q_en8;
+                q_en[8]=q_en9;
+                q_en[9]=q_en10;
+                q_en[10]=q_en11;
+                q_en[11]=q_en12;
+                q_en[12]=q_en13;
+                q_en[13]=q_en14;
+                q_en[14]=q_en15;
+                q_en[15]=q_en16;
+                q_en[16]=q_en17;
+                q_en[17]=q_en18;
+                q_en[18]=q_en19;
+                q_en[19]=q_en20;
+                q_en[20]=q_en21;
+                q_en[21]=q_en22;
+                q_en[22]=q_en23;
+                q_en[23]=q_en24;
+                q_en[24]=q_en25;
+                q_en[25]=q_en26;
+                q_en[26]=q_en27;
+                q_en[27]=q_en28;
+                q_en[28]=q_en29;
+                q_en[29]=q_en30;
+
+                
+                Quantizer<float64> q_dev1(13.30,24.69,256);
+                Quantizer<float64> q_dev2(13.31,22.98,256);
+                Quantizer<float64> q_dev3(13.45,23.89,256);
+                Quantizer<float64> q_dev4(13.61,25.24,256);
+                Quantizer<float64> q_dev5(13.55,24.28,256);
+                Quantizer<float64> q_dev6(13.44,22.70,256);
+                Quantizer<float64> q_dev7(11.74,25.64,256);
+                Quantizer<float64> q_dev8(11.56,24.10,256);
+                Quantizer<float64> q_dev9(11.55,22.69,256);
+                Quantizer<float64> q_dev10(11.61,25.22,256);
+                Quantizer<float64> q_dev11(11.90,22.33,256);
+                Quantizer<float64> q_dev12(12.25,22.23,256);
+                Quantizer<float64> q_dev13(10.39,24.32,256);
+                Quantizer<float64> q_dev14(10.20,21.62,256);
+                Quantizer<float64> q_dev15(10.21,24.40,256);
+                Quantizer<float64> q_dev16(10.11,23.80,256);
+                Quantizer<float64> q_dev17(10.65,24.33,256);
+                Quantizer<float64> q_dev18(10.80,21.69,256);
+                Quantizer<float64> q_dev19(9.28,22.66,256);
+                Quantizer<float64> q_dev20(10.39,21.33,256);
+                Quantizer<float64> q_dev21(10.07,21.28,256);
+                Quantizer<float64> q_dev22(8.91,22.62,256);
+                Quantizer<float64> q_dev23(10.29,21.77,256);
+                Quantizer<float64> q_dev24(10.15,21.70,256);
+                Quantizer<float64> q_dev25(9.05,21.10,256);
+                Quantizer<float64> q_dev26(11.75,20.75,256);
+                Quantizer<float64> q_dev27(11.78,20.79,256);
+                Quantizer<float64> q_dev28(8.65,20.85,256);
+                Quantizer<float64> q_dev29(11.67,20.77,256);
+                Quantizer<float64> q_dev30(11.74,20.75,256);
+                
+                boost::array<Quantizer<float64>, 30> q_dev_en;
+                q_dev_en[0]=q_dev1;
+                q_dev_en[1]=q_dev2;
+                q_dev_en[2]=q_dev3;
+                q_dev_en[3]=q_dev4;
+                q_dev_en[4]=q_dev5;
+                q_dev_en[5]=q_dev6;
+                q_dev_en[6]=q_dev7;
+                q_dev_en[7]=q_dev8;
+                q_dev_en[8]=q_dev9;
+                q_dev_en[9]=q_dev10;
+                q_dev_en[10]=q_dev11;
+                q_dev_en[11]=q_dev12;
+                q_dev_en[12]=q_dev13;
+                q_dev_en[13]=q_dev14;
+                q_dev_en[14]=q_dev15;
+                q_dev_en[15]=q_dev16;
+                q_dev_en[16]=q_dev17;
+                q_dev_en[17]=q_dev18;
+                q_dev_en[18]=q_dev19;
+                q_dev_en[19]=q_dev20;
+                q_dev_en[20]=q_dev21;
+                q_dev_en[21]=q_dev22;
+                q_dev_en[22]=q_dev23;
+                q_dev_en[23]=q_dev24;
+                q_dev_en[24]=q_dev25;
+                q_dev_en[25]=q_dev26;
+                q_dev_en[26]=q_dev27;
+                q_dev_en[27]=q_dev28;
+                q_dev_en[28]=q_dev29;
+                q_dev_en[29]=q_dev30;
+                
+                
+//                char append2[100];
+                
+                dataElem = doc->createElement(io::fromNative("Average").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>((uint16)_mean);
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+                
+                dataElem = doc->createElement(io::fromNative("StandardDeviation").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>(q_dev.bin(_deviation));
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+                
+                dataElem = doc->createElement(io::fromNative("Energy").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>(q_en[0].bin(_energies[0]));
+                for(uint8 ii=1; ii<30; ii++)
+                {
+                	append = append + space + boost::lexical_cast<std::string>(q_en[ii].bin(_energies[ii]));
+                }
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+                
+                dataElem = doc->createElement(io::fromNative("EnergyDeviation").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>(q_dev_en[0].bin(_energy_deviations[0]));
+                for(uint8 ii=1; ii<30; ii++)
+                {
+                	append = append + space + boost::lexical_cast<std::string>(q_dev_en[ii].bin(_energy_deviations[ii]));
+                }
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+        
+            }
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \return true if the descritor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "HomogeneousTextureType");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("HomogeneousTextureType not found");
+                }
+                else
+                {
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = io::xml_get_check_son(curr_node, "Average");
+                    std::string text = io::xml_get_text_son(curr_node2, curr_node2);
+                    sscanf(text.c_str(), "%lf", &_mean);
+                    curr_node2 = io::xml_get_check_son(curr_node, "StandardDeviation");
+                    text = io::xml_get_text_son(curr_node2, curr_node2);
+                    sscanf(text.c_str(), "%lf", &_deviation);
+                    curr_node2 = io::xml_get_check_son(curr_node, "Energy");
+                    text = io::xml_get_text_son(curr_node2, curr_node2);
+                    const char* text2 = text.c_str();
+                    uint32 j = 0;
+                    int pos = 0;
+                    for( j = 0; j < 30; j++)
+                    {
+                        std::string value;
+                        value.push_back(text2[pos]);
+                        pos++;
+                        while(text2[pos]!=' ')
+                        {
+                            value.push_back(text2[pos]);
+                            pos++;
+                        }
+                        pos++;
+                        
+                        float64 val;
+                        sscanf(value.c_str(), "%lf", &val);
+                        _energies[j]=val;
+                    }
+                    curr_node2 = io::xml_get_check_son(curr_node, "EnergyDeviation");
+                    text = io::xml_get_text_son(curr_node2, curr_node2);
+                    text2 = text.c_str();
+                    pos = 0;
+                    for( j = 0; j < 30; j++)
+                    {
+                        std::string value;
+                        value.push_back(text2[pos]);
+                        pos++;
+                        while(text2[pos]!=' ')
+                        {
+                            value.push_back(text2[pos]);
+                            pos++;
+                        }
+                        pos++;
+                        
+                        float64 val;
+                        sscanf(value.c_str(), "%lf", &val);
+                        _energy_deviations[j]=val;
+                    }
+                    read = true;
+                }
+                return read;
+            }
+        #endif
+                      
+        private:
+        	//! Energies
+        	boost::array<float64, 30> _energies;
+            
+        	//! Energy deviations
+            boost::array<float64, 30> _energy_deviations;
+            
+            //! Mask of the region
+            ImaVolMask<2> _mask;
+            
+            //! Mean
+            float64 _mean;
+            
+            //! Deviation
+            float64 _deviation;
+            
+            /*!
+             * \param center_pos : Cartesian Center
+             * \param pos_x : X position
+             * \param pos_y : Y position
+             *
+             * \return polar coordinates from Cartesians pos_x, pos_y referenced to center_pos
+             */
+            boost::array<float64, 2> _to_polar(const boost::array<uint64, 2>& center_pos, uint64 pos_x, uint64 pos_y)
+            {
+            	boost::array<float64, 2> res;
+    	        float64 v1= ((float64)pos_x-(float64)center_pos[0]) / (float64)center_pos[0];
+    	        float64 v2= ((float64)center_pos[1]-(float64)pos_y) /(float64)center_pos[1];
+    	        std::complex<float64> pos(v1,v2);
+    	        res[0] = abs(pos);
+    	        res[1] = arg(pos);
+
+            	return res;
+            }
+        };
+        
+        //! Structure for Contour Shape Descriptor
+        struct HomoTextContainer 
+        {
+        	//! Energies
+        	boost::array<float64, 30> energies;
+            
+        	//! Energy deviations
+            boost::array<float64, 30> energy_deviations;
+            
+            //! Mean
+            float64 mean;
+            
+            //! Deviation
+            float64 deviation;                                
+        };
+        
+        //! Structure for Contour Shape Descriptor
+        struct HomoTextContainerXML 
+        {
+        	//! Energies
+        	boost::array<uint8, 30> energies;
+            
+        	//! Energy deviations
+            boost::array<uint8, 30> energy_deviations;
+            
+            //! Mean
+            uint8 mean;
+            
+            //! Deviation
+            uint8 deviation;                                
+        };
+        
+        //! Constants identifying the available modes for distance
+        enum DistanceModes { normal, intensity_invariant, rotation_invariant };
+        
+        //! \brief Calculates the result of the dissimilarity measure
+        //!
+        //! \param[in] htd_query  : HomogeneousTexture descriptor that will be compared with htd_target
+        //! \param[in] htd_target : HomogeneousTexture descriptor that will be compared with htd_query
+        //! \param[in] mode		  : Dissimilarity mode (normal, intensity_invariant or rotation_invariant)
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 distance(HomoTextContainer& htd_query, HomoTextContainer& htd_target, std::size_t mode = normal)
+        {
+        	float64 d=0;
+        	if(mode ==normal)
+        	{
+	        	d += std::abs(htd_query.mean-htd_target.mean);
+	        	d += std::abs(htd_query.deviation-htd_target.deviation);
+
+            	for(uint8 ii=0; ii<30; ii++)
+            	{
+            		d += std::abs(htd_query.energies[ii]-htd_target.energies[ii]);
+            	}
+            	for(uint8 ii=0; ii<30; ii++)
+            	{
+            		d += std::abs(htd_query.energy_deviations[ii]-htd_target.energy_deviations[ii]);
+            	}
+        	}
+        	else if(mode == intensity_invariant)
+        	{
+	        	d += std::abs(htd_query.deviation-htd_target.deviation);
+
+            	for(uint8 ii=0; ii<30; ii++)
+            	{
+            		d += std::abs(htd_query.energies[ii]-htd_target.energies[ii]);
+            	}
+            	for(uint8 ii=0; ii<30; ii++)
+            	{
+            		d += std::abs(htd_query.energy_deviations[ii]-htd_target.energy_deviations[ii]);
+            	}
+        	}
+        	else if(mode == rotation_invariant)
+        	{
+	        	d += std::abs(htd_query.mean-htd_target.mean);
+	        	d += std::abs(htd_query.deviation-htd_target.deviation);
+	        	float64 dmin = d;
+            	for(uint8 ii=0; ii<30; ii++)
+            	{
+            		dmin += std::abs(htd_query.energies[ii]-htd_target.energies[ii]);
+            	}
+            	for(uint8 ii=0; ii<30; ii++)
+            	{
+            		dmin += std::abs(htd_query.energy_deviations[ii]-htd_target.energy_deviations[ii]);
+            	}
+            	
+            	for(uint8 mm=1;mm<6;mm++)
+            	{
+            		float64 d_aux = d;
+                    for (uint8 s=0;s<5;s++)
+                    {
+                		for(uint8 r=0;r<6;r++) 
+                		{ 
+                			d_aux += std::abs(htd_query.energies[s*6+(r+mm)%6]-htd_target.energies[s*6+r]);
+                		}
+            		}
+                    for (uint8 s=0;s<5;s++)
+                    {
+                		for(uint8 r=0;r<6;r++) 
+                		{ 
+                			d_aux += std::abs(htd_query.energy_deviations[s*6+(r+mm)%6]-htd_target.energy_deviations[s*6+r]);
+                		}
+            		}
+                    if(d_aux < dmin)
+                    {
+                    	dmin = d_aux;
+                    }
+            	}
+            	
+            	d=dmin;
+	        	
+        	}
+
+        	return d;
+        }
+        
+        //! \brief Calculates the result of the dissimilarity measure
+        //!
+        //! \param[in] htd_query_xml  : HomogeneousTexture descriptor extracted from XML file that will be compared with htd_target_xml
+        //! \param[in] htd_target_xml : HomogeneousTexture descriptor extracted from XML file that will be compared with htd_query_xml
+        //! \param[in] mode		  	  : Dissimilarity mode (normal, intensity_invariant or rotation_invariant)
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 distance(HomoTextContainerXML& htd_query_xml, HomoTextContainerXML& htd_target_xml, std::size_t mode = normal)
+        {
+        	//Dequantization
+        	
+        	HomoTextContainer htd_query;
+        	HomoTextContainer htd_target;
+        	
+        	htd_query.mean = (float64)htd_query_xml.mean;
+        	htd_target.mean = (float64)htd_target_xml.mean;
+        	htd_query.deviation = ((float64)htd_query_xml.deviation+0.5)*(109.48-1-31)/256.0+1.31;
+        	htd_target.deviation = ((float64)htd_target_xml.deviation+0.5)*(109.48-1-31)/256.0+1.31;
+        	
+        	boost::array<float64, 30> q_min_en;
+            boost::array<float64, 30> q_max_en;
+            
+            q_min_en[0]=11.70;
+            q_max_en[0]=21.52;
+            q_min_en[1]=11.69;
+            q_max_en[1]=19.95;
+            q_min_en[2]=11.90;
+            q_max_en[2]=20.38;
+            q_min_en[3]=12;
+            q_max_en[3]=22.13;
+            q_min_en[4]=12;
+            q_max_en[4]=20.18;
+            q_min_en[5]=11.94;
+            q_max_en[5]=20.00;
+            q_min_en[6]=9.93;
+            q_max_en[6]=22.30;
+            q_min_en[7]=9.73;
+            q_max_en[7]=20.32;
+            q_min_en[8]=9.73;
+            q_max_en[8]=20.66;
+            q_min_en[9]=9.80;
+            q_max_en[9]=21.46;
+            q_min_en[10]=10.08;
+            q_max_en[10]=20.16;
+            q_min_en[11]=10.43;
+            q_max_en[11]=20.28;
+            q_min_en[12]=8.30;
+            q_max_en[12]=20.82;
+            q_min_en[13]=8.07;
+            q_max_en[13]=19.09;
+            q_min_en[14]=7.96;
+            q_max_en[14]=20.84;
+            q_min_en[15]=7.94;
+            q_max_en[15]=20.49;
+            q_min_en[16]=8.52;
+            q_max_en[16]=20.76;
+            q_min_en[17]=8.67;
+            q_max_en[17]=19.26;
+            q_min_en[18]=7.00;
+            q_max_en[18]=19.37;
+            q_min_en[19]=7.86;
+            q_max_en[19]=18.63;
+            q_min_en[20]=7.59;
+            q_max_en[20]=18.68;
+            q_min_en[21]=6.75;
+            q_max_en[21]=19.79;
+            q_min_en[22]=7.80;
+            q_max_en[22]=18.71;
+            q_min_en[23]=7.64;
+            q_max_en[23]=18.88;
+            q_min_en[24]=6.55;
+            q_max_en[24]=18.39;
+            q_min_en[25]=8.89;
+            q_max_en[25]=18.01;
+            q_min_en[26]=8.89;
+            q_max_en[26]=18.00;
+            q_min_en[27]=6.16;
+            q_max_en[27]=18.08;
+            q_min_en[28]=8.81;
+            q_max_en[28]=18.05;
+            q_min_en[29]=8.89;
+            q_max_en[29]=17.96;
+        	
+            for(uint8 ii=0; ii<30; ii++)
+            {
+            	htd_query.energies[ii] = ((float64)htd_query_xml.energies[ii]+0.5)*(q_max_en[ii]-q_min_en[ii])/256.0+q_min_en[ii];
+            	htd_target.energies[ii] = ((float64)htd_target_xml.energies[ii]+0.5)*(q_max_en[ii]-q_min_en[ii])/256.0+q_min_en[ii];
+            }
+            
+        	boost::array<float64, 30> q_min_dev;
+            boost::array<float64, 30> q_max_dev;
+            q_min_dev[0]=13.30;
+            q_max_dev[0]=24.69;
+            q_min_dev[1]=13.31;
+            q_max_dev[1]=22.98;
+            q_min_dev[2]=13.45;
+            q_max_dev[2]=23.89;
+            q_min_dev[3]=13.61;
+            q_max_dev[3]=25.24;
+            q_min_dev[4]=13.55;
+            q_max_dev[4]=24.28;
+            q_min_dev[5]=13.44;
+            q_max_dev[5]=22.70;
+            q_min_dev[6]=11.74;
+            q_max_dev[6]=25.64;
+            q_min_dev[7]=11.56;
+            q_max_dev[7]=24.10;
+            q_min_dev[8]=11.55;
+            q_max_dev[8]=22.69;
+            q_min_dev[9]=11.61;
+            q_max_dev[9]=25.22;
+            q_min_dev[10]=11.90;
+            q_max_dev[10]=22.33;
+            q_min_dev[11]=12.25;
+            q_max_dev[11]=22.23;
+            q_min_dev[12]=10.39;
+            q_max_dev[12]=24.32;
+            q_min_dev[13]=10.20;
+            q_max_dev[13]=21.62;
+            q_min_dev[14]=10.21;
+            q_max_dev[14]=24.40;
+            q_min_dev[15]=10.11;
+            q_max_dev[15]=23.80;
+            q_min_dev[16]=10.65;
+            q_max_dev[16]=24.33;
+            q_min_dev[17]=10.80;
+            q_max_dev[17]=21.69;
+            q_min_dev[18]=9.28;
+            q_max_dev[18]=22.66;
+            q_min_dev[19]=10.39;
+            q_max_dev[19]=21.33;
+            q_min_dev[20]=10.07;
+            q_max_dev[20]=21.28;
+            q_min_dev[21]=8.91;
+            q_max_dev[21]=22.62;
+            q_min_dev[22]=10.29;
+            q_max_dev[22]=21.77;
+            q_min_dev[23]=10.15;
+            q_max_dev[23]=21.70;
+            q_min_dev[24]=9.05;
+            q_max_dev[24]=21.10;
+            q_min_dev[25]=11.75;
+            q_max_dev[25]=20.75;
+            q_min_dev[26]=11.78;
+            q_max_dev[26]=20.79;
+            q_min_dev[27]=8.65;
+            q_max_dev[27]=20.85;
+            q_min_dev[28]=11.67;
+            q_max_dev[28]=20.77;
+            q_min_dev[29]=11.74;
+            q_max_dev[29]=20.75;
+            
+            for(uint8 ii=0; ii<30; ii++)
+            {
+            	htd_query.energy_deviations[ii] = ((float64)htd_query_xml.energy_deviations[ii]+0.5)*(q_max_dev[ii]-q_min_dev[ii])/256.0+q_min_dev[ii];
+            	htd_target.energy_deviations[ii] = ((float64)htd_target_xml.energy_deviations[ii]+0.5)*(q_max_dev[ii]-q_min_dev[ii])/256.0+q_min_dev[ii];
+            }
+        	
+        	float64 d = distance(htd_query, htd_target, mode);
+
+        	return d;
+        }
+        
+#endif /* USE_FFTW3 */
+    }
+}
+
+#endif

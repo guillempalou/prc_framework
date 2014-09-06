@@ -1,0 +1,1273 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+/*!
+ * \file toolbox/camera_ptz.hpp
+ */
+
+#ifndef IMAGEPLUS_TOOLBOX_CAMERA_PTZ_HPP
+#define IMAGEPLUS_TOOLBOX_CAMERA_PTZ_HPP
+
+#ifdef USE_SMARTFLOW
+
+#include <smartroom/video/evilib/EVI-D70P.h>
+
+#include <imageplus/core/point.hpp>
+#include <imageplus/core/camera.hpp>
+#include <imageplus/core/timestamp.hpp>
+#include <imageplus/core/multiarray_ostream.hpp>
+
+#include <imageplus/math/numeric/products.hpp>
+
+#include <fstream>
+
+namespace imageplus
+{
+namespace toolbox
+{
+    /*!
+     * Class to control the Pan-Tilt-Zoom cameras of the SmartRoom
+     * Camera model: Sony EVI-D70P
+     * We use the open-source drivers of the evilib package.
+     *
+     * \author Javi Vidal        - Based on his PFC
+     * \author Sergio Segura     - Creation of the class
+     * \author Albert Gil Moreno - Review and rearrangement
+     */
+    class CameraPTZ : public Camera
+    {
+    public:
+
+        /*!
+         * A Pan-Tilt-Zoom position
+         */
+        class Position;
+
+        /*!
+         * A Movement includes all the necessary data to interpolate the current position,
+         * while the camera is moving.
+         */
+        class Movement;
+
+        /*!
+         * Helper function to evaluate polynomials
+         *
+         * \param[in] polynomial : The polynomial coefficients saved natural order in a MultiArray<float64,1>
+         *                         Example: ax^2 + bx + c -> MA[0]=a, MA[1]=b, MA[2]=c
+         * \param[in] point      : the x point to evaluate the polynomial
+         *
+         * \returns the evaluation of the polynomial in the point
+         *
+         * \todo this function should be moved to math and standarized!!
+         */
+        static
+        float64 eval_polynomial( const MultiArray<float64,1>& polynomial, float64 point );
+
+
+        /*!
+         * Constructor from a calibration file.
+         *
+         * The constructor of the camera. It initializes the hardware and the main parameters
+         * of the camera.
+         *
+         * \param[in] calibration_filename : Complete path of the calibration files of the PTZ cameras.
+         *                                   Calibration files for PTZ are not exactly equal to the normal
+         *                                   calibration files, they also include extra information related
+         *                                   to the motor position and movement.
+         * \param[in]            port_path : Device path where the pan-tilt-zoom camera is connected
+         */
+        CameraPTZ( const std::string& calibration_filename, const string& port_path = "/dev/ttyS0" );
+
+        /*!
+         * Read the calibration parameters from a file (overloaded from Camera)
+         *
+         * Note that calibration files of CameraPTZ have a different format than normal Camera files
+         *
+         * \param[in] filename : the name of the calibration file
+         */
+        void read_parameters( const std::string & filename );
+
+        /*!
+         * This function initialize only the specific hardware functions of the EVILIB library of the camera.
+         */
+        void init();
+
+        /*!
+         * \brief Moves the PTZ camera to point to the XYZ position
+         *
+         * This function takes the Point3D XYZ coordinates and makes the conversion to PTZ coordinates.
+         * Then we use the EVILIB library of the PTZ camera to move the cameras with their own functions.
+         *
+         * \param[in]    xyz : XYZ coordinates where the camera should point to.
+         *                     These coordinates should be refered to the same axis than the calibration.
+         */
+        void move( Point3D xyz );
+
+        /*!
+         * \returns the pan-tilt-zoom position where the camera is
+         */
+        Position where();
+
+        /*!
+         * Sets the pan, tilt and zoom speeds
+         *
+         * \param[in] pan_tilt_speed : pan and tilt speeds
+         * \param[in]     zoom_speed : zoom speed
+         */
+        void speed( int32 pan_tilt_speed, int32 zoom_speed )
+        {
+            _pt_speed = pan_tilt_speed;
+            _z_speed     = zoom_speed;
+        }
+
+        /*!
+         * \returns the pan and tilt speed
+         */
+        int32 pt_speed() { return _pt_speed; }
+
+        /*!
+         * \returns the zoom speed
+         */
+        int32 zoom_speed() { return _z_speed; }
+
+        /*!
+         * Sets the pan and tilt thresholds for the PTZ move function.
+         * When the move() function is called, it checks if the movement is above or below these thresholds
+         *
+         * \param[in]  pan_threshold : The pan movement should be bigger than this threshold
+         * \param[in] tilt_threshold : The tilt movement should be bigger than this threshold
+         */
+        void move_pan_tilt_thresholds( int32 pan_threshold, int32 tilt_threshold )
+        {
+            _pan_min_move  = pan_threshold;
+            _tilt_min_move = tilt_threshold;
+        }
+
+        /*!
+         * Sets the move rate threshold
+         * When the move() function is called, it checks the time elapsed since last movement and it
+         * should be bigger than the time markes by this rate
+         *
+         * \param[in] rate_threshold : The movements rate should be slower than this threshold
+         */
+        void move_rate_threshold( float32 rate_threshold )
+        {
+            _move_rate = rate_threshold;
+        }
+
+        /*!
+         * \returns the threshold of the pan movement
+         */
+        int32 move_pan_threshold() const
+        {
+            return _pan_min_move;
+        }
+
+        /*!
+         * \returns the threshold of the tilt movement
+         */
+        int32 move_tilt_threshold() const
+        {
+            return _tilt_min_move;
+        }
+
+        /*!
+         * \returns the maxim movements rate
+         */
+        float32 move_rate_threshold() const
+        {
+            return _move_rate;
+        }
+
+        /*!
+         * \return the pan factor of the motor
+         */
+        float32 pan_scale_factor()
+        {
+            return _pan_scale_factor;
+        }
+
+        /*!
+         * \return the tilt factor of the motor
+         */
+        float32 tilt_scale_factor()
+        {
+            return _tilt_scale_factor;
+        }
+
+        /*!
+         * This function converts the XYZ coordinates using spherical conversion, rotations matrix and
+         * translation vector of the calibration, to the corresponding PTZ coordinates.
+         *
+         * \param[in] xyz : XYZ coordinates to transform to PTZ.
+         *
+         * \returns a pan-tilt-zoom Position to point to xyz
+         */
+        Position xyz2ptz( Point3D xyz );
+
+        /*!
+         * Class to handle the pan-tilt-zoom values of the camera, its position.
+         */
+        class Position : public Point3D
+        {
+        public:
+            /*!
+             * Default constructor
+             */
+            Position()
+            {}
+
+            /*!
+             * Constructor from pan, tilt and zoom values
+             *
+             * \param[in] pan  : pan angle
+             * \param[in] tilt : tilt angle
+             * \param[in] zoom : zoom value
+             */
+            Position( float64 pan, float64 tilt, float64 zoom )
+            :   Point3D(pan, tilt, zoom)
+            {}
+
+            /*!
+             * Sets the pan value
+             *
+             * \param[in] pan : the pan value to set
+             */
+            void pan ( const float64& pan )
+            {
+                x()=pan;
+            }
+
+            /*!
+             * Sets the tilt value
+             *
+             * \param[in] tilt : the tilt value to set
+             */
+            void tilt( const float64& tilt )
+            {
+                y()=tilt;
+            }
+
+            /*!
+             * Sets the zoom value
+             *
+             * \param[in] zoom : the zoom value to set
+             */
+            void zoom( const float64& zoom )
+            {
+                z()=zoom;
+            }
+
+            /*!
+             * \returns the pan angle
+             */
+            const float64& pan () const
+            {
+                return x();
+            }
+
+            /*!
+             * \returns the tilt angle
+             */
+            const float64& tilt() const
+            {
+                return y();
+            }
+
+            /*!
+             * \returns the zoom value
+             */
+            const float64& zoom() const
+            {
+                return z();
+            }
+        };
+
+        /*!
+         * Class/Struct to handle all the necessary variables to define a movement of the camera.
+         *
+         * This class is necessary because the query rate of Position of the cameras is too slow
+         * compared to the frame rate. So to known the real position in a given instant we should
+         * need to interpolate, so we need some data and we store them in this class.
+         */
+        class Movement
+        {
+        public:
+            Timestamp ts;    //!< the Timestamp of the ptz Position
+            Position ptz;    //!< the last Position saved (by quering the camera)
+            Position origin; //!< the initial Position where the movement starts
+            Position target; //!< the target Position where the movement will stop
+            float32  vel_pt; //!< the pan and tilt speed
+            float32  vel_z;  //!< the zoom speed
+        };
+
+    private:
+
+        /*!
+         * The camera object. It contains internal functions of the EVILIB library
+         *
+         * It is a pointer because in the ptz_control clients we use threads,
+         * and threads always call the copy constructor but the EviLib is not designed to be copied,
+         * so in the copy constructor we just copy the pointer.
+         * We use shared_ptr just to be sure that we finally free the memory when all objects die.
+         */
+        boost::shared_ptr<EVI_D70P>        _cam;
+
+        //! Port path of the camera
+        std::string _port_path;
+
+        //! Pan threshold to determine the minimum increase in degrees to move the camera
+        int32 _pan_min_move; //1 degree by default
+
+        //! Tilt threshold to determine the minimum increase in degrees to move the camera
+        int32 _tilt_min_move; //1 degree by default
+
+        //! Time between two consecutive positions to be sent to the camera
+        float32 _move_rate; //0.33 seconds by default
+
+        //! Pan and Tilt velocities
+        int32 _pt_speed;
+        //! Zoom velocity
+        int32 _z_speed;
+
+        //! Translation Vector of the "motor point"
+        Point3D _trans_motor_in_zero;
+
+        //! Rotation Matrix of the "motor point"
+        MultiArray<float64,2>   _rot_motor_in_zero;
+
+        //! Pan scale factors to be applied to the move angle (from calibration)
+        float32 _pan_scale_factor;
+        //! Tilt scale factor to be applied to the move angle (from calibration)
+        float32 _tilt_scale_factor;
+
+        //! Timestamp to check the current position time
+        Timestamp _prev_ts;
+
+        //! Buffer to store the previous PTZ position of the camera
+        Position _prev_pos;
+
+        /*!
+         * \brief Function to determine if the camera should move to a new Position
+         *
+         *  This function takes a new Position (pan-tilt-zoom) of the CameraPTZ and compares it with
+         *  the previous Position stored. If the comparison results larger (in absolute value)
+         *  than the defined pan threshold or tilt threshold, the function returns true, and viceversa.
+         *
+         *  This function is used inside the move function to control the amount of information sent to
+         *  the CameraPTZ, to fill in the capabilities of the EviLib functions, and to avoid an excess
+         *  of unnecessary movement of the CameraPTZ in common applications.
+         *
+         *  \param[in]    ptz : The current PTZ position where we want to move the camera
+         *
+         *  \returns true, if we should move the camera, false if the movement is irrelevant and
+         *           we shouldn't move the camera.
+         */
+        bool should_move( Position ptz );
+
+    private:
+        //! Rotation radius in cm
+        float64 _radius_calib;
+        //! Initial pan value
+        float64 _pan_calib;
+        //! Initial tilt value
+        float64 _tilt_calib;
+        //! Rotation matrix
+        MultiArray<float64,2> _rot_calib;
+        //! Translation vector in cm
+        MultiArray<float64,1> _trans_calib;
+        //! Calibration matrix (intrinsic parameters)
+        MultiArray<float64,2> _k_calib;
+        //! Distortion parameters: radial (k1,k2) and decentering (p1,p2)
+        MultiArray<float64,1> _distortion_calib;
+        //! x focal length polynomial model
+        MultiArray<float64,1> _focal_x_calib;
+        //! y focal length polynomial model
+        MultiArray<float64,1> _focal_y_calib;
+        //! x principal point polynomial model
+        MultiArray<float64,1> _principal_x_calib;
+        //! y principal point polynomial model
+        MultiArray<float64,1> _principal_y_calib;
+        //! skewness polynomial model
+        MultiArray<float64,1> _skewness_calib;
+
+        /*!
+         * Updates the inherited Camera parameters (calibration parameters) for a specific Position
+         *
+         * Note that this function WON'T be called by the where() function.
+         * It should be called by the user when the class is used in off-line and on-line modes.
+         *
+         * \param[in] ptz : the pan-tilt-zoom position to update the calibration parameters
+         *
+         * \todo This function must be public, but since it is not working properly (test commented)
+         *       it has been moved as private (it is not used anywhere).
+         *       It should be fixed!
+         */
+        void update( const Position& ptz );
+
+
+#ifdef AGIL_DEPRECATED
+//        class PTZFileOperations
+//        {
+//            public:
+//                void open (std::string filename)
+//                {
+//                    ofile.open( filename.c_str(), ofstream::out|ofstream::trunc );
+//                    if( !ofile.is_open() )
+//                        cout << "Error openning file " << filename.c_str() << " to write" << endl;
+//                }
+//
+//                void append (std::string filename)
+//                {
+//                    ofile.open( filename.c_str(), ofstream::out|ofstream::app );
+//                    if( !ofile.is_open() )
+//                        cout << "Error openning file " << filename.c_str() << " to write" << endl;
+//                }
+//
+//                void close (void)
+//                {
+//                    ofile.close();
+//                }
+//
+//                void read( std::string filename, std::string mode )
+//                {
+//                    ifstream file;
+//
+//                    // Remove entries stored before
+//                    ptzVector.clear();
+//
+//                    // Open file allowing input stream opetarions
+//                    file.open( filename.c_str(), ifstream::in );
+//                    if( !file.is_open() )
+//                        cout << "Error openning file: " << filename.c_str() << " to read" << endl;
+//
+//                    // Moving R/W pointer at the beginning
+//                    file.seekg( 0, ios_base::beg );
+//
+//                    while( !file.eof() ){
+//                        Timestamp ts;
+//
+//                //      cout << "READ MODE: " << mode << endl;
+//
+//                        if( mode == "ptz" )
+//                        {
+//                //          cout << "Modo lectura ptz" << endl;
+//                            Position ptz, t, q;
+//                            float v_pt, v_z;
+//
+//                            // Reading a line from file skipping white spaces (created by \t)
+//                            file >> skipws >> ts  >> skipws >> ptz.x() >> skipws >> ptz.y() >> skipws >> ptz.z() >> skipws >> t.x() >> skipws >> t.y()
+//                                 >> skipws >> t.z() >> skipws >> q.x() >> skipws >> q.y() >> skipws >> q.z() >> skipws >> v_pt >> skipws >> v_z;
+//
+//                //          Timestamp ts = from_string(ts_string);
+//                            ptzVector.push_back( Movement( ts, ptz, t, q, v_pt, v_z ) );
+//                        }
+//                        else{   // Mode == xyz
+//                //          cout << "Modo lectura xyz" << endl;
+//
+//                            Point3D tempXYZ;
+//
+//                            file >> skipws >> ts >> skipws >> tempXYZ.x() >> skipws >> tempXYZ.y() >> skipws >> tempXYZ.z();
+//
+//                //          Timestamp ts(ts_string);
+//                            ptzVector.push_back( Movement( ts, tempXYZ ) );
+//                        }
+//                    }
+//
+//                    // Closing stream
+//                    file.close();
+//                }
+//
+//                void write (Movement ptz_data, std::string mode)
+//                {
+//                    if( mode == "ptz" ){
+//                        ofile   << setfill('0') << setw(10)<< ptz_data.ts       << "\t"
+//                                << setfill(' ') << setw(6) << ptz_data.ptz.pan()        << "\t" << setfill(' ') << setw(6) << ptz_data.ptz.tilt()   << "\t"
+//                                << setfill(' ') << setw(6) << ptz_data.ptz.zoom()       << "\t" << setfill(' ') << setw(6) << ptz_data.origin.pan() << "\t"
+//                                << setfill(' ') << setw(6) << ptz_data.origin.tilt()    << "\t" << setfill(' ') << setw(6) << ptz_data.origin.zoom()    << "\t"
+//                                << setfill(' ') << setw(6) << ptz_data.target.pan() << "\t" << setfill(' ') << setw(6) << ptz_data.target.tilt() << "\t"
+//                                << setfill(' ') << setw(6) << ptz_data.target.zoom()    << "\t" << setfill(' ') << setw(2) << ptz_data.vel_pt   << "\t"
+//                                << setfill(' ') << setw(1) << ptz_data.vel_z    << "\t"
+//                        << endl;
+//                    }
+//                    else{   // mode = "xyz"
+//                        ofile   << setfill('0') << setw(6) << ptz_data.xyz.x() << "\t" << setfill(' ') << setw(6) << ptz_data.xyz.y() << "\t"
+//                                << setfill(' ') << setw(6) << ptz_data.xyz.z() << "\t"
+//                                << endl;
+//                    }
+//                }
+//
+//
+//                std::vector<Movement> getPTZVector()
+//                {
+//                    return ptzVector;
+//                }
+//
+//
+//            private:
+//                std::vector<Movement> ptzVector;
+//                std::ofstream ofile;
+//        };
+#endif // AGIL_DEPRECATED
+
+    };
+
+    /*!
+     * Output stream operator (<<) for the CameraPTZ::Movement class
+     *
+     * \param[in,out]     os : the ostream object to print the CameraPTZ::Movement
+     * \param[in]   movement : the CameraPTZ::Movement to print out
+     *
+     * \returns os
+     */
+    inline
+    std::ostream& operator<<(std::ostream& os, const CameraPTZ::Movement& movement)
+    {
+        os  << movement.ts     << " "
+            << movement.ptz    << " "
+            << movement.origin << " "
+            << movement.target << " "
+            << movement.vel_pt << " "
+            << movement.vel_z  ;
+
+        return os;
+    }
+
+} // ns toolbox
+} // ns imageplus
+
+#endif // USE_SMARTFLOW
+#endif // IMAGEPLUS_TOOLBOX_CAMERA_PTZ_HPP
+
+
+/*
+ * AGIL: The following code has been deprecated because it has been never used.
+ *       It is an implementation of a paper related to calibration of a Pan-Tilt-Zoom cameras.
+ */
+#ifdef AGIL_DEPRECATED
+
+/*
+ * The header file:
+ */
+
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file multiview/camera_ptz.hpp
+//!
+//!  base class to store PTZ camera parameters
+//!
+
+#ifndef IMAGEPLUS_MULTIVIEW_CAMERA_PTZ_HPP
+#define IMAGEPLUS_MULTIVIEW_CAMERA_PTZ_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+#include <imageplus/core/camera.hpp>
+
+namespace imageplus
+{
+    namespace multiview
+    {
+        //!
+        //! \brief class to store PTZ camera parameters
+        //!
+        //! \author Jordi Salvador <jordi@gps.tsc.upc.edu>
+        //!
+        //! \date 3-Dec-2008
+        //!
+        //! This class stores the PTZ camera parameters needed for multiview environment operations. This parameters follow the
+        //! pinhole camera model , and should be computed previously. The parameters will be read with the method read_parameters from a file.
+        //!
+        class CameraPTZ
+        {
+            public:
+                //!
+                //! \brief Default constructor
+                //!
+                CameraPTZ();
+                //!
+                //! \brief destructor
+                //!
+                ~CameraPTZ();
+                //!
+                //! \brief Read camera parameters from a file
+                //!
+                //! \param[in] filename : Name of the file where parameters are stored in the format previously described
+                //!
+                void read_parameters( const std::string & filename );
+                //!
+                //! \brief Rotation matrix R
+                //!
+                //! \return Reference to the multiarray that stores the matrix.
+                //!
+                const MultiArray<float64,2> & rot() const;
+                //!
+                //! \brief Translation vector
+                //!
+                //! \return Reference to the multiarray that stores the vector.
+                //!
+                const MultiArray<float64,1> & trans() const;
+                //!
+                //! \brief Calibration matrix K (intrinsic parameters)
+                //!
+                //! \return Reference to the multiarray that stores the matrix.
+                //!
+                const MultiArray<float64,2> & k() const;
+                //!
+                //! \brief Distortion parameters radial (k1,k2) and decentering (p1,p2)
+                //!
+                //! \return Reference to the multiarray that stores the parameters as a vector (k1,k2,p1,p2).
+                //!
+                const MultiArray<float64,1> & distortion() const;
+                //!
+                //! \brief Camera image width
+                //!
+                //! \return image width.
+                //!
+                const uint32 im_width() const;
+                //!
+                //! \brief Camera image height
+                //!
+                //! \return image height.
+                //!
+                const uint32 im_height() const;
+                //!
+                //! \brief Rotation radius
+                //!
+                //! \return rotation radius
+                //!
+                const float64 radius() const;
+                //!
+                //! \brief Intitial pan
+                //!
+                //! \return initial pan
+                //!
+                const float64 pan() const;
+                //!
+                //! \brief Intitial tilt
+                //!
+                //! \return initial tilt
+                //!
+                const float64 tilt() const;
+                //!
+                //! \brief Pan scale factor
+                //!
+                //! \return Pan scale factor
+                //!
+                const float64 panFactor() const;
+                //!
+                //! \brief Tilt scale factor
+                //!
+                //! \return Tilt scale factor
+                //!
+                const float64 tiltFactor() const;
+                //!
+                //! \brief PTZ Motor position
+                //!
+                //! \return  XYZ position
+                //!
+                const Point3D motorPoint() const;//!
+                //! \brief x focal length polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return x focal length polynomial
+                //!
+                const MultiArray<float64,1> & focal_x() const;
+                //!
+                //! \brief y focal length polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return y focal length polynomial
+                //!
+                const MultiArray<float64,1> & focal_y() const;
+                //!
+                //! \brief x principal point polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return x principal point polynomial
+                //!
+                const MultiArray<float64,1> & principal_x() const;
+                //!
+                //! \brief y principal point polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return y principal point polynomial
+                //!
+                const MultiArray<float64,1> & principal_y() const;
+                //!
+                //! \brief skewness polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return skewness polynomial
+                //!
+                const MultiArray<float64,1> & skewness() const;
+                //!
+                //! \brief Rotation matrix R
+                //!
+                //! \return Reference to the multiarray that stores the matrix.
+                //!
+                MultiArray<float64,2> & rot();
+                //!
+                //! \brief Translation vector
+                //!
+                //! \return Reference to the multiarray that stores the vector.
+                //!
+                MultiArray<float64,1> & trans();
+                //!
+                //! \brief Calibration matrix K (intrinsic parameters)
+                //!
+                //! \return Reference to the multiarray that stores the matrix.
+                //!
+                MultiArray<float64,2> & k();
+                //!
+                //! \brief Distortion parameters radial (k1,k2) and decentering (p1,p2)
+                //!
+                //! \return Reference to the multiarray that stores the parameters as a vector (k1,k2,p1,p2).
+                //!
+                MultiArray<float64,1> & distortion();
+                //!
+                //! \brief Camera image width
+                //!
+                //! \return image width.
+                //!
+                int64 & im_width();
+                //!
+                //! \brief Camera image height
+                //!
+                //! \return image height.
+                //!
+                int64 & im_height();
+                //!
+                //! \brief Rotation radius
+                //!
+                //! \return rotation radius
+                //!
+                float64 & radius();
+                //!
+                //! \brief Intitial pan
+                //!
+                //! \return initial pan
+                //!
+                float64 & pan();
+                //!
+                //! \brief Intitial tilt
+                //!
+                //! \return initial tilt
+                //!
+                float64 & tilt();
+                //!
+                //! \brief x focal length polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return x focal length polynomial
+                //!
+                MultiArray<float64,1> & focal_x();
+                //!
+                //! \brief y focal length polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return y focal length polynomial
+                //!
+                MultiArray<float64,1> & focal_y();
+                //!
+                //! \brief x principal point polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return x principal point polynomial
+                //!
+                MultiArray<float64,1> & principal_x();
+                //!
+                //! \brief y principal point polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return y principal point polynomial
+                //!
+                MultiArray<float64,1> & principal_y();
+                //!
+                //! \brief skewness polynomial model,
+                //! sorted such that
+                //! val=p(0)*t^N+p(1)*t^(N-1)+...+p(N-1)*t+p(N),
+                //! where N is the degree (N+1 coefficients)
+                //!
+                //! \return skewness polynomial
+                //!
+                MultiArray<float64,1> & skewness();
+                //!
+                //! \brief Builds the Camera parameters
+                //! corresponding to the given
+                //! Pan-Tilt-Zoom parameters
+                //!
+                //! \param[in] p : pan
+                //! \param[in] t : tilt
+                //! \param[in] z : zoom
+                //!
+                //! \return resulting Camera
+                //!
+                Camera & get_camera( const float64 p, const float64 t, const float64 z );
+            private:
+                //! Image width in pixels
+                int64 _width;
+                //! Image height in pixels
+                int64 _height;
+                //! Rotation radius in cm
+                float64 _radius;
+                //! Initial pan value
+                float64 _pan;
+                //! Initial tilt value
+                float64 _tilt;
+                //! Rotation matrix
+                MultiArray<float64,2> _rot;
+                //! Translation vector in cm
+                MultiArray<float64,1> _trans;
+                //! Calibration matrix (intrinsic parameters)
+                MultiArray<float64,2> _k;
+                //! Distortion parameters: radial (k1,k2) and decentering (p1,p2)
+                MultiArray<float64,1> _distortion;
+                //! x focal length polynomial model
+                MultiArray<float64,1> _focal_x;
+                //! y focal length polynomial model
+                MultiArray<float64,1> _focal_y;
+                //! x principal point polynomial model
+                MultiArray<float64,1> _principal_x;
+                //! y principal point polynomial model
+                MultiArray<float64,1> _principal_y;
+                //! skewness polynomial model
+                MultiArray<float64,1> _skewness;
+                //! Camera internally built from pan, tilt, zoom parameters
+                Camera _cam;
+                //! Pan correction factor
+                float64 _panFactor;
+                //! Tilt correction factor
+                float64 _tiltFactor;
+                //! X Motor position
+                float64 _xMotor;
+                //! Y Motor position
+                float64 _yMotor;
+                //! Z Motor position
+                float64 _zMotor;
+        };
+    }
+}
+#endif
+
+/*
+ * And the implementation file
+ */
+
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file camera_ptz.cpp
+//!
+//!  Implementation for CameraPTZ class
+//!
+
+#include <typeinfo>
+#include <imageplus/multiview/camera_ptz.hpp>
+#include <imageplus/math/numeric/products.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+
+#include <fstream>
+
+using namespace imageplus;
+using namespace imageplus::multiview;
+using namespace imageplus::math::numeric;
+using namespace std;
+
+CameraPTZ::CameraPTZ() :
+    _rot( 3, 3 ), _trans( 3 ), _k( 3, 3 ), _distortion( 4 ),
+    _focal_x( 11 ), _focal_y( 11 ), _principal_x( 11 ), _principal_y( 11 ), _skewness( 11 )
+{
+}
+
+CameraPTZ::~CameraPTZ()
+{
+}
+
+void CameraPTZ::read_parameters( const std::string & filename )
+{
+    int64 i;
+    char garbage[80];
+    float64 * pdata;
+
+    //Open input file
+    ifstream ifs;
+    ifs.open( filename.c_str(), ifstream::in );
+    if( ifs.is_open() )
+    {
+        //Image size
+        ifs.getline( garbage, 80 );
+        ifs>>skipws>>_width>>_height;
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //Fixed parameters for a camera
+        _cam.im_width()=_width;
+        _cam.im_height()=_height;
+
+        //Rotation matrix
+        ifs.getline( garbage, 80 );
+        pdata=_rot.data();
+        for (i = 0; i < 3; i++)
+        {
+            ifs>>skipws>>*(pdata+i*3+0)>>*(pdata+i*3+1)>>*(pdata+i*3+2);
+        }
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //Translation vector
+        ifs.getline( garbage, 80 );
+        pdata = _trans.data();
+        ifs>>skipws>>*(pdata+0)>>*(pdata+1)>>*(pdata+2);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //Rotation radius, initial pan, initial tilt
+        ifs.getline( garbage, 80 );
+        ifs>>skipws>>_radius>>_pan>>_tilt;
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //Non-written values of the projection matrix:
+        pdata=_k.data();
+        pdata[1]=0; pdata[3]=0; pdata[6]=0; pdata[7]=0; pdata[8]=1;
+
+        //Focal lengthes zoom=0
+        ifs.getline( garbage, 80 );
+        ifs>>skipws>>*pdata>>*(pdata+4);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //Principal points zoom=0
+        ifs.getline( garbage, 80 );
+        ifs>>skipws>>*(pdata+2)>>*(pdata+5);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //distortion parameters
+        ifs.getline( garbage, 80 );
+        pdata = _distortion.data();
+        ifs>>skipws>>*pdata>>*(pdata+1)>>*(pdata+2)>>*(pdata+3);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //focal length x polynomial model
+        ifs.getline( garbage, 80 );
+        pdata = _focal_x.data();
+        ifs>>skipws>>*(pdata)>>*(pdata+1)>>*(pdata+2)>>*(pdata+3)>>*(pdata+4)>>*(pdata+5)>>
+             *(pdata+6)>>*(pdata+7)>>*(pdata+8)>>*(pdata+9)>>*(pdata+10);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //focal length y polynomial model
+        ifs.getline( garbage, 80 );
+        pdata = _focal_y.data();
+        ifs>>skipws>>*(pdata)>>*(pdata+1)>>*(pdata+2)>>*(pdata+3)>>*(pdata+4)>>*(pdata+5)>>
+             *(pdata+6)>>*(pdata+7)>>*(pdata+8)>>*(pdata+9)>>*(pdata+10);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //principal point x polynomial model
+        ifs.getline( garbage, 80 );
+        pdata = _principal_x.data();
+        ifs>>skipws>>*(pdata)>>*(pdata+1)>>*(pdata+2)>>*(pdata+3)>>*(pdata+4)>>*(pdata+5)>>
+             *(pdata+6)>>*(pdata+7)>>*(pdata+8)>>*(pdata+9)>>*(pdata+10);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //principal point y polynomial model
+        ifs.getline( garbage, 80 );
+        pdata = _principal_y.data();
+        ifs>>skipws>>*(pdata)>>*(pdata+1)>>*(pdata+2)>>*(pdata+3)>>*(pdata+4)>>*(pdata+5)>>
+             *(pdata+6)>>*(pdata+7)>>*(pdata+8)>>*(pdata+9)>>*(pdata+10);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //skewness polynomial model
+        ifs.getline( garbage, 80 );
+        pdata = _skewness.data();
+        ifs>>skipws>>*(pdata)>>*(pdata+1)>>*(pdata+2)>>*(pdata+3)>>*(pdata+4)>>*(pdata+5)>>
+             *(pdata+6)>>*(pdata+7)>>*(pdata+8)>>*(pdata+9)>>*(pdata+10);
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //Pan and Tilt scale factor
+        ifs.getline( garbage, 80 );
+        ifs>>skipws>>_panFactor>>_tiltFactor;
+        ifs.getline( garbage, 80 );
+        ifs.getline( garbage, 80 );
+
+        //Motor point
+        ifs.getline( garbage, 80 );
+        ifs>>skipws>>_xMotor>>_yMotor>>_zMotor;
+    }
+    else
+    {
+        throw ImagePlusError( "ERROR(Camera.read_parameters) : Cannot open  "+filename );
+    }
+
+    ifs.close();
+}
+
+const MultiArray<float64,2>& CameraPTZ::rot() const
+{
+    return _rot;
+}
+
+const MultiArray<float64,1>& CameraPTZ::trans() const
+{
+    return (_trans);
+}
+
+const MultiArray<float64,2>& CameraPTZ::k() const
+{
+    return (_k);
+}
+
+const MultiArray<float64,1>& CameraPTZ::distortion() const
+{
+    return (_distortion);
+}
+
+const uint32  CameraPTZ::im_width() const
+{
+    return (_width);
+}
+
+const uint32  CameraPTZ::im_height() const
+{
+    return (_height);
+}
+
+const float64 CameraPTZ::radius() const
+{
+    return _radius;
+}
+
+const float64 CameraPTZ::pan() const
+{
+    return _pan;
+}
+
+const float64 CameraPTZ::tilt() const
+{
+    return _tilt;
+}
+
+const float64 CameraPTZ::panFactor() const
+{
+    return _panFactor;
+}
+
+const float64 CameraPTZ::tiltFactor() const
+{
+    return _tiltFactor;
+}
+
+const Point3D CameraPTZ::motorPoint() const
+{
+    Point3D tmp( _xMotor, _yMotor, _zMotor );
+
+    return (tmp);
+}
+
+const MultiArray<float64,1> & CameraPTZ::focal_x() const
+{
+    return _focal_x;
+}
+
+const MultiArray<float64,1> & CameraPTZ::focal_y() const
+{
+    return _focal_y;
+}
+
+const MultiArray<float64,1> & CameraPTZ::principal_x() const
+{
+    return _principal_x;
+}
+
+const MultiArray<float64,1> & CameraPTZ::principal_y() const
+{
+    return _principal_y;
+}
+
+const MultiArray<float64,1> & CameraPTZ::skewness() const
+{
+    return _skewness;
+}
+
+MultiArray<float64,2>& CameraPTZ::rot()
+{
+    return (_rot);
+}
+
+MultiArray<float64,1>& CameraPTZ::trans()
+{
+    return (_trans);
+}
+
+MultiArray<float64,2>& CameraPTZ::k()
+{
+    return (_k);
+}
+
+MultiArray<float64,1>& CameraPTZ::distortion()
+{
+    return (_distortion);
+}
+
+int64& CameraPTZ::im_width()
+{
+    return (_width);
+}
+
+int64& CameraPTZ::im_height()
+{
+    return (_height);
+}
+
+float64 & CameraPTZ::radius()
+{
+    return _radius;
+}
+
+float64 & CameraPTZ::pan()
+{
+    return _pan;
+}
+
+float64 & CameraPTZ::tilt()
+{
+    return _tilt;
+}
+
+MultiArray<float64,1> & CameraPTZ::focal_x()
+{
+    return _focal_x;
+}
+
+MultiArray<float64,1> & CameraPTZ::focal_y()
+{
+    return _focal_y;
+}
+
+MultiArray<float64,1> & CameraPTZ::principal_x()
+{
+    return _principal_x;
+}
+
+MultiArray<float64,1> & CameraPTZ::principal_y()
+{
+    return _principal_y;
+}
+
+MultiArray<float64,1> & CameraPTZ::skewness()
+{
+    return _skewness;
+}
+
+float64 eval_polynomial( const MultiArray<float64,1> p, const float64 t )
+{
+    int64 size=p.dims()[0];
+    float64 res=p[--size];
+    for( int64 i=0, deg=size; i < size; ++i, --deg )
+    {
+        res+=p[i]*std::pow( t, static_cast<float64>( deg ) );
+    }
+
+    return res;
+}
+
+Camera & CameraPTZ::get_camera( const float64 p, const float64 t, const float64 z )
+{
+    //Extrinsics:
+
+    float64 trad=(t+_tilt)*0.0174532925; //in radians, from degrees
+    float64 prad=(p+_pan)*0.0174532925; //in radians, from degrees
+    float64 cost=cos( trad ), cosp=cos( prad ), sint=sin( trad ), sinp=sin( prad );
+
+    MultiArray<float64,2> rt( 3, 3 );
+    rt[0][0]=1; rt[1][0]=0;    rt[2][0]=0;
+    rt[0][1]=0; rt[1][1]=cost; rt[2][1]=-sint;
+    rt[0][2]=0; rt[1][2]=sint; rt[2][2]=cost;
+
+    MultiArray<float64,2> rp( 3, 3 );
+    rp[0][0]=cosp;  rp[1][0]=0; rp[2][0]=sinp;
+    rp[0][1]=0;     rp[1][1]=1; rp[2][1]=0;
+    rp[0][2]=-sinp; rp[1][2]=0; rp[2][2]=cosp;
+
+    MultiArray<float64,2> rtp=prod( rt, rp );
+
+    _cam.trans()=prod( rtp, _trans ); //missing translation variable with focal length (with zoom==0, equals to _radius)
+    _cam.rot()=prod( rtp, _rot );
+
+    //Intrinsics and center of projections, which varies with focal length:
+
+    if( z == 0 )
+    {
+        _cam.trans()[2]+=_radius;
+        _cam.distortion()=_distortion;
+        _cam.k()=_k;
+    }
+    else
+    {
+        std::cerr<<"WARNING: Zoom support still under development!!!!"<<std::endl;
+        _cam.trans()[2]+=_radius; //wrong
+        _cam.distortion()=_distortion; //wrong
+        float64 * pdata=_cam.k().data();
+        pdata[0]=eval_polynomial( _focal_x, z );
+        pdata[1]=eval_polynomial( _skewness, z ); //wrong
+        pdata[2]=eval_polynomial( _principal_x, z );
+        pdata[3]=0;
+        pdata[4]=eval_polynomial( _focal_y, z );
+        pdata[5]=eval_polynomial( _principal_y, z );
+        pdata[6]=0;
+        pdata[7]=0;
+        pdata[8]=1;
+    }
+
+    MultiArray<float64,2> matemp=prod( _cam.k(), _cam.rot() );
+    float64 * temp=matemp.data();
+    MultiArray<float64,1> matemp2=prod( _cam.k(), _cam.trans() );
+    float64 * temp2=matemp2.data();
+
+    float64 * pdata=_cam.p().data();
+    pdata[0]=temp[0]; pdata[1]=temp[1]; pdata[2]=temp[2];  pdata[3]=temp2[0];
+    pdata[4]=temp[3]; pdata[5]=temp[4]; pdata[6]=temp[5];  pdata[7]=temp2[1];
+    pdata[8]=temp[6]; pdata[9]=temp[7]; pdata[10]=temp[8]; pdata[11]=temp2[2];
+
+    return _cam;
+}
+
+
+#endif // AGIL_DEPRECATED_CODE
+
+

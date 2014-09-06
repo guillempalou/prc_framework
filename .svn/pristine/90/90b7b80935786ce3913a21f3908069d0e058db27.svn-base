@@ -1,0 +1,134 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file writesequence.test
+//!
+
+#include <string>
+
+#include <imageplus/io/readsequence.hpp>
+#include <imageplus/io/writesequence.hpp>
+
+#include <imageplus/math/statistics/random_generators.hpp>
+
+
+BOOST_AUTO_TEST_SUITE (write_sequence_suite);
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+
+BOOST_AUTO_TEST_CASE( io_sequence_constructor_test )
+{
+    WriteSequence wseq1;
+    BOOST_CHECK ( wseq1.format()     == UNKNOWN_SEQ_FORMAT );
+    BOOST_CHECK ( wseq1.startframe() == 0 );
+    BOOST_CHECK ( wseq1.skip()       == 0 );
+    
+    WriteSequence wseq2(std::string(TEST_DATA_PATH_W) + "/io_seq_test_%06d.png");
+    BOOST_CHECK ( wseq2.format()     == IMAGES_PRINTF );
+    BOOST_CHECK ( wseq2.startframe() == 0 );
+    BOOST_CHECK ( wseq2.skip()       == 0 );
+    
+    WriteSequence wseq3(std::string(TEST_DATA_PATH_W) + "/io_seq_test_%06d.png", 3, 2);
+    BOOST_CHECK ( wseq3.format()     == IMAGES_PRINTF );
+    BOOST_CHECK ( wseq3.startframe() == 3 );
+    BOOST_CHECK ( wseq3.skip()       == 2 );
+}
+
+
+BOOST_AUTO_TEST_CASE( io_sequence_test )
+{
+    WriteSequence wseq(std::string(TEST_DATA_PATH_W) + "/io_seq_test_%06d.png");
+    
+    
+    ImageRGB<uint8> rgb1(100,200);
+    ImageRGB<uint8> rgb2(100,200);
+    ImageRGB<uint8> rgb3(100,200);
+
+    for(std::size_t c=0; c<3; ++c )
+    {
+        for(std::size_t y=0; y<200; ++y)
+        {
+            for(std::size_t x=0; x<100; ++x)
+            {
+                rgb1(c) = math::statistics::rand_uniform_int(0,255);
+                rgb2(c) = math::statistics::rand_uniform_int(0,255);
+                rgb3(c) = math::statistics::rand_uniform_int(0,255);
+            }
+        }
+    }
+    
+    wseq << rgb1 << rgb2 << rgb3 << rgb3 << rgb2 << rgb1;
+    
+    ReadSequence    rseq(std::string(TEST_DATA_PATH_W) + "/io_seq_test_%06d.png", 0, 6 );
+    ImageRGB<uint8> rgb;
+    
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb1 );
+    
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb2 );
+
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb3 );
+    
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb3 );
+    
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb2 );
+
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb1 );
+}
+
+BOOST_AUTO_TEST_CASE( io_sequence_start_skip_test )
+{
+    WriteSequence wseq(std::string(TEST_DATA_PATH_W) + "/io_seq_test_start_skip_%06d.png", 5, 2);
+    
+    ImageRGB<uint8> rgb1(100,200);
+    ImageRGB<uint8> rgb2(100,200);
+    ImageRGB<uint8> rgb3(100,200);
+
+    for(std::size_t c=0; c<3; ++c )
+    {
+        for(std::size_t y=0; y<200; ++y)
+        {
+            for(std::size_t x=0; x<100; ++x)
+            {
+                rgb1(c) = math::statistics::rand_uniform_int(0,255);
+                rgb2(c) = math::statistics::rand_uniform_int(0,255);
+                rgb3(c) = math::statistics::rand_uniform_int(0,255);
+            }
+        }
+    }
+    
+    wseq << rgb1 << rgb2 << rgb3 << rgb3 << rgb2 << rgb1;
+    
+    ReadSequence    rseq(std::string(TEST_DATA_PATH_W) + "/io_seq_test_start_skip_%06d.png", 5, 20, 2);
+    ImageRGB<uint8> rgb;
+    
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb1 );
+    
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb2 );
+
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb3 );
+    
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb3 );
+    
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb2 );
+
+    rseq >> rgb;
+    BOOST_CHECK( rgb == rgb1 );
+}
+
+BOOST_AUTO_TEST_SUITE_END();

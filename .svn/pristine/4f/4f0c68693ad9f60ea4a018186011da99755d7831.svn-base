@@ -1,0 +1,116 @@
+/*
+ * stop_conditions.hpp
+ *
+ *  Created on: Jan 18, 2013
+ *      Author: gpalou
+ */
+
+#ifndef STOP_CONDITIONS_HPP_
+#define STOP_CONDITIONS_HPP_
+
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+
+	class NumberOfRegionsStopCondition {
+
+	public:
+		struct Parameters {
+			uint64 num_regions_to_stop;
+
+			Parameters() {
+				num_regions_to_stop = 1;
+			}
+		};
+
+		template<class SignalModel, class BPT>
+		inline void init(SignalModel& signal, BPT& bpt, descriptors::DescriptorManager& manager, Parameters& pars) {
+			_num_regions = bpt.max_label()+1;
+			_pars = pars;
+		}
+
+		template<class SignalModel, class BPT>
+		inline void update(SignalModel& signal, BPT& bpt, descriptors::DescriptorManager& manager) {
+			_num_regions--;
+		}
+
+		template<class SignalModel, class BPT>
+		inline bool should_stop(SignalModel& signal, BPT& bpt, descriptors::DescriptorManager& manager) {
+			return (_num_regions == _pars.num_regions_to_stop);
+		}
+
+	protected:
+
+		Parameters _pars;
+
+		uint64 _num_regions;
+
+	};
+
+	class MinSizeStopCondition {
+
+		typedef descriptors::Area									AreaDescriptor;
+
+	public:
+
+		struct Parameters {
+			uint64 min_size;
+		};
+
+		template<class SignalModel, class BPT>
+		inline void init(SignalModel& signal, BPT& bpt, descriptors::DescriptorManager& manager, Parameters& pars) {
+			_pars = pars;
+
+			typename BPT::leaves_iterator it = bpt.begin();
+			typename BPT::leaves_iterator end = bpt.end();
+
+			_under_min_size = 0;
+
+			for(;it!=end;++it) {
+				const typename AreaDescriptor::type area = manager.calc_descriptor<AreaDescriptor>(signal,*it);
+				if (area < _pars.min_size) _under_min_size++;
+			}
+		}
+
+		template<class SignalModel, class BPT>
+		inline void update(SignalModel& signal, BPT& bpt, descriptors::DescriptorManager& manager) {
+
+			typedef typename BPT::RegionType	RegionType;
+
+			RegionType& last = bpt(bpt.max_label());
+			RegionType* child1 = (RegionType*)last.child(0);
+			RegionType* child2 = (RegionType*)last.child(1);
+
+			const typename AreaDescriptor::type areaF = manager.calc_descriptor<AreaDescriptor>(signal,last);
+			const typename AreaDescriptor::type area1 = manager.calc_descriptor<AreaDescriptor>(signal,*child1);
+			const typename AreaDescriptor::type area2 = manager.calc_descriptor<AreaDescriptor>(signal,*child2);
+
+			if (areaF >= _pars.min_size) {
+				if (area1 < _pars.min_size) _under_min_size --;
+				if (area2 < _pars.min_size) _under_min_size --;
+			} else {
+				_under_min_size--;
+			}
+
+		}
+
+		template<class SignalModel, class BPT>
+		inline bool should_stop(SignalModel& signal, BPT& bpt, descriptors::DescriptorManager& manager) {
+			return _under_min_size==0;
+		}
+
+	protected:
+
+		Parameters _pars;
+
+		uint64 _under_min_size;
+	};
+
+
+	}
+}
+
+#endif /* STOP_CONDITIONS_HPP_ */

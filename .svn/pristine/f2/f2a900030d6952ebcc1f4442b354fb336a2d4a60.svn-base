@@ -1,0 +1,248 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file products.cpp
+//!
+//! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+//!
+//!  Numerical products with multiarrays
+//!
+
+#include <imageplus/core.hpp>
+
+#include <imageplus/math/numeric/products.hpp>
+
+#include <numeric/ublas_adaptors.hpp>
+
+#include <boost/numeric/ublas/triangular.hpp>
+#include <boost/numeric/ublas/lu.hpp>
+#include <boost/numeric/ublas/io.hpp>
+
+
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+template<typename T>
+MultiArray<T,2> imageplus::math::numeric::prod( const MultiArray<T,2>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError)
+{
+    // Check dimensions
+    if ( in1.dims(0) != in2.dims(1) )
+    {
+        throw ImagePlusError("Matrices dimensions mismatch.");
+    }
+
+    // Careful, sometimes you should remove the const away (dangerous if prod() changes matrices values)
+    UblasAdaptionMatrix<T> u1(const_cast<T*>(in1.data()), in1.dims(0), in1.dims(1));
+    UblasAdaptionMatrix<T> u2(const_cast<T*>(in2.data()), in2.dims(0), in2.dims(1));
+
+    boost::numeric::ublas::matrix<T> u;
+    u = boost::numeric::ublas::prod(u1,u2);
+
+    return u;
+
+}
+
+
+
+template<typename T>
+MultiArray<T,1> imageplus::math::numeric::prod( const MultiArray<T,2>& in1, const MultiArray<T,1>& in2 ) throw (ImagePlusError)
+{
+    // Check dimensions
+    ASSERT( in1.dims(0) == in2.dims(0), "Matrix and vector dimensions mismatch.")
+
+    // Careful, sometimes you should remove the const away (dangerous if prod() changes matrices values)
+    UblasAdaptionMatrix<T> u1(const_cast<T*>(in1.data()), in1.dims(0), in1.dims(1));
+    UblasAdaptionVector<T> u2(const_cast<T*>(in2.data()), in2.dims(0));
+
+    boost::numeric::ublas::vector<T> u;
+    u = boost::numeric::ublas::prod(u1,u2);
+
+    return u;
+}
+
+template<typename T, std::size_t S>
+boost::array<T,S> imageplus::math::numeric::prod( const MultiArray<T,2>& in1, const boost::array<T,S>& in2 ) throw (ImagePlusError)
+{
+    // Check dimensions
+    ASSERT( in1.dims(0) == in2.size(), "Matrix and vector dimensions mismatch.")
+
+    // Careful, sometimes you should remove the const away (dangerous if prod() changes matrices values)
+    UblasAdaptionMatrix<T> u1(const_cast<T*>(in1.data()), in1.dims(0), in1.dims(1));
+    UblasAdaptionVector<T> u2(const_cast<T*>(in2.data()), in2.size());
+
+    boost::numeric::ublas::vector<T> u;
+    u = boost::numeric::ublas::prod(u1,u2);
+
+    //TODO: why can be returned as a MultiArray, but not as boost::array? 
+    boost::array<T,S> res;
+    for (std::size_t x = 0; x < S; x++)
+    {
+        res[x] = u(x);
+    }
+
+    return res;
+}
+
+
+template<typename T>
+MultiArray<T,1> imageplus::math::numeric::prod( const MultiArray<T,1>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError)
+{
+    // Check dimensions
+    ASSERT( in1.dims(0) == in2.dims(1), "Matrix and vector dimensions mismatch." )
+
+    // Careful, sometimes you should remove the const away (dangerous if prod() changes matrices values)
+    UblasAdaptionVector<T> u1(const_cast<T*>(in1.data()), in1.dims(0));
+    UblasAdaptionMatrix<T> u2(const_cast<T*>(in2.data()), in2.dims(0), in2.dims(1));
+
+    boost::numeric::ublas::vector<T> u;
+    u = boost::numeric::ublas::prod(u1,u2);
+
+    return u;
+}
+
+template<typename T>
+T imageplus::math::numeric::scalar_prod( const MultiArray<T,1>& in1, const MultiArray<T,1>& in2 ) throw (ImagePlusError)
+{
+    // Check dimensions
+    ASSERT( in1.dims(0) == in2.dims(0), "Vectors dimension missmatch." )
+
+    MultiArray<T,1> aux(in1.dims(0));
+    aux=in1*in2;
+    T result=0;
+    for (uint64 i=0; i<in1.dims(0); i++ )
+       result+=(aux.data()[i]);
+    
+    return result;
+}
+
+
+
+
+template<typename T>
+MultiArray<T,1> imageplus::math::numeric::cross_prod3(const MultiArray<T,1>& in1,
+                                                const MultiArray<T,1>& in2 ) throw (ImagePlusError)
+{
+    // Check dimensions
+    ASSERT( in1.dims(0) == in2.dims(0) && in1.dims(0)==3, "Vectors must have 3 dimensions." )
+
+    // Careful, sometimes you should remove the const away (dangerous if prod() changes matrices values)
+    UblasAdaptionVector<T> u1(const_cast<T*>(in1.data()), in1.dims(0));
+    UblasAdaptionVector<T> u2(const_cast<T*>(in2.data()), in2.dims(0));
+
+    //convert u1 to a matrix adapted to compute the vectorial product as vMat*u2;
+    boost::numeric::ublas::matrix<T> vMat(3,3);
+
+    vMat(0,0)=0;
+    vMat(0,1)=-u1(2);
+    vMat(0,2)=u1(1);
+    vMat(1,0)=u1(2);
+    vMat(1,1)=0;
+    vMat(1,2)=-u1(0);
+    vMat(2,0)=-u1(1);
+    vMat(2,1)=u1(0);
+    vMat(2,2)=0;
+
+    boost::numeric::ublas::vector<T> u;
+    u = boost::numeric::ublas::prod(vMat,u2);
+
+    return u;
+}
+
+template<typename T>
+boost::array<T,3> imageplus::math::numeric::cross_prod3(const boost::array<T,3>& in1,
+                                                const boost::array<T,3>& in2 ) throw (ImagePlusError)
+{
+
+    // Careful, sometimes you should remove the const away (dangerous if prod() changes matrices values)
+    UblasAdaptionVector<T> u1(const_cast<T*>(in1.data()), 3);
+    UblasAdaptionVector<T> u2(const_cast<T*>(in2.data()), 3);
+
+    //convert u1 to a matrix adapted to compute the vectorial product as vMat*u2;
+    boost::numeric::ublas::matrix<T> vMat(3,3);
+
+    vMat(0,0)=0;
+    vMat(0,1)=-u1(2);
+    vMat(0,2)=u1(1);
+    vMat(1,0)=u1(2);
+    vMat(1,1)=0;
+    vMat(1,2)=-u1(0);
+    vMat(2,0)=-u1(1);
+    vMat(2,1)=u1(0);
+    vMat(2,2)=0;
+
+    boost::numeric::ublas::vector<T> u;
+    u = boost::numeric::ublas::prod(vMat,u2);
+
+    boost::array<T,3> res;
+    for (uint64 x = 0; x < 3; x++)
+    {
+        res[x] = u(x);
+    }
+
+    return res;
+}
+
+
+
+
+
+
+
+
+
+template<typename T>
+MultiArray<T,2> imageplus::math::numeric::outer_prod(const MultiArray<T,1>& in1,
+                                                const MultiArray<T,1>& in2 ) throw (ImagePlusError)
+{
+	// Check dimensions
+    ASSERT( in1.dims(0) == in2.dims(0), "Vectors must have equal dimensions." )
+
+    // Careful, sometimes you should remove the const away (dangerous if prod() changes matrices values)
+    UblasAdaptionVector<T> u1(const_cast<T*>(in1.data()), in1.dims(0));
+    UblasAdaptionVector<T> u2(const_cast<T*>(in2.data()), in2.dims(0));
+
+    //convert u1 to a matrix adapted to compute the vectorial product as vMat*u2;
+    boost::numeric::ublas::matrix<T> out(3,3);
+    
+    out=outer_prod(u1,u2);
+    return out;
+}
+
+// instantiations
+template MultiArray<uint8,2>   imageplus::math::numeric::prod<uint8>(const MultiArray<uint8,2>&,   const MultiArray<uint8,2>& );
+template MultiArray<int64,2>   imageplus::math::numeric::prod<int64>(const MultiArray<int64,2>&,   const MultiArray<int64,2>& );
+template MultiArray<float32,2> imageplus::math::numeric::prod<float32>(const MultiArray<float32,2>&, const MultiArray<float32,2>& );
+template MultiArray<float64,2> imageplus::math::numeric::prod<float64>(const MultiArray<float64,2>&, const MultiArray<float64,2>& );
+
+template MultiArray<uint8,1>   imageplus::math::numeric::prod<uint8>(const MultiArray<uint8,2>&,   const MultiArray<uint8,1>& );
+template MultiArray<int64,1>   imageplus::math::numeric::prod<int64>(const MultiArray<int64,2>&,   const MultiArray<int64,1>& );
+template MultiArray<float64,1> imageplus::math::numeric::prod<float64>(const MultiArray<float64,2>&, const MultiArray<float64,1>& );
+template MultiArray<float32,1> imageplus::math::numeric::prod<float32>(const MultiArray<float32,2>&, const MultiArray<float32,1>& );
+
+template boost::array<float64,3> imageplus::math::numeric::prod<float64>(const MultiArray<float64,2>&, const boost::array<float64,3>& );
+
+template MultiArray<uint8,1>   imageplus::math::numeric::prod<uint8>(const MultiArray<uint8,1>&,   const MultiArray<uint8,2>& );
+template MultiArray<int64,1>   imageplus::math::numeric::prod<int64>(const MultiArray<int64,1>&,   const MultiArray<int64,2>& );
+template MultiArray<float64,1> imageplus::math::numeric::prod<float64>(const MultiArray<float64,1>&, const MultiArray<float64,2>& );
+template MultiArray<float32,1> imageplus::math::numeric::prod<float32>(const MultiArray<float32,1>&, const MultiArray<float32,2>& );
+
+template uint8   imageplus::math::numeric::scalar_prod<uint8>(const MultiArray<uint8,1>&,   const MultiArray<uint8,1>& );
+template int64   imageplus::math::numeric::scalar_prod<int64>(const MultiArray<int64,1>&,   const MultiArray<int64,1>& );
+template float64  imageplus::math::numeric::scalar_prod<float64>(const MultiArray<float64,1>&, const MultiArray<float64,1>& );
+
+template MultiArray<uint8,1>   imageplus::math::numeric::cross_prod3<uint8>(const MultiArray<uint8,1>&,   const MultiArray<uint8,1>& );
+template MultiArray<int64,1>   imageplus::math::numeric::cross_prod3<int64>(const MultiArray<int64,1>&,   const MultiArray<int64,1>& );
+template MultiArray<float64,1> imageplus::math::numeric::cross_prod3<float64>(const MultiArray<float64,1>&, const MultiArray<float64,1>& );
+
+
+template boost::array<uint8,3> imageplus::math::numeric::cross_prod3<uint8>(const boost::array<uint8,3>&, const boost::array<uint8,3>& );
+template boost::array<int64,3> imageplus::math::numeric::cross_prod3<int64>(const boost::array<int64,3>&, const boost::array<int64,3>& );
+template boost::array<float64,3> imageplus::math::numeric::cross_prod3<float64>(const boost::array<float64,3>&, const boost::array<float64,3>& );
+
+template MultiArray<uint8,2>   imageplus::math::numeric::outer_prod<uint8>(const MultiArray<uint8,1>&,   const MultiArray<uint8,1>& );
+template MultiArray<int64,2>   imageplus::math::numeric::outer_prod<int64>(const MultiArray<int64,1>&,   const MultiArray<int64,1>& );
+template MultiArray<float64,2> imageplus::math::numeric::outer_prod<float64>(const MultiArray<float64,1>&, const MultiArray<float64,1>& );

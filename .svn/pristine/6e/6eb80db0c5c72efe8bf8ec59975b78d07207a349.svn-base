@@ -1,0 +1,326 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file hmm.test
+//!
+
+
+#include <iostream>
+#include <imageplus/core.hpp>
+#include <imageplus/machine_learning/hmm/hmm.hpp>
+
+BOOST_AUTO_TEST_SUITE ( HMMSuite );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::statistics;
+using namespace imageplus::machine_learning::hmm;
+
+//TODO: HMM I/0 tests
+
+BOOST_AUTO_TEST_CASE ( HMM_BW_Training_Viterbi_Inference_Continuous_Case )
+{
+	//Suppose we are analyzing a bi-dimensional trajectory
+    typedef GMM < float64, 2 > pdf_type;
+    
+    std::size_t number_of_states=3;
+    std::size_t number_of_gaussians=2;
+ 
+    
+    //Create noisy observation sequences
+    std::size_t seq_length=20, training_size=40;
+    Observation obs(2), mean(2);
+    ObservationSequence obs_seq(seq_length);
+    std::vector < ObservationSequence > training_set(training_size);
+    
+    //test sequence is a sinusoid with white noise
+    mean=0.0;
+    for (std::size_t i=0; i < training_size; ++i )
+    {
+	    for (std::size_t t=0; t < seq_length; t++ )
+	    {
+	    	obs[0]=static_cast<float64>(t)/static_cast<float64>(seq_length);
+	    	obs[1]=std::sin(obs[0]*2*M_PI)+ rand_normal(0.0, 0.01);
+	    	obs[0]+=rand_normal(0.0, 0.01);
+	    	obs_seq[t]=obs;
+	    	mean=mean+obs;
+	    }
+	    training_set[i]=obs_seq;
+    }
+    
+    division(mean, static_cast<float64>(training_size*seq_length), mean);
+    Matrix Cov(2,2); Cov=0.0; Cov[0][0]=10.0; Cov[1][1]=10.0;
+  
+   
+    
+    
+    pdf_type model_pdf(number_of_gaussians);
+    
+    
+    //Randomly initialize mixtures
+    for (std::size_t i=0; i < number_of_gaussians; ++i)
+    {
+    	model_pdf[i].diagonal_covariance()=false; 
+    	model_pdf[i].mean()[0]=mean[0] + rand_normal(0.0, 0.1);
+    	model_pdf[i].mean()[1]=mean[1] + rand_normal(0.0, 0.1);
+    	model_pdf[i].covariance_matrix()=Cov;
+    	model_pdf[i].weight()=1.0/static_cast<float64>(number_of_gaussians);
+    	model_pdf[i].update();
+    }
+    HMM< pdf_type , pdf_type::continuous > hmm (number_of_states, model_pdf);
+     
+    //Randomly Initialize initial pi and Transition matrix
+    float64 total_prob=0.0;
+    for (Vector::iterator iter=hmm.pi().begin(); iter!=hmm.pi().end(); ++iter)
+    {
+    	*iter=rand_uniform();
+    	total_prob+=*iter;
+    }
+    
+    division(hmm.pi(), total_prob, hmm.pi());
+    
+   
+    
+    for (std::size_t i=0; i < hmm.A().dims(0); ++i)
+    {
+    	matrix_view view=hmm.A()[boost::indices[i][matrix_range(0, hmm.A().dims(1))]];
+    	
+        total_prob=0.0;
+        
+    	for (matrix_view::iterator iter=view.begin(); iter!=view.end(); ++iter)
+        {
+        	*iter=rand_uniform();
+        	total_prob+=*iter;
+        }
+    	std::transform(view.begin(), view.end(), view.begin(), std::bind2nd(std::divides<float64>(), total_prob));
+    }
+    
+   
+
+       
+    //Do learn with Baum-Welch method for continuous pdfs
+    hmm.BaumWelchContinuous(training_set, 50, 1e-10, number_of_gaussians, pdf_type::channels, true );
+
+    
+    //Create target and impostor sequences and evaluate them
+    //test sequence is a sinusoid
+    mean=0.0;
+    float64 prob=0.0;
+
+	//std::cout << "TESTING Target sequence"  << std::endl;
+	
+    for (std::size_t t=0; t < seq_length; t++ )
+    {
+    	obs[0]=static_cast<float64>(t)/static_cast<float64>(seq_length);
+    	obs[1]=std::sin(obs[0]*2*M_PI)+ rand_normal(0.0, 0.01);
+    	obs[0]+=rand_normal(0.0, 0.01);
+    	obs_seq[t]=obs;
+    	
+    }
+    Vector retrieved_sequence=hmm.logViterbi(obs_seq, prob);
+    
+    //std::cout << "Recovered state sequence with prob" << prob << std::endl << retrieved_sequence << std::endl;
+  
+	//std::cout << "TESTING Impostor sequence"  << std::endl;
+	
+    for (std::size_t t=0; t < seq_length; t++ )
+    {
+    	obs[0]=static_cast<float64>(t)/static_cast<float64>(seq_length);
+    	obs[1]=std::pow(obs[0], 2.0)+ rand_normal(0.0, 0.01);
+    	obs[0]+=rand_normal(0.0, 0.01);
+    	obs_seq[t]=obs;
+    }
+    
+    float64 prob_impostor;
+    retrieved_sequence=hmm.logViterbi(obs_seq, prob_impostor);
+    
+
+	BOOST_CHECK ( prob > prob_impostor );
+	
+	//std::cout << "Recovered state sequence with prob" << prob << std::endl << retrieved_sequence << std::endl;
+  
+}
+
+
+BOOST_AUTO_TEST_CASE ( HMM_BW_Training_Viterbi_Inference_Discrete_Case )
+{
+
+	std::size_t number_of_states=3;
+	
+    //Create noisy observation sequences
+    //Same sequences for the continuous case are roughly quantized
+    std::size_t seq_length=20, training_size=40;
+    Observation obs(2), mean(2);
+    ObservationSequence obs_seq(seq_length);
+    std::vector < ObservationSequence > training_set(training_size);
+    
+    //test sequence is a sinusoid with white noise
+    mean=0.0;
+    for (std::size_t i=0; i < training_size; ++i )
+    {
+	    for (std::size_t t=0; t < seq_length; t++ )
+	    {
+	    	obs[0]=static_cast<float64>(t)/static_cast<float64>(seq_length);
+	    	obs[1]=std::sin(obs[0]*2*M_PI)+ rand_normal(0.0, 0.01);
+	    	obs[0]+=rand_normal(0.0, 0.01);
+	    	obs_seq[t]=obs;
+	    	mean=mean+obs;
+	    }
+	    training_set[i]=obs_seq;
+    }
+    
+	const std::size_t exp_size=1000;
+
+	std::vector < uint64 > dim_extents(2,exp_size);
+
+	typedef PDF < RandomVariableData< float64, 2, 1 > > discrete_pdf_type; 
+	
+	RandomVariableData< float64, 2, 1 > class_data(dim_extents);
+	    
+	std::vector < std::size_t > selected;
+	    
+	boost::mt19937 rng1(3);
+	   
+    std::vector < boost::array<float64, exp_size> > f(3);
+    
+    
+    //Array of quantizers
+    boost::array< Quantizer<float64>, 2 > qclass;
+    
+    //Define quantizer bins
+    std::size_t numbins=3;
+    qclass[0]=Quantizer<float64>(0.0, 1.0, numbins); 
+    qclass[1]=Quantizer<float64>(-1.0, 1.0, numbins);
+    
+   
+    //Histogram (discrete pdf)
+    discrete_pdf_type jointpdf(qclass);
+   
+    //Initialize pdf to uniform:
+    //TODO: It operator=(float64) resizes the Histogram!!!!!
+    
+   
+   
+    //Create HMM
+    HMM<discrete_pdf_type, discrete_pdf_type::continuous> dhmm(number_of_states, jointpdf);
+    
+  
+
+    Observation data(2);
+    std::size_t symbol_counter=0;
+
+    
+    //TODO: Should be created in HMM (create_symbol_dictionary)
+    for (std::size_t j=0; j < numbins; ++j)
+    {
+    	 for (std::size_t i=0; i < numbins; ++i)
+    	 {
+    		 data[0]=i; data[1]=j;
+    		 dhmm.dictionary[data]=symbol_counter;
+    		 symbol_counter++;
+    	 }
+    }
+    //Randomly Initialize initial pi
+     float64 total_prob=0.0;
+     for (Vector::iterator iter=dhmm.pi().begin(); iter!=dhmm.pi().end(); ++iter)
+     {
+     	*iter=rand_uniform();
+     	total_prob+=*iter;
+     }
+     
+     division(dhmm.pi(), total_prob, dhmm.pi());
+     
+   //  std::cout << "InitialPi " << dhmm.pi() << std::endl;
+     
+     for (std::size_t i=0; i < dhmm.A().dims(0); ++i)
+     {
+     	matrix_view view=dhmm.A()[boost::indices[i][matrix_range(0, dhmm.A().dims(1))]];
+     	
+        total_prob=0.0;
+         
+     	for (matrix_view::iterator iter=view.begin(); iter!=view.end(); ++iter)
+         {
+         	*iter=rand_uniform();
+         	total_prob+=*iter;
+         }
+     	std::transform(view.begin(), view.end(), view.begin(), std::bind2nd(std::divides<float64>(), total_prob));
+     }
+     
+   //  std::cout << "Transition matrix " << dhmm.A() << std::endl;
+    
+	 //Set initial values for all the vector pdf's
+	 for (std::size_t i=0; i < dhmm.B().size(); ++i)
+	 {
+		
+	 	//Remember: Cannot use histogram::operator=(float64)!!
+		 float64 *p=dhmm.B()[i].data();
+		 float64 *pend=dhmm.B()[i].data()+dhmm.B()[i].num_elements();
+		 while (p!=pend)
+		 {
+			 *p++=1.0/(float64)dhmm.B()[i].num_elements();
+		 }
+		
+	 }
+	 //Quantize training set
+	 std::vector < ObservationSequence > quantized_training_set;
+	 ObservationSequence::iterator seq_iter;
+	 std::vector < ObservationSequence >::iterator tr_iter;
+	 
+	 for (tr_iter=training_set.begin(); tr_iter!=training_set.end(); tr_iter++)
+	 {
+		 ObservationSequence tmp;
+		 for (seq_iter=tr_iter->begin(); seq_iter!=tr_iter->end(); ++seq_iter)
+		 {
+			 Observation o=*seq_iter;
+			 o[0]=qclass[0].bin(o[0]);
+			 o[1]=qclass[1].bin(o[1]);
+			 tmp.push_back(o);
+		 }
+		 quantized_training_set.push_back(tmp);
+	 }
+    //Baum - Welch iterative learning (discrete case)
+    dhmm.BaumWelchDiscrete(quantized_training_set, 50, 1e-10);
+
+
+    mean=0.0;
+    float64 prob=0.0;
+
+	
+	
+    for (std::size_t t=0; t < seq_length; t++ )
+    {
+    	obs[0]=static_cast<float64>(t)/static_cast<float64>(seq_length);
+    	obs[1]=std::sin(obs[0]*2*M_PI)+ rand_normal(0.0, 0.01);
+    	obs[0]+=rand_normal(0.0, 0.01);
+    	obs[0]=qclass[0].bin(obs[0]);
+    	obs[1]=qclass[0].bin(obs[1]);
+    	
+    	obs_seq[t]=obs;
+    	
+    }
+    
+     Vector retrieved_sequence=dhmm.logViterbi(obs_seq, prob);
+   
+	
+    for (std::size_t t=0; t < seq_length; t++ )
+    {
+    	obs[0]=static_cast<float64>(t)/static_cast<float64>(seq_length);
+    	obs[1]=std::pow(obs[0], 2.0)+ rand_normal(0.0, 0.01);
+    	obs[0]+=rand_normal(0.0, 0.01);
+    	obs[0]=qclass[0].bin(obs[0]);
+    	obs[1]=qclass[0].bin(obs[1]);
+    	obs_seq[t]=obs;
+    	
+    }
+    
+    float64 prob_impostor;
+    retrieved_sequence=dhmm.logViterbi(obs_seq, prob_impostor);
+ 
+ 	BOOST_CHECK(prob > prob_impostor);
+
+}
+
+BOOST_AUTO_TEST_SUITE_END();

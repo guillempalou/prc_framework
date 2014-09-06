@@ -1,0 +1,261 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file watershed.cpp
+//!
+//!  Implementation for Watershed operations on MultiArray and ImageGray objects
+//!
+
+#include <imageplus/math/morphology/watershed.hpp>
+#include <imageplus/math/statistics/multiarray_statistics.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+
+#include "morphology/image_access.hpp"
+
+#define MAXDIST 260
+#define TST(a,b) (((a) == (b)) ? (0) : (1))
+
+using namespace imageplus;
+using namespace imageplus::math::morphology;
+
+Watershed::Watershed() :
+        Filter<Watershed>("Watershed"), _alpha(1), _gamma(0.333333333)
+{
+}
+
+Watershed::Watershed(float64 alpha, float64 gamma) throw (ImagePlusError) :
+        Filter<Watershed>("Watershed"), _alpha(alpha), _gamma(gamma)
+{
+    if (alpha < 0 || alpha > 1 || gamma < 0 || gamma >= 1)
+    {
+        throw ImagePlusError ("");
+    }
+}
+
+
+template<typename T>
+ImagePartition<int32> Watershed::implementation (const ImageGray<T>& ori, const ImagePartition<int32>& lab, const ImagePartition<int32>& seg) const throw (ImagePlusError)
+{
+    ASSERT (std::numeric_limits<T>::is_integer, "Watershed is only valid for integral types")
+
+    compatible(lab, seg);
+
+    uint64  nreg = math::statistics::maxval(lab(PARTITION_CHANNEL));
+
+    MultiArray<float64,2> feature(4+1,nreg+1);
+
+    feature = 0.0;
+
+    const int32* labpix = lab(PARTITION_CHANNEL).data();
+    const T*     oripix = ori(GRAY_CHANNEL).data();
+
+    // const int32 bigval = std::numeric_limits<int32>::max();
+
+
+    for (uint64 i = 0; i < lab.num_total_data_elements(); i++) 
+    {
+        int32   lp = labpix[i];
+        float64 op = oripix[i];
+
+        feature[0][lp] = feature[0][lp] + 1.0; 
+        feature[3][lp] = feature[3][lp] + op;
+        feature[4][lp] = feature[4][lp] + op * op;
+    }
+ 
+    for (uint64 i=1; i <= nreg; i++) 
+    { 
+        feature[1][i] = feature[3][i] / feature[0][i];
+        feature[2][i] = feature[4][i] / feature[0][i] - feature[1][i] * feature[1][i];
+        feature[2][i] = std::max(feature[2][i], 0.0);
+        feature[2][i] = std::sqrt(feature[2][i]);
+    }
+
+
+    ImagePartition<int32> olab;
+    ImageGray<T> oori;
+    ImagePartition<int32> oseg;
+
+    zero_padding (lab(PARTITION_CHANNEL), 1, olab(PARTITION_CHANNEL));
+    zero_padding (ori(GRAY_CHANNEL),      1, oori(GRAY_CHANNEL));
+    zero_padding (seg(PARTITION_CHANNEL), 1, oseg(PARTITION_CHANNEL));
+
+#if 0
+    //
+    // Initialize hierarchical queue
+    //
+    HQueue<T> queue(MAXDIST,0);
+
+    int32* begin = &olab[1][1];
+    int32* end   = &olab[olab.size_x()-2][olab.size_y()-2];
+
+    int64 ori_lab = static_cast<int64*>(oori(GRAY_CHANNEL).data()) - static_cast<int64*>(lab(PARTITION_CHANNEL).data());
+
+    for(;begin <= end;begin++)
+    {
+        /* Is this a valid label */
+        if ((*begin > 0) && (*begin != bigval))
+        {
+            for (uint64 dir=1; dir<=8; dir = dir+2) 
+            {
+                int32* nei = neigh8(olab(PARTITION_CHANNEL),begin,dir);
+                if(*nei == 0)
+                {
+                    int64 dist = _conrgdist(oori, olab, oseg, feature, begin, nei);
+
+                    queue.rgput(nei,dist);
+                    if (dist != MAXDIST+1) 
+                    {
+                        *nei = -dist;
+                    }
+                }
+            }
+        }
+    }
+
+    //
+    // Flooding
+    //
+
+    while((labpix = queue.get()) != NULL)
+    {
+        if (*labpix <= 0) 
+        {
+            /* Assign a label to the current pixel */
+            uint64 mindist = MAXDIST+2;
+
+            for(uint64 dir=1; dir<=8; dir=dir+2) 
+            {
+                int32* labneigh = neigh8 (olab(PARTITION_CHANNEL), labpix, dir);
+
+                if((*labneigh > 0) && (*labneigh != bigval))
+                {
+                    int64 dist = _conrgdist(oori, olab, oseg, feature, labpix, labneigh);
+
+                    if ((dist < mindist) && (dist != MAXDIST+1)) 
+                    {
+                        *labpix = *labneigh; 
+                        mindist = dist;
+                    }
+                }
+            }
+
+
+            if (mindist <= MAXDIST) 
+            {
+                /* Actualize the feature of the region */
+                float64 tp = (float) *(labpix + ori_lab);
+ 
+                feature[0][*labpix] = feature[0][*labpix] + 1.0;
+                feature[3][*labpix] = tp + feature[3][*labpix];
+                feature[4][*labpix] = tp * tp + feature[4][*labpix];
+                feature[1][*labpix] = feature[3][*labpix] / feature[0][*labpix];
+                feature[2][*labpix] = feature[4][*labpix] / feature[0][*labpix] -  
+                                      feature[1][*labpix] * feature[1][*labpix];
+                feature[2][*labpix] = std::max(feature[2][*labpix], 0.0);
+                feature[2][*labpix] = std::sqrt(feature[2][*labpix]);
+
+                /* Put the neighbors in the queue */
+                for(uint64 dir=1; dir <= 8; dir = dir+2) 
+                {
+                    int32* labneigh = neigh8(olab(PARTITION_CHANNEL),labpix,dir);
+                    if ((*labneigh <= 0) && (*labneigh != bigval))
+                    {
+                        int64 dist = _conrgdist(oori, olab, oseg, feature, labneigh, labpix);
+
+                        if (((dist < -(*labneigh)) || (*labneigh==0)) &&  (dist != MAXDIST+1)) 
+                        {
+                            queue.rgput(labneigh,dist);
+                            *labneigh = -dist;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+#endif
+    ImagePartition<int32> out;
+
+    out(PARTITION_CHANNEL) = remove_padding(olab(PARTITION_CHANNEL),1);
+
+    return out;
+}
+
+template<typename T>
+ImagePartition<int32> Watershed::implementation (const ImageYUV<T>& ori, const ImagePartition<int32>& lab, const ImageYUV<T>& ori_p, const ImagePartition<int32>& lab_p, const ImagePartition<int32>& seg) const throw (ImagePlusError)
+{
+    ASSERT (std::numeric_limits<T>::is_integer, "Watershed is only valid for integral types")
+
+    compatible(ori, ori_p);
+    compatible(lab, lab_p);
+    compatible(lab, seg);
+
+    ImagePartition<int32> out;
+
+    return out;
+
+}
+
+
+
+
+template<typename T>
+int64 Watershed::_conrgdist (const ImageGray<T>& ori, const ImagePartition<int32>& lab, const ImagePartition<int32>& seg, const MultiArray<float64,2>& feature,  const int32* begin, const int32* nei) const
+{
+
+    const int32* p_inilab = lab(PARTITION_CHANNEL).data();
+    const int32* p_iniseg = seg(PARTITION_CHANNEL).data();
+    const T*     p_iniori = ori(GRAY_CHANNEL).data();
+    
+    int64 dist = 0;
+
+    if (p_iniseg[nei - p_inilab] != p_iniseg[begin - p_inilab])
+    {
+        dist = MAXDIST+1;
+    }
+    else
+    {
+        int64 dist1 = math::numeric::mnint<int64>(static_cast<float64>(p_iniori[nei - p_inilab]) - feature[1][*begin]);
+
+        if (dist1 < 0) 
+        {
+            dist1 = 0 - dist1;
+        }
+        int64 cptr = TST(*begin,*(nei-1))            + TST(*begin,*(nei+1)) +
+                     TST(*begin,*(nei-lab.size_x())) + TST(*begin,*(nei+lab.size_x()));
+        
+        dist = static_cast<int64>(_alpha * static_cast<float64>(dist1) + (1.0 - _alpha) * 10.0 * static_cast<float64>(cptr));
+        
+        if (dist > MAXDIST)
+        {
+            dist = MAXDIST;
+        }
+    }
+ 
+    return dist;
+}
+
+
+// watershed instantiations
+namespace imageplus
+{
+    namespace math
+    {
+        namespace morphology
+        {
+            template ImagePartition<int32> Watershed::implementation<int16>(const ImageGray<int16>& ori, const ImagePartition<int32>& lab, const ImagePartition<int32>& seg) const;
+            template ImagePartition<int32> Watershed::implementation<int64>(const ImageGray<int64>& ori, const ImagePartition<int32>& lab, const ImagePartition<int32>& seg) const;
+
+            template int64 Watershed::_conrgdist(const ImageGray<int16>& ori, const ImagePartition<int32>& lab, const ImagePartition<int32>& seg, const MultiArray<float64,2>& feature, const int32* begin, const int32* nei) const;
+            template int64 Watershed::_conrgdist(const ImageGray<int64>& ori, const ImagePartition<int32>& lab, const ImagePartition<int32>& seg, const MultiArray<float64,2>& feature, const int32* begin, const int32* nei) const;
+
+
+            template ImagePartition<int32> Watershed::implementation<int16>(const ImageYUV<int16>& ori, const ImagePartition<int32>& lab, const ImageYUV<int16>& ori_p, const ImagePartition<int32>& lab_p, const ImagePartition<int32>& seg) const;
+            template ImagePartition<int32> Watershed::implementation<int64>(const ImageYUV<int64>& ori, const ImagePartition<int32>& lab, const ImageYUV<int64>& ori_p, const ImagePartition<int32>& lab_p, const ImagePartition<int32>& seg) const;
+        }
+    }
+}
+

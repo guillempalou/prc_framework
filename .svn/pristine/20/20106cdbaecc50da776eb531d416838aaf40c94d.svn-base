@@ -1,0 +1,328 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+#include <imageplus/core/image.hpp>
+
+// To test image operators
+#include <imageplus/core/imavol_arithmetic.hpp>
+
+// To use coords 2d
+#include <imageplus/core/coord2d.hpp>
+
+//TODO: AGIL - Test access by Coord, and by Coord2D, not only for Coord2D
+
+
+BOOST_AUTO_TEST_SUITE ( ImageSuite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list<uint8,int64,float64> ImageTypes;
+
+/*!
+ * \cond TestStructure
+ */
+template <typename T>
+struct ImageFixture {
+	
+	ImageFixture() :
+		size(15),
+		iv1(size,size),
+		iv3(size,size),
+		i1(size,size),
+		i3(size,size)		
+		{}
+	~ImageFixture() {}
+
+	uint8 size;
+	ImaVol<T,1,2> iv1;
+	ImaVol<T,3,2> iv3;
+	Image<T,1> i1;
+	Image<T,3> i3;
+};
+/*!
+ * \endcond
+ */
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( Image_Constructors, T, ImageTypes )
+{	
+	// Check constructor for images
+    Image<T,1> i1(10,20);
+    Image<T,3> i3(10,20);
+    
+    BOOST_CHECK_EQUAL( i1.size_x(), uint64(10) );
+    BOOST_CHECK_EQUAL( i1.size_y(), uint64(20) );
+    
+    BOOST_CHECK_EQUAL( i3.size_x(), uint64(10) );
+    BOOST_CHECK_EQUAL( i3.size_y(), uint64(20) );
+	
+    
+    // Set up fixture
+    ImageFixture<T> f; 
+	
+    // Check constructor for imavol
+	i1 = Image<T,1>(f.iv1);
+    BOOST_CHECK( i1(0)       == f.iv1(0)      );
+    BOOST_CHECK( i1.size_x() == f.iv1.dims().at(0).at(0) );
+    BOOST_CHECK( i1.size_y() == f.iv1.dims().at(0).at(1) );
+    
+	i3 = Image<T,3>(f.iv3);
+    BOOST_CHECK( i3(0) == f.iv3(0) );
+    for( uint32 i = 0; i<3; i++) {
+    	BOOST_CHECK_EQUAL( i3.size_x(), f.iv3.dims().at(i).at(0) );
+	    BOOST_CHECK_EQUAL( i3.size_y(), f.iv3.dims().at(i).at(1) );
+    }
+        
+	// Check constructor for Image
+    i1 = Image<T,1>(f.i1);
+    BOOST_CHECK( i1(0)     == f.i1(0)      );
+    BOOST_CHECK_EQUAL( i1.size_x(), f.i1.size_x() );
+    BOOST_CHECK_EQUAL( i1.size_y(), f.i1.size_y() );
+    
+    i3 = Image<T,3>(f.i3);
+    BOOST_CHECK( i3(0)     == f.i3(0)      );
+    BOOST_CHECK_EQUAL( i3.size_x(), f.i3.size_x() );
+    BOOST_CHECK_EQUAL( i3.size_y(), f.i3.size_y() );
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( Image_Resize, T, ImageTypes )
+{   
+    
+    ImageFixture<T> f;
+    
+    BOOST_CHECK_EQUAL( f.i1.size_x(), uint64(15) );
+    BOOST_CHECK_EQUAL( f.i1.size_y(), uint64(15) );
+    
+    BOOST_CHECK_EQUAL( f.i3.size_x(), uint64(15) );
+    BOOST_CHECK_EQUAL( f.i3.size_y(), uint64(15) );
+    
+    
+    // Resize for Image with (width, height)
+    f.i1.resize(10,20);
+    f.i3.resize(10,20);
+
+    BOOST_CHECK_EQUAL( f.i1.size_x(), uint64(10) );
+    BOOST_CHECK_EQUAL( f.i1.size_y(), uint64(20) );
+    
+    BOOST_CHECK_EQUAL( f.i3.size_x(), uint64(10) );
+    BOOST_CHECK_EQUAL( f.i3.size_y(), uint64(20) );
+
+    
+    // Resize for Image with vector and diferent dimensions for each channel (in the case of 3 channels)
+    std::vector< std::vector<uint64> > dims;
+    std::vector<uint64> temp_dims;
+    temp_dims.push_back(10);
+    temp_dims.push_back(20);
+    dims.push_back(temp_dims);
+
+    f.i1.resize(dims);
+    
+    BOOST_CHECK_EQUAL( f.i1.size_x(), uint64(10) );
+    BOOST_CHECK_EQUAL( f.i1.size_y(), uint64(20) );
+    
+    temp_dims.resize(0);
+    temp_dims.push_back(5);
+    temp_dims.push_back(10);
+    dims.push_back(temp_dims);
+    dims.push_back(temp_dims);    
+
+    f.i3.resize(dims);
+
+    
+    BOOST_CHECK_EQUAL( f.i3.size_x(), uint64(10) );
+    BOOST_CHECK_EQUAL( f.i3.size_y(), uint64(20) );
+    BOOST_CHECK_EQUAL( f.i3.dims().at(1).at(0),  uint64(5) );
+    BOOST_CHECK_EQUAL( f.i3.dims().at(1).at(1),  uint64(10) );
+    BOOST_CHECK_EQUAL( f.i3.dims().at(2).at(0),  uint64(5) );
+    BOOST_CHECK_EQUAL( f.i3.dims().at(2).at(1),  uint64(10) );
+}
+
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( Image_Access, T, ImageTypes )
+{
+	ImageFixture<T> f;
+    
+    // Pixel access: 1 channel
+	for(uint32 i = 0 ; i< f.i1.size_x(); i++)
+	{
+		for(uint32 j = 0 ; j < f.i1.size_y(); j++)
+		{
+			f.i1(0)[i][j] = T(i);
+		    BOOST_CHECK_EQUAL( f.i1(0)[i][j], T(i) );	
+		}
+	}
+	
+	// Pixel access: 3 channel
+	for(uint32 c = 0 ; c < f.i3.dims().size(); c++)
+	{
+		for(uint32 i = 0 ; i< f.i3.size_x(); i++)
+		{
+			for(uint32 j = 0 ; j < f.i3.size_y(); j++)
+			{
+				f.i3(c)[i][j] = T(i);
+			    BOOST_CHECK_EQUAL( f.i3(c)[i][j], T(i) );	
+			}
+		}
+	}
+
+	// Channel access: 1 channel
+	f.i1(0) = T(5);
+	for(uint32 i = 0 ; i< f.i1.size_x(); i++)
+	{
+		for(uint32 j = 0 ; j < f.i1.size_y(); j++)
+		{	
+		    BOOST_CHECK_EQUAL( f.i1(0)[i][j], T(5) );	
+		}
+	}
+	
+	// Channel access: 3 channel
+	for(uint32 c = 0 ; c < f.i3.dims().size(); c++)
+	{
+		f.i3(c) = T(c);
+		for(uint32 i = 0 ; i< f.i3.size_x(); i++)
+		{
+			for(uint32 j = 0 ; j < f.i3.size_y(); j++)
+			{	
+			    BOOST_CHECK_EQUAL( f.i3(c)[i][j], T(c) );	
+			}
+		}
+	}
+	
+	// Pixel access by coords: 1 channel
+	f.i1 = T(5);
+	Coord2D<>  coord(2,3);
+	Coord2D<>  origin(1,1);
+	
+	f.i1(0)(coord) = T(3);
+//	f.i1(0)(coord, origin) = T(3);
+	
+	BOOST_CHECK( f.i1(0)(coord) == T(3) );
+	BOOST_CHECK( f.i1(0)[2][3] == T(3) );
+//	BOOST_CHECK( f.i1(0)(coord, origin) == T(3) );
+//    BOOST_CHECK( f.i1(0)[3][4] == T(3) );
+	
+	
+	// Pixel access by coords: 3 channel
+	f.i3 = T(5);
+    for(uint8 channel=0; channel < 3; channel++)
+    {
+        f.i3(channel)(coord) = T(3);
+        
+        BOOST_CHECK( f.i3(channel)(coord) == T(3) );
+        BOOST_CHECK( f.i3(channel)[2][3] == T(3) );
+    }
+    
+    // Constant pixel access by coords
+    const Image<T,1> ci(10,10);
+    const T t = ci(0)(coord);
+    BOOST_CHECK( t == T(0) );
+    
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( Image_Assigment, T, ImageTypes )
+{
+	ImageFixture<T> f;
+    Image<T,1> i1;
+    Image<T,3> i3;
+	
+    // Check assigment from data type: 1 Channel
+	// TODO: Operator == not defined for Image and T, using channel acces to check
+   	f.i1 = T(1);
+   	//	BOOST_CHECK_EQUAL( f.i1, (T)i );
+   	BOOST_CHECK( f.i1(0) == T(1) );
+   	
+   	// Check assigment from data type: 3 Channel
+	// TODO: Operator == not defined for Image and T, using channel acces to check
+	f.i3 = T(3);
+	//	BOOST_CHECK_EQUAL( f.i3, (T)i );
+    for(uint32 c = 0 ; c < f.i3.dims().size(); c++)
+	{
+        BOOST_CHECK( f.i3(c) == T(3) );	
+	}
+    
+    // Check assigment with imavol
+    // TODO: Operator == not defined for Images and ImaVols, using channel acces to check
+    i1 = f.iv1;
+    i3 = f.iv3;
+    
+    BOOST_CHECK( i1(0) == f.iv1(0) );
+	for(uint32 c = 0 ; c < i3.dims().size(); c++)
+	{
+        BOOST_CHECK( i3(c) == f.iv3(c) );	
+	}
+    
+
+    // Check assigment between images: 1 Channel
+    // TODO: Operator == not defined for Images, using channel acces to check
+    // This assigment always works (even for diferent image sizes)
+    i1 = f.i1;
+    i3 = f.i3;
+    //BOOST_CHECK_EQUAL( i1, f.i1 );
+	//	BOOST_CHECK_EQUAL( i3, f.i3 );
+    BOOST_CHECK( f.i1(0) == i1(0) );
+    for(uint32 c = 0 ; c < f.i3.dims().size(); c++)
+	{
+        BOOST_CHECK( i3(c) == f.i3(c) );	
+	}
+    
+    
+    // Check assigment between Images: Mixing channels and sizes
+    
+    // This should also work even for images with different sizes
+    Image<T,1> i15(5,5);
+    Image<T,3> i38(8,8);
+    i15 = i38 = T(25);
+    
+    // Check sizes are kept
+    BOOST_CHECK_EQUAL( i15.size_x(), uint32(5) );
+    BOOST_CHECK_EQUAL( i15.size_y(), uint32(5) );
+    
+    BOOST_CHECK_EQUAL( i38.size_x(), uint32(8) );
+    BOOST_CHECK_EQUAL( i38.size_y(), uint32(8) );
+
+    // Check values
+    BOOST_CHECK( i15(0) == T(25) );
+    for(uint32 c = 0 ; c < i38.dims().size(); c++)
+	{
+        BOOST_CHECK( i38(c) == T(25) );	
+	}
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( Image_Operations, T, ImageTypes )
+{
+	ImageFixture<T> f;
+	
+    
+    Image<T,1> sum1;
+    Image<T,3> sum3;
+    
+    f.i1 = f.i3 = T(25);
+    
+    // Check sum beetwen images
+    sum1 = f.i1 + f.i1;
+    sum3 = f.i3 + f.i3;
+    
+    // Check values
+    BOOST_CHECK( sum1(0) == T(50) );
+    for(uint32 c = 0 ; c < sum3.dims().size(); c++)
+	{
+        BOOST_CHECK( sum3(c) == T(50) );	
+	}
+    
+    // Check sum with constants
+    sum1 = f.i1 + T(5);
+    sum3 = f.i3 + T(5);
+    
+    // Check values
+    BOOST_CHECK( sum1(0) == T(30) );
+    for(uint32 c = 0 ; c < sum3.dims().size(); c++)
+	{
+        BOOST_CHECK( sum3(c) == T(30) );	
+	}
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

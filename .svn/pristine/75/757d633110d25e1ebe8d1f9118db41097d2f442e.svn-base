@@ -1,0 +1,102 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \file erosion.test
+//!
+//! Tests for class Erosion
+//!
+
+#include <iostream>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/math/morphology/erosion.hpp>
+
+#include <imageplus/io/writeimage.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( ErosionSuite );
+
+using namespace imageplus;
+using namespace imageplus::math::morphology;
+
+typedef boost::mpl::list<uint8,int64> DataTypes;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( ErosionGeneral, T, DataTypes)
+{
+    io::ReadImage  rima_ori(std::string(TEST_DATA_PATH_R) +"/foreman_000_y.png");
+    ImageGray<uint8> ori_ima;
+    rima_ori >> ori_ima;
+
+    ImageGray<T> ima = convert<T>(ori_ima);
+
+    io::ReadImage  rima_fil(std::string(TEST_DATA_PATH_R) +"/morphology/foreman_ero.png");
+    ImageGray<uint8> fil_ima;
+    rima_fil >> fil_ima;
+
+    ImageGray<T> fil = convert<T>(fil_ima);
+    ImageGray<T> out;
+
+    // Erosion, connectivity 8, kernel 3x3 (square)
+    Erosion<2> ero(8,3);
+
+    out = ero.filter(ima);
+
+    BOOST_CHECK (out == fil);
+
+    // Erosion using an arbitrary structuring element (not simple)
+    MultiArray<bool,2> se_ma(3,3);
+    se_ma = true;
+
+    StructuringElement<2> se(se_ma, Coord<int64,2>(1,1));
+
+    Erosion<2> ero_se(se);
+
+    ImageGray<T> out2;
+    out2 = ero_se.filter(ima);
+
+    BOOST_CHECK (out2 == fil);
+}
+
+BOOST_AUTO_TEST_CASE( ErosionBool )
+{
+    io::ReadImage  rima_ori(std::string(TEST_DATA_PATH_R) +"/morphology/testmorphbool_Original.png");
+    ImageGray<uint8> ori_ima;
+    rima_ori >> ori_ima;
+
+    ImageMask ima = convert(ori_ima);
+
+    io::ReadImage  rima_fil(std::string(TEST_DATA_PATH_R) +"/morphology/testmorphbool_Ero.png");
+    ImageGray<uint8> fil_ima;
+    rima_fil >> fil_ima;
+
+    ImageMask fil = convert(fil_ima);
+    ImageMask out;
+
+    // Erosion, connectivity 8, kernel 3x3 (square)
+    Erosion<2> ero(8,3);
+
+    out = ero.filter(ima);
+
+    BOOST_CHECK (out == fil);
+
+
+    // Erosion using an arbitrary structuring element (not simple)
+    MultiArray<bool,2> se_ma(3,3);
+    se_ma = true;
+
+    StructuringElement<2> se(se_ma, Coord<int64,2>(1,1));
+
+    Erosion<2> ero_se(se);
+
+    ImageMask out2;
+    out2 = ero_se.filter(ima);
+
+    BOOST_CHECK (out2 == fil);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

@@ -1,0 +1,103 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file ontology.cpp
+//!
+//!  Ontology
+//!
+
+#include <boost/foreach.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+
+#include <map>
+#include <string>
+
+#include <imageplus/core.hpp>
+#include <imageplus/semantic/ontology.hpp>
+
+using namespace imageplus;
+using namespace imageplus::semantic;
+
+void imageplus::semantic::Ontology::set_name(const std::string& name)
+{
+	_name = name;
+}
+
+std::string imageplus::semantic::Ontology::get_name() const
+{
+	return _name;
+}
+
+void imageplus::semantic::Ontology::set_file_uri(const std::string& file_uri)
+{
+	if (file_uri.find("file:") == 0)
+		// file_uri = "file:/path/to/file.xml"
+		_file_uri = file_uri;
+	else
+		// file_uri = "/path/to/file.xml"
+		_file_uri = "file:"+file_uri;
+}
+
+std::string imageplus::semantic::Ontology::get_file_uri() const
+{
+	return _file_uri;
+}
+
+void imageplus::semantic::Ontology::add_semantic_class(uint32 id, const std::string& name) throw (ImagePlusError)
+{
+	if (this->includes_semantic_class(id))
+		throw ImagePlusError("Semantic Class '" + name + "' already included in ontology" + _name + ".");
+
+	_semantic_classes[id] = name;
+}
+
+bool imageplus::semantic::Ontology::includes_semantic_class(uint32 sc_id) const
+{
+	return _semantic_classes.find(sc_id) != _semantic_classes.end();
+}
+
+std::string imageplus::semantic::Ontology::get_semantic_class_name(uint32 sc_id) const throw (ImagePlusError)
+{
+	Ontology::SemanticClassConstIterator sc = _semantic_classes.find(sc_id);
+	if (sc == _semantic_classes.end()) {
+		std::string semantic_class = boost::lexical_cast<std::string>(sc_id);
+		throw ImagePlusError("Semantic Class '" + semantic_class + "' not included in ontology" + _name + ".");
+	}
+	return sc->second;
+}
+
+Ontology::iterator imageplus::semantic::Ontology::begin() {
+	return boost::make_transform_iterator(_semantic_classes.begin(), &get_key<
+			Ontology::SemanticClassesType::key_type,
+			Ontology::SemanticClassesType::mapped_type> );
+}
+
+Ontology::iterator imageplus::semantic::Ontology::end() {
+	return boost::make_transform_iterator(_semantic_classes.end(), &get_key<
+			Ontology::SemanticClassesType::key_type,
+			Ontology::SemanticClassesType::mapped_type> );
+}
+
+Ontology::const_iterator imageplus::semantic::Ontology::begin() const {
+	return boost::make_transform_iterator(_semantic_classes.begin(), &get_key<
+			Ontology::SemanticClassesType::key_type,
+			Ontology::SemanticClassesType::mapped_type> );
+}
+
+Ontology::const_iterator imageplus::semantic::Ontology::end() const {
+	return boost::make_transform_iterator(_semantic_classes.end(), &get_key<
+			Ontology::SemanticClassesType::key_type,
+			Ontology::SemanticClassesType::mapped_type> );
+}
+
+std::ostream& imageplus::semantic::operator<<(std::ostream &os, const Ontology& o)
+{
+	os << "Ontology name: " << o._name << std::endl;
+	os << "Semantic classes:" << std::endl;
+	BOOST_FOREACH(Ontology::SemanticClassesType::value_type sc, o._semantic_classes)
+		os << "  - " << sc.second << std::endl;
+	return os;
+}

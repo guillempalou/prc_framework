@@ -1,0 +1,412 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Configure / Environment Checks                   #
+#                                                                            #
+# This script executes the needed checks of the local environment in order   #
+# to configure properly the build environment, or to cancel the build if     #
+# some external dependence is missing.                                       #
+#                                                                            #
+# The build system is based on SCons (http://www.scons.org/), so also this   #
+# this script.                                                               #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                                                                            #
+##############################################################################
+
+Import('*')
+
+# For test data check
+import os
+import sys
+import subprocess
+
+##
+## Global Variables
+##
+## Note: For an unknown reason scons-0.97 needs the ContextChecksBinPath 
+##       in the top level directory
+##
+ContextChecksBinPath = '#.contextchecks.build/'
+ContextChecksSrcPath = '#builder/contextchecks/'
+
+ContextChecksLogFile = ContextChecksBinPath + '/contextchecks.log'
+
+
+OfficialGCCVersion = ['4', '3', '2'] 
+OfficialGCCVersionStr = "4.3.2"
+
+##
+## CheckBoost: The configure check for the boost libraries.
+##             This check should look for the boost version 
+##
+def CompleteCheck(context, filename, message, objs=[], cpppath='', libpath='', libs=[], cppflags=[]):
+
+    # Print out a message to the user
+    context.Message( message )    
+    
+    # save environment
+    old_cpppath  = []
+    old_libpath  = []
+    old_libs     = []
+    old_ld_path  = ''
+    old_cppflags = []
+    
+    old_cpppath  += context.env['CPPPATH']
+    old_libpath  += context.env['LIBPATH']
+    old_libs     += context.env['LIBS']
+    old_ld_path   = context.env['ENV']['LD_LIBRARY_PATH']
+    old_cppflags += context.env['CPPFLAGS']
+
+    
+    # update environment (order is relevant because some external libraries may use zlib)
+    context.env['LIBS'] = libs + context.env['LIBS']
+    if cpppath != '':
+        context.env['CPPPATH'] += [cpppath]
+    if libpath != '':
+        context.env['LIBPATH'] += [libpath]
+        context.env['ENV']['LD_LIBRARY_PATH'] = context.env['ENV']['LD_LIBRARY_PATH'] + ':' + libpath
+    if cppflags != []:
+        context.env['CPPFLAGS'] += cppflags
+    
+    ###
+    ### HACK based the SConf.py file to link and run the check 
+    ###
+    ok      = False
+    outFile = ""
+    try:
+        context.sconf.pspawn = context.env['PSPAWN']
+    except KeyError:
+        raise SCons.Errors.UserError('Missing PSPAWN construction variable.')
+    try:
+        save_spawn = context.env['SPAWN']
+    except KeyError:
+        raise SCons.Errors.UserError('Missing SPAWN construction variable.')
+    context.env['SPAWN'] = context.sconf.pspawn_wrapper
+    objNodes = context.env.Object(ContextChecksBinPath + filename, ContextChecksSrcPath + filename + '.cpp')
+    binNodes = context.env.Program(ContextChecksBinPath + filename, objNodes + objs )
+    ok = context.sconf.BuildNodes(binNodes)
+    outputStr = ''
+    if( ok ):
+        binName = str(binNodes[0])
+        outFile = File(binName+'.out')
+        outNode = context.env.Command(outFile, binName, [ [ binName, "2>&1" , ">", "${TARGET}"] ])
+        
+        ok = context.sconf.BuildNodes(outNode)
+        
+    context.env['SPAWN'] = save_spawn
+    ###
+    ### end of HACK
+    ###
+    
+    # Print out the result of the check
+    ret = ok
+    context.Result( ret )
+    
+    # On error print outFile and restore the environment values
+    # Note that if check is okay, the environment is automatically updated
+    if not ret:
+        # restore old values
+        context.env['CPPPATH']                = old_cpppath
+        context.env['LIBPATH']                = old_libpath
+        context.env['LIBS']                   = old_libs
+        context.env['ENV']['LD_LIBRARY_PATH'] = old_ld_path
+        context.env['CPPFLAGS']               = old_cppflags
+
+        if outFile != "":
+            f = open(str(outFile), 'r')
+            print  f.read()
+    
+    return ret
+
+
+##
+## CheckTestData: The context check for the data test path.
+##
+def CheckTestData(context):
+    context.Message( 'Checking for test data paths...' )
+    data_r = Dir('#'+env['TEST_DATA_PATH_R'])
+    data_w = Dir('#'+env['TEST_DATA_PATH_W'])
+    ret = os.path.exists(str(data_r)) and os.path.exists(str(data_w)) 
+    context.Result( ret )
+    return ret
+
+##
+## CheckTestData: The context check for the data test path.
+##
+def CheckCompilerVersion(context):
+    context.Message( 'Checking compiler version...' )
+    
+    version = context.env['CXXVERSION'].split('.')
+    
+    # check that version have at least a major and a minor number (e.g. 4.1)
+    if version[0] != OfficialGCCVersion[0] or version[1] != OfficialGCCVersion[1]:
+        ret = False 
+    else:
+        ret = True
+    
+    context.Result( ret )
+    return(ret)
+
+##
+## ConfigureContext variable 
+##
+conf = Configure( env, 
+                  custom_tests = { 'CompleteCheck'  : CompleteCheck, 
+                                   'CheckTestData'  : CheckTestData,
+                                   'CheckCompilerVersion' : CheckCompilerVersion,
+                                   },
+                  conf_dir = ContextChecksBinPath,
+                  log_file = ContextChecksLogFile )
+
+
+##
+## Execute the context checks 
+##
+
+# Check Compiler version
+# TODO: Create a list of supported compilers
+if not env['msvc']:
+	if not conf.CheckCompilerVersion():
+	    print '\nOfficial GCC Version for ImagePlus: ', OfficialGCCVersionStr
+	    print   'Your GCC Version:                   ', env['CXXVERSION']
+	    print '\nBuilder will continue, but results are unexpected.\n'
+
+# Check the boost library
+if not conf.CompleteCheck('boostcheck', 'Checking for Boost C++ Libraries...',
+                           libs = boost_libs,
+                           cpppath = env['BOOST_CPP_PATH'], 
+                           libpath = env['BOOST_LIB_PATH']):
+    print '\nBoost C++ Libraries not found in your system.\n'
+    
+    print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+    sys.exit(1)
+
+# TODO: Add check for JPEG and PNG libraries
+    
+#if not conf.CompleteCheck('boost_program_options_check', 'Checking for Boost.Program_options library...'):
+#    print '\nBoost.Program_options is not found.             \
+#           \nYou can download it from http://www.boost.org/  \n'
+#    sys.exit(1)
+
+# NOTE: 
+#
+# Boost test library only links in static way:
+# - using -static flag
+# - adding libboost_unit_test_framework.a as an object to the linker 
+#
+# Now ImagePlus can not link statically due ImageMagick.
+# So we have decided to always use the BOOST_TEST_HEADERS
+#
+# TODO: Build ImagePlus statically (-static)
+#  
+# Check the boost test library if we want to build the tests
+#if env['buildtests']:
+#    if not conf.CompleteCheck('boosttestcheck', 'Checking for Boost.Test library...', 
+#                              objs = [env['BOOST_LIB_PATH']+['/libboost_unit_test_framework.a']]):
+#        env['USE_BOOST_TEST_HEADERS'] = True 
+
+env['USE_BOOST_TEST_HEADERS'] = True
+
+# Check the boost test data path
+if not conf.CheckTestData():
+    print '\nTEST DATA DIRECTORIES NOT FOUND:                   \
+           \n\
+           \nRead data directory:  ', env['TEST_DATA_PATH_R'],' \
+           \nWrite data directory: ', env['TEST_DATA_PATH_W'],' \
+           \n\
+           \nSpecify the correct path in the user.build file.   \
+           \nBuilder will continue, but TESTS WILL NOT BE RUN.  \n'
+    env['runtests'] = False
+    testDataExists = False
+    Export('testDataExists')
+    
+
+if env['USE_IMAGEMAGICK']:
+    magicklibs = ['Magick++']
+    
+    if env['msvc']:
+        magicklibs = ['CORE_RL_Magick++_']
+        
+    # this not works :-(
+    #if env['static'] and not env['msvc']:
+    #    magicklibs += ['Wand', 'Magick', 'pthread']
+        
+    if not conf.CompleteCheck('imagemagick_check', 'Checking for Image Magick...',
+                              libs    = magicklibs, 
+                              cpppath = env['IMAGEMAGICK_CPP_PATH'], 
+                              libpath = env['IMAGEMAGICK_LIB_PATH']):
+        print '\nImageMagick not found in the system.                                              \
+               \nCheck your installation or disable this library with: scons USE_IMAGEMAGICK=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)   
+    
+
+if env['USE_FFMPEG']:
+    ffmpeg_libs = ['avformat', 'avcodec', 'avutil', 'swscale']
+    if not env['msvc']:
+        ffmpeg_libs += ['bz2']
+    if not conf.CompleteCheck('ffmpeg_check', 'Checking for ffmpeg library...', 
+                              libs = ffmpeg_libs,
+                              cpppath = env['FFMPEG_CPP_PATH'], 
+                              libpath = env['FFMPEG_LIB_PATH']):
+        print '\nFFmpeg not found in the system.                                              \
+               \nCheck your installation or disable this library with: scons USE_FFMPEG=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)   
+
+if env['USE_FFTW3']:
+    if not conf.CompleteCheck('fftw3_check', 'Checking for fftw3 library...', 
+                              libs = ['fftw3'], 
+                              cpppath = env['FFTW3_CPP_PATH'], 
+                              libpath = env['FFTW3_LIB_PATH']):
+        print '\nFFTW3 not found in the system.                                              \
+               \nCheck your installation or disable this library with: scons USE_FFTW3=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)   
+
+
+if env['USE_VIDEO4LINUX']:
+    if not conf.CompleteCheck('video4linux_check', 'Checking for Video for Linux...'):
+        print '\nVideo4Linux not found in the system.                                              \
+               \nCheck your installation or disable this library with: scons USE_VIDEO4LINUX=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)   
+        
+if env['USE_SMARTFLOW']:
+    if not conf.CompleteCheck('smartflow_check', 'Checking for smartflow library...', 
+                              libs = ['sflib', 'sfutils', 'evilib', 'ksc', 'pthread', 'PvAPI', 'rt', 'smartflow2', 'ACE', 'ACEXML', 'ACEXML_Parser' ], 
+                              cpppath = env['SMARTFLOW_CPP_PATH'], 
+                              libpath = env['SMARTFLOW_LIB_PATH']):
+        print '\nSmartFlow not found in the system.                                              \
+        \nCheck your installation or disable this library with: scons USE_SMARTFLOW=false \n'
+    
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)   
+
+
+
+if env['USE_XML']:
+    if env['msvc']:
+        if env['debug']:
+            if env['static']:
+	            #
+	            # To link xerces statically with msvc we need some extra
+	            # configuration.
+	            #
+	            # From http://wiki.codesynthesis.com/Xerces_tips
+	            #
+	            xerceslibs = ['xerces-c_static_2D', 'xerces-depdom_static_2D', 'ws2_32', 'advapi32']
+	            env['CPPDEFINES'] += ['XML_LIBRARY']
+            else:
+                xerceslibs = ['xerces-c_2D']
+        else: 
+            if env['static']:
+	            #
+	            # To link xerces statically with msvc we need some extra
+	            # configuration.
+	            #
+	            # From http://wiki.codesynthesis.com/Xerces_tips
+	            #
+	            xerceslibs = ['xerces-c_static_2', 'xerces-depdom_static_2', 'ws2_32', 'advapi32']
+	            env['CPPDEFINES'] += ['XML_LIBRARY']
+            else:
+	            xerceslibs = ['xerces-c_2']
+    else:
+        xerceslibs = ['xerces-c']
+        
+    if not conf.CompleteCheck('xml_check', 'Checking for the XML library (Xerces)...', 
+                              libs = xerceslibs, 
+                              cpppath = env['XML_CPP_PATH'], 
+                              libpath = env['XML_LIB_PATH']):
+        print '\nXML library (Xerces) not found in the system.                             \
+               \nCheck your installation or disable this library with: scons USE_XML=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)
+        
+if env['USE_OPENGL']:
+    opengllibs = ['glut', 'GLU', 'GL']
+    
+    if env['msvc']:
+     opengllibs = ['glew32', 'glut32', 'GLU32', 'OpenGL32']
+  
+    if not conf.CompleteCheck('opengl_check', 'Checking for OpenGL...', 
+                              libs = opengllibs, 
+                              cpppath = env['OPENGL_CPP_PATH'], 
+                              libpath = env['OPENGL_LIB_PATH']):
+        print '\nOpenGL not found in the system.                             \
+               \nCheck your installation or disable this library with: scons USE_OPENGL=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)
+        
+if env['USE_OPENCL']:
+    opencllibs = ['OpenCL']
+    
+    if not conf.CompleteCheck('check_opencl', 'Checking for OpenCL...', 
+                              libs = opencllibs, 
+                              cpppath = env['OPENCL_CPP_PATH'], 
+                              libpath = env['OPENCL_LIB_PATH']):
+        print '\nOpenCL not found in the system.                             \
+               \nCheck your installation or disable this library with: scons USE_OPENCL=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)
+
+        
+if env['USE_OPENMESH']:
+    openmeshlibs = ['OpenMeshTools', 'OpenMeshCore']
+    if env['msvc'] and env['debug']:
+        openmeshlibs = ['OpenMeshTools-d', 'OpenMeshCore-d']
+    
+    if not conf.CompleteCheck('openmesh_check', 'Checking for OpenMesh...', 
+                              libs = openmeshlibs, 
+                              cpppath = env['OPENMESH_CPP_PATH'], 
+                              libpath = env['OPENMESH_LIB_PATH']):
+        print '\nOpenMesh not found in the system.                             \
+               \nCheck your installation or disable this library with: scons USE_OPENMESH=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)   
+   
+if env['USE_WT']:
+    wtlibs = ['wt', 'wthttp']
+    if not conf.CompleteCheck('check_wt', 'Checking for Wt...',
+                              libs    = wtlibs, 
+                              cpppath = env['WT_CPP_PATH'], 
+                              libpath = env['WT_LIB_PATH']):
+        print '\nWt not found in the system.                                              \
+               \nCheck your installation or disable this library with: scons USE_WT=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)   
+
+if env['USE_OPENNI']:
+    opennilibs = ['OpenNI']
+    
+    if not conf.CompleteCheck('openni_check', 'Checking for OpenNI...', 
+                              libs     = opennilibs, 
+                              cpppath  = env['OPENNI_CPP_PATH'], 
+                              libpath  = env['OPENNI_LIB_PATH'],
+                              cppflags = ['-Wno-reorder','-Wno-unused','-Wno-deprecated-declarations', '-Wno-unknown-pragmas', '-Wno-strict-aliasing']):
+        print '\nOpenNI not found in the system.                             \
+               \nCheck your installation or disable this library with: scons USE_OPENNI=false \n'
+        
+        print '\nSee log file for more information: ', str(File(ContextChecksLogFile)), '\n'
+        sys.exit(1)
+
+
+# Finish the configure context
+conf.Finish()

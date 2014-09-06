@@ -1,0 +1,84 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Modules Build                                    #
+#                                                                            #
+# This script is executed for each module. It creates all the targets from   #
+# sources and tests, it means.all the objects, the module library and tests. # 
+#                                                                            #
+# The build system is based on SCons (http://www.scons.org/), so also this   #
+# this script.                                                               #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                                                                            #
+##############################################################################
+
+Import('*')
+
+# To get the list of files
+import glob
+import os
+##
+## Alias
+##
+## This allows commands like 'scons core' insted of 'scons modules/core'
+##
+Alias( module, modulesPath+module )
+
+##
+## Append the sources directory as a include path
+##
+## This allows to include headers in the source directory and be included in tests
+##	
+moduleEnv.Append( CPPPATH = incPath )
+
+##
+## Add TRACE flag if selected by user
+##
+if module in traces:
+	moduleEnv.Append( CPPDEFINES = '_TRACE' )
+
+##
+## Get objects from sources
+##
+staticObjs = list()
+sharedObjs = list() # TODO
+sources =  glob.glob(str(Dir(modulesPath+module))+os.sep+'src'+os.sep+'*.cpp')
+sources += glob.glob(str(Dir(modulesPath+module))+os.sep+'src'+os.sep+'*'+os.sep+'*.cpp')
+for source in sources:
+	src = source.replace('.cpp','')
+	src = src.replace(str(Dir(srcPath))+ os.sep,'')
+	staticObj = moduleEnv.StaticObject( objPath+src, source)
+	#sharedObj = moduleEnv.SharedObject( objPath+src, source)
+	staticObjs.extend(staticObj)
+	#sharedObjs.extend(sharedObj)
+
+##
+## Get objects from CUDA sources
+##
+if env['USE_CUDA']:
+    sources =  glob.glob(str(Dir(modulesPath+module))+os.sep+'src'+os.sep+'*.cu')
+    sources += glob.glob(str(Dir(modulesPath+module))+os.sep+'src'+os.sep+'*'+os.sep+'*.cu')
+    for source in sources:
+    	src = source.replace('.cu','')
+    	src = src.replace(str(Dir(srcPath))+ os.sep,'')
+    	staticObj = moduleEnv.StaticObject( objPath+src, source)
+    	#sharedObj = moduleEnv.SharedObject( objPath+src, source)
+    	staticObjs.extend(staticObj)
+    	#sharedObjs.extend(sharedObj)
+
+
+##
+## Return the module objects to the main script
+##
+## These objects will be used to create the main library
+##
+Export('sharedObjs', 'staticObjs')
+

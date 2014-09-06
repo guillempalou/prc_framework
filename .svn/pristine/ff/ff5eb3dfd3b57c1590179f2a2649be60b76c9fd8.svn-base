@@ -1,0 +1,1284 @@
+// subversion $Id: SFClient.hpp 733 2005-05-05 14:25:18Z joachim $
+
+/*!
+ * \file client.hpp
+ * \author Shadi El-Hajj <shadi@gps.tsc.upc.edu>
+ *
+ *  This header file also includes the implementation of the classes
+ *
+ *  \warning DO NOT CHANGE THIS FILE UNLESS YOU KNOW WHAT YOU ARE DOING
+ *
+ *                                   Shadi and Joachim
+ *
+ * \date 18-Feb-2005
+ */
+
+/*! \cond SKIP_DOC */
+
+#ifndef SFCLIENT_HPP
+#define SFCLIENT_HPP
+
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <signal.h>
+#include <stdexcept>
+#include <sstream>
+#include <typeinfo>
+#include <cxxabi.h>
+#include <sys/stat.h>
+#include <cassert>
+
+#include <cstring>
+#include <algorithm> //for std::replace
+
+#include <smartroom/sf/sflib.h>
+#include <smartroom/sf/videoMetadata.hpp>
+#include <smartroom/sf/dataMetadata.hpp>
+#include <smartroom/sf/exception.hpp>
+
+
+#define DISCARD_FLOW_VERSION
+#ifdef DISCARD_FLOW_VERSION
+   static const unsigned int staticVersion = 1;
+#endif
+
+namespace SFC {
+
+    template<typename T>
+    inline const std::string typeString()
+    {
+        int status;
+        std::string out = abi::__cxa_demangle( typeid(T).name(), 0, 0, &status );
+
+        std::replace( out.begin(), out.end(), '<', '_' );
+        std::replace( out.begin(), out.end(), '>', '_' );
+        std::replace( out.begin(), out.end(), ' ', '_' );
+
+        return out;
+    }
+
+    /// BufferUsage
+    /// \ingroup wrapper
+    enum BufferUsage{ nextBuffer, currentBuffer };
+
+
+    /*!
+    * \class BufferIn
+    * \brief the input buffer is a smartflow flow
+    * \ingroup wrapper
+    */
+    class BufferIn {
+
+    public:
+
+        ~BufferIn() {
+      sf_error err;
+
+#ifdef LOG
+      Log::instance().log("sf_release_buffer(_fin, _pos, &err)");
+#endif
+
+      sf_release_buffer(_fin, _pos, &err);
+      if(err.error_code!=SFE_OK)
+        throw Exception(
+        std::string("SmartFlow C++ Client: in BufferIn::~BufferIn\n") +
+        std::string("                      could not release buffer\n") );
+        }
+
+        /// data
+        /// \ingroup wrapper
+        template<typename T>
+        const T* data() const {
+      if( typeString<T>() != _ti ) {
+        std::stringstream ss;
+        ss << "SmartFlow C++ Client: in BufferIn::data" << std::endl
+        << "                      data type mismatch" << std::endl
+        << "                     " << _ti << " != " << typeString<T>() << std::endl;
+        throw Exception( ss.str() );
+      }
+      return static_cast<const T*>(_array);
+        }
+
+        /// data_unsafe
+        /// \ingroup wrapper
+        template<typename T>
+        const T* data_unsafe() const {
+        return static_cast<const T*>(_array);
+        }
+
+        /// timestamp timestamp of the input buffer
+        /// \ingroup wrapper
+        timespec timestamp() const { return _tsIn; }
+
+        /// get the (smartflow internal) number of the input buffer
+        /// \ingroup wrapper
+        sf_counter number() const { return _pos; }
+
+    private:
+
+        explicit BufferIn( std::string ti, sf_flow_sync* fin ) :
+        _ti( ti ),
+        _fin( fin )
+        {}
+    public:
+        void get( BufferUsage bufferUsage )
+        {
+            sf_counter bufferPos;
+
+            if( bufferUsage==currentBuffer )
+            bufferPos = SF_HIST_CURRENT;
+            else
+            bufferPos = SF_HIST_NEXT;
+
+            sf_error err;
+            do {
+
+#ifdef LOG
+                Log::instance().log("sf_get_buffer(_fin, &bufferPos, &err)");
+#endif
+                
+                _array = sf_get_buffer(_fin, &bufferPos, &err);
+                _pos = bufferPos;
+                bufferPos = SF_HIST_CURRENT;
+            } while( err.error_code==SFE_TOO_OLD );
+
+            if( err.error_code != SFE_OK )
+            throw Exception(
+                std::string("SmartFlow C++ Client: in BufferIn::BufferIn\n") +
+                std::string("                      could not get buffer\n" ) );
+
+#ifdef LOG
+            Log::instance().log("sf_get_buffer_ts(_fin, _pos, &_tsIn, &err)");
+#endif // log
+            sf_get_buffer_ts(_fin, _pos, &_tsIn, &err);
+        };
+        
+
+    private:
+
+        friend class InputFlow;
+
+        std::string _ti;
+        sf_flow_sync* _fin;
+        sf_counter _pos;
+        const void* _array;
+        timespec _tsIn;
+    };
+
+    /*!
+    * \class BufferOut
+    * \brief the output buffer is a smartflow flow
+    * \ingroup wrapper
+    */
+    class BufferOut {
+
+    public:
+
+        /// get data pointer from smartflow
+        /// \ingroup wrapper
+        template<typename T>
+        T* data() const {
+        if( typeString<T>() != _ti )
+            throw Exception(
+            std::string("SmartFlow C++ Client: in BufferOut::data\n") +
+            std::string("                      data type mismatch\n") );
+        return static_cast<T*>(_array);
+        }
+        
+        /// send the buffer into smartflow (with timestamp as double)
+        /// \ingroup wrapper
+        void send( double t ) {
+            struct timespec tsOut;
+            tsOut.tv_sec  = (long)t;
+            tsOut.tv_nsec = (long)((t-tsOut.tv_sec)*1e9);
+            send (tsOut);
+        }
+
+        /// send the buffer into smartflow (timestamp as timespec)
+        /// \ingroup wrapper
+        void send( timespec tsOut ) {
+            sf_error err;
+#ifdef LOG
+            Log::instance().log("sf_send_buffer_with_ts(_fout, 0, &tsOut, &err)");
+#endif // log
+            sf_send_buffer_with_ts(_fout, 0, &tsOut, &err);
+            if(err.error_code != SFE_OK)
+                throw Exception(
+                std::string("SmartFlow C++ Client: in BufferOut::send\n") +
+                std::string("                      could not send buffer\n") );
+        }
+        void send( timespec tsOut, size_t size ) {
+            sf_error err;
+#ifdef LOG
+            Log::instance().log("sf_send_buffer_with_ts(_fout, size, &tsOut, &err)");
+#endif // log
+            sf_send_buffer_with_ts(_fout, size, &tsOut, &err);
+            if(err.error_code != SFE_OK)
+                throw Exception(
+                std::string("SmartFlow C++ Client: in BufferOut::send\n") +
+                std::string("                      could not send buffer\n") );
+        }
+
+    private:
+
+        explicit BufferOut( std::string ti, sf_flow_emit* fout ) :
+        _ti( ti ),
+        _fout( fout )
+        {}
+    public:    
+        void get()
+        {
+            sf_error err;
+#ifdef LOG
+            Log::instance().log("sf_get_output_buffer(_fout, &err)");
+#endif // log
+            _array = sf_get_output_buffer(_fout, &err);
+            if(err.error_code != SFE_OK)
+            throw Exception(
+                std::string("SmartFlow C++ Client: in BufferOut::BufferOut\n") +
+                std::string("                      could not get buffer\n" ) );
+        };
+
+    private:
+
+        friend class OutputFlow;
+
+        std::string _ti;
+        sf_flow_emit* _fout;
+        void* _array;
+    };
+
+    /*!
+    * \class Flow
+    * \brief implementing basic properties of flows
+    * \ingroup wrapper
+    */
+    class Flow {
+
+    public:
+
+        virtual ~Flow() { };
+
+        /// flowName
+        /// \ingroup wrapper
+        const std::string flowName() const { return _name; }
+        /// groupName
+        /// \ingroup wrapper
+        const std::string groupName() const { return _group; }
+
+    protected:
+
+        static const char* copyString( const std::string& s ) {
+        char* string_copy = new char[s.length()+1];
+        strcpy( string_copy, s.c_str() );
+        return string_copy;
+        // the three lines above introduces a memory leak.
+        // This is necessary to compensate for
+        // the fact that smartflow simply stores the string pointer instead of copying
+        // the string. In other words, sf takes ownership of your string
+        }
+
+    protected:
+
+        explicit Flow( const std::string& name, const std::string& group, sf_init_param* iparam, const int& v) :
+            _ignoreMetadata (false),
+            _initialized( false ),
+            _name( name ),
+            _group( group ),
+            _iparam( iparam ),
+            _version( v )
+            { }
+
+        void updateName( sf_flow_kind kind, size_t i ) {
+            // accessing the name is necessary because it can be changed in the sf GUI
+#ifdef LOG
+            Log::instance().log("sf_init_param_get_flow_name( _iparam, kind, i )");
+#endif // log
+            _name  = sf_init_param_get_flow_name( _iparam, kind, i );
+            std::cerr << "sf_init_param_get_flow_name = " << _name << std::endl;
+#ifdef LOG
+            Log::instance().log("sf_init_param_get_flow_group( _iparam, kind, i )");
+#endif // log
+            _group = sf_init_param_get_flow_group( _iparam, kind, i );
+        }
+
+    protected:
+        bool _ignoreMetadata;
+        bool _initialized;
+        std::string _name;
+        std::string _group;
+        sf_init_param* _iparam;
+
+        int _version;
+
+    }; // class Flow
+
+    /*!
+    * \class InputFlow
+    * \brief implementing basic properties of input flows
+    * \ingroup wrapper
+    */
+    class InputFlow : public Flow {
+
+    public:
+
+        virtual ~InputFlow() { };
+
+        const BufferIn buffer() const {
+        if( !_initialized )
+            throw Exception(
+            std::string("SmartFlow C++ Client: in InputFlow::buffer\n") +
+            std::string("                      Client::init has not yet been called\n" ) );
+
+        return BufferIn( _ti, _sync);
+        }
+        
+        template<typename T>
+        timespec get_buffer(const T* & data)
+        {
+        	BufferIn b = this->buffer();
+        	b.get(currentBuffer);
+        	data = b.data<T>();
+        	
+        	return b.timestamp();
+        }
+
+
+    protected:
+
+        explicit InputFlow( const std::string& name, const std::string& group, sf_init_param* iparam,
+                size_t historySize, const int& v ) :
+        Flow( name, group, iparam, v ),
+        _historySize( historySize )
+        { }
+
+        void checkVersionMetadata( sf_handle* handle ) {
+            if ( ! _ignoreMetadata ) {
+                int vi;
+                sf_error err;
+#ifdef LOG
+                Log::instance().log(
+                    std::string("sf_flow_get_metadata( handle, ") +
+                    _name +
+                    std::string(", ") +
+                    _group +
+                    std::string(", \"Version\", sizeof(VersionInternal), \"VersionInternal\", &vi, &err)"));
+#endif // log
+                sf_flow_get_metadata( handle, _name.c_str(), _group.c_str(),
+                        "Version", sizeof(int), "VersionInternal",
+                        &vi, &err);
+                if(err.error_code != SFE_OK)
+                throw Exception(
+                    std::string("SmartFlow C++ Client: in Flow::initVersionMetadata\n") +
+                    std::string("                      could not get the version information\n") +
+                    std::string("                      flow: "+_name+" group: "+_group+"\n" ) );
+
+                if( _version  != vi ) {
+                    std::stringstream ss;
+                    ss << "SmartFlow C++ Client: in InputFlow::checkVersionMetadata" << std::endl
+                    << "                      this client expects version "
+                    << _version << std::endl
+                    << "                      but the incoming flow had version "
+                    << vi << std::endl;
+                    throw Exception( ss.str() );
+                }
+            }
+        }
+
+    protected:
+
+        std::string _ti;
+        sf_flow_sync* _sync;
+        size_t _historySize;
+
+    private:
+
+        friend class Client;
+        virtual void set( size_t index ) = 0;
+        virtual void init( size_t index, sf_handle* handle ) = 0;
+
+    }; // class InputFlow
+
+    /*!
+    * \class OutputFlow
+    * \brief implementing basic properties of output flows
+    * \ingroup wrapper
+    */
+    class OutputFlow : public Flow {
+
+    public:
+
+        virtual ~OutputFlow() { }
+
+        const BufferOut buffer() const {
+        if( !_initialized )
+            throw Exception(
+            std::string("SmartFlow C++ Client: in OutputFlow::buffer\n") +
+            std::string("                      SFClient::init has not yet been called\n" ) );
+        return BufferOut( _ti, _emit );
+        }
+        
+        template<typename T>
+        void get_buffer(T* & data)
+        {
+        	BufferOut b = this->buffer();
+        	b.get();
+        	data = b.data<T>();	
+        }
+
+
+    protected:
+
+        explicit OutputFlow( const std::string& name, const std::string& group, sf_init_param* iparam, const int& v) :
+            Flow( name, group, iparam, v )
+            { }
+
+        void initVersionMetadata( sf_handle* handle ) {
+            int vi;
+            vi  = _version;
+
+            sf_error err;
+#ifdef LOG
+            Log::instance().log(
+                std::string("sf_flow_set_metadata( handle, ") +
+                _name +
+                std::string(", ") +
+                _group +
+                std::string(", \"Version\", sizeof(VersionInternal), \"VersionInternal\", &vi, &err)"));
+#endif // log
+            sf_flow_set_metadata( handle, _name.c_str(), _group.c_str(),
+                            "Version", sizeof(int), "VersionInternal",
+                            &vi, &err);
+            if(err.error_code != SFE_OK)
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Flow::initVersionMetadata\n") +
+                std::string("                      could not set the version information\n") +
+                std::string("                      flow: "+_name+" group: "+_group+"\n" ) );
+        }
+
+    protected:
+
+        std::string _ti;
+        sf_flow_emit* _emit;
+
+    private:
+
+        friend class Client;
+        virtual void set( size_t index ) = 0;
+        virtual void init( size_t i, sf_handle* ) = 0;
+
+    }; // class OutputFlow
+
+    /*!
+    * \class VideoInputFlow
+    * \brief implementing basic properties of video input flows
+    * \ingroup wrapper
+    */
+    class VideoInputFlow : public InputFlow {
+
+    public:
+
+        virtual ~VideoInputFlow() { }
+
+        const VideoMetadata getMetadata() const {
+        if( !_initialized )
+            throw Exception(
+            std::string("SmartFlow C++ Client: in VideoInputFlow::getMetadata\n") +
+            std::string("                      Client::init has not yet been called\n" ) );
+        return _videoMetadata;
+        }
+
+    private:
+
+        friend class Client;
+
+        explicit VideoInputFlow( const std::string& name, const std::string& group,
+            sf_init_param* iparam, size_t historySize, const int& v ) :
+            InputFlow( name, group, iparam, historySize, v )
+            { }
+
+        virtual void set( size_t i ) {
+            sf_init_param_set_flow_name(_iparam, SF_KIND_INPUT, i, copyString(_name));
+            sf_init_param_set_flow_group(_iparam, SF_KIND_INPUT, i, copyString(_group));
+            sf_init_param_set_flow_type(_iparam, SF_KIND_INPUT, i, SF_TYPE_VIDEO);
+#ifdef LOG
+            Log::instance().log(std::string("sf_init_param_set_flow_name( _iparam, SF_KIND_INPUT, i, ") + _name);
+            Log::instance().log(std::string("sf_init_param_set_flow_group( _iparam, SF_KIND_INPUT, i, ") + _group);
+            Log::instance().log("sf_init_param_set_flow_type(_iparam, SF_KIND_INPUT, i, SF_TYPE_VIDEO)");
+#endif // log
+
+            // flow size is not set here.
+            // We do not know the image size at this point.
+            // smartflow does not need to know the size of images in an input flow
+            //  sf_init_param_set_flow_size(_iparam, SF_KIND_INPUT, i, _videoMetadata.width,
+            //  _videoMetadata.height);
+
+            // THIS IS WRONG. THIS IS ONLY TRUE, IF THE FLOW EMITTER AND THE FLOW RECEIVER
+            // RUN ON THE SAME COMPUTER
+        }
+
+        virtual void init( size_t i, sf_handle* handle ) {
+            sf_error err;
+            sf_flow_param fparam;
+
+            updateName( SF_KIND_INPUT, i );
+            checkVersionMetadata( handle );
+            initVideoMetadata( handle );
+
+            size_t componentSize=0;
+            switch (_videoMetadata.dataType) {
+                case VideoMetadata::type_8u:
+                    componentSize = sizeof(unsigned char);
+                    break;
+                case VideoMetadata::type_16s:
+                    componentSize = sizeof(signed short);
+                    break;
+                case VideoMetadata::type_32f:
+                    componentSize = sizeof(float);
+                    break;
+                default:
+                    assert(false); // this should never happen
+                    break;
+            }
+#ifdef LOG
+            std::ostringstream ss;
+            ss << "sf_init_param_set_flow_size(_iparam, SF_KIND_INPUT, i,"
+              << "_videoMetadata.width * componentSize (="
+              << _videoMetadata.width * componentSize
+              << "), _videoMetadata.height (="
+              << _videoMetadata.height << "))";
+            Log::instance().log(ss.str());
+#endif // log
+            sf_init_param_set_flow_size(_iparam, SF_KIND_INPUT, i,
+                _videoMetadata.width * componentSize, _videoMetadata.height);
+
+#ifdef LOG
+            Log::instance().log("sf_flow_param_init(&fparam)");
+#endif // log
+            sf_flow_param_init(&fparam);
+
+#ifdef LOG
+            Log::instance().log("sf_flow_param_get_flow(&fparam, _iparam, SF_KIND_INPUT, i)");
+#endif // log
+            sf_flow_param_get_flow(&fparam, _iparam, SF_KIND_INPUT, i);
+
+            // Now, we have the metadata and can get the flow subtype
+            // This is important for the correct handling of grayscale images
+            if( _videoMetadata.imageFormat == VideoMetadata::singleChannel )
+            sf_flow_param_set_subtype(&fparam, SF_VIDEO_GRAYSCALE);
+            else
+            sf_flow_param_set_subtype(&fparam, SF_VIDEO_PACKED_RGB);
+
+#ifdef LOG
+            ss.str("");
+            ss << "sf_flow_subscribe_sync(handle, &fparam, _historySize (="
+            << _historySize << "), &err)";
+            Log::instance().log(ss.str());
+#endif // log
+            _sync = sf_flow_subscribe_sync(handle, &fparam, _historySize, &err);
+            if(err.error_code != SFE_OK)
+                throw Exception(
+                std::string("SmartFlow C++ Client: in VideoInputFlow::init\n") +
+                std::string("                      could not initialize flow\n") );
+            _initialized = true;
+        }
+
+        void initVideoMetadata( sf_handle* handle ) {
+            sf_error err;
+#ifdef LOG
+            Log::instance().log(
+            std::string("sf_flow_get_metadata( handle, ") + _name +
+            ", \"VideoMetadata\", sizeof(VideoMetadata), \"VideoMetadata\", &_videoMetadata, &err);");
+#endif // log
+            sf_flow_get_metadata( handle, _name.c_str(), _group.c_str(),
+                        "VideoMetadata", sizeof(VideoMetadata), "VideoMetadata",
+                        &_videoMetadata, &err);
+            if(err.error_code != SFE_OK)
+            throw Exception(
+            std::string("SmartFlow C++ Client: in VideoInputFlow::getVideoMetadata\n") +
+            std::string("                      could not get video Metadata\n" ) );
+            setTypeInfo();
+        }
+
+        void setTypeInfo() {
+            if( _videoMetadata.dataType == VideoMetadata::type_8u )
+                _ti = typeString<unsigned char>();
+            else if( _videoMetadata.dataType == VideoMetadata::type_16s )
+                _ti = typeString<short>();
+            else if( _videoMetadata.dataType == VideoMetadata::type_32f )
+                _ti = typeString<float>();
+            else
+                throw Exception(
+                std::string("SmartFlow C++ Client: in VideoOutputFlow::setTypeInfo\n") +
+                std::string("                      unknown video data type\n" ) );
+        };
+
+    private:
+
+        VideoMetadata _videoMetadata;
+
+    }; //class VideoInputFlow
+
+    /*!
+    * \class VideoOutputFlow
+    * \brief implementing basic properties of video output flows
+    * \ingroup wrapper
+    */
+    class VideoOutputFlow : public OutputFlow {
+
+    public:
+
+        virtual ~VideoOutputFlow() { }
+
+        void setMetadata( VideoMetadata videoMetadata ) {
+          _videoMetadata = videoMetadata;
+          setTypeInfo();
+        }
+
+    private:
+
+        friend class Client;
+
+        explicit VideoOutputFlow( const std::string& name, const std::string& group,
+            sf_init_param* iparam, const int& version ) :
+            OutputFlow( name, group, iparam, version )
+            { }
+
+        virtual void set( size_t i ) {
+            sf_init_param_set_flow_name(_iparam, SF_KIND_OUTPUT, i, copyString(_name));
+            sf_init_param_set_flow_group(_iparam, SF_KIND_OUTPUT, i, copyString(_group));
+            sf_init_param_set_flow_type(_iparam, SF_KIND_OUTPUT, i, SF_TYPE_VIDEO);
+#ifdef LOG
+            Log::instance().log(std::string("sf_init_param_set_flow_name(_iparam, SF_KIND_OUTPUT, i, ") + _name + ");");
+            Log::instance().log(std::string("sf_init_param_set_flow_group(_iparam, SF_KIND_OUTPUT, i, ") + _group + ");");
+            Log::instance().log("sf_init_param_set_flow_type(_param, SF_KIND_OUTPUT, i, SF_TYPE_VIDEO)");
+#endif // log
+        }
+
+        virtual void init( size_t i, sf_handle* handle ) {
+        size_t componentSize = 0;
+        switch (_videoMetadata.dataType) {
+            case VideoMetadata::type_8u:
+                componentSize = sizeof(unsigned char);
+                break;
+            case VideoMetadata::type_16s:
+                componentSize = sizeof(signed short);
+                break;
+            case VideoMetadata::type_32f:
+                componentSize = sizeof(float);
+                break;
+            default:
+                assert(false); // this should never happen
+                break;
+        }
+        std::ostringstream ss;
+        ss << "sf_init_param_set_flow_size(_iparam, SF_KIND_OUTPUT, i,"
+           << "_videoMetadata.width * componentSize (="
+           << _videoMetadata.width * componentSize
+           << "), _videoMetadata.height (="
+           << _videoMetadata.height << "))";
+#ifdef LOG
+        Log::instance().log(ss.str());
+#endif // log
+        sf_init_param_set_flow_size(_iparam, SF_KIND_OUTPUT, i,
+            _videoMetadata.width * componentSize, _videoMetadata.height);
+
+        sf_error err;
+        sf_flow_param fparam;
+        sf_flow_param_init(&fparam);
+#ifdef LOG
+        Log::instance().log("sf_flow_param_init(&fparam)");
+        Log::instance().log("sf_flow_param_get_flow(&fparam, _iparam, SF_KIND_OUTPUT, i)");
+#endif // log
+        sf_flow_param_get_flow(&fparam, _iparam, SF_KIND_OUTPUT, i);
+        if( _videoMetadata.imageFormat == VideoMetadata::singleChannel ) {
+#ifdef LOG
+            Log::instance().log("sf_flow_param_set_subtype(&fparam, SF_VIDEO_GRAYSCALE)");
+#endif // log
+            sf_flow_param_set_subtype(&fparam, SF_VIDEO_GRAYSCALE);
+        } else {
+#ifdef LOG
+            Log::instance().log("sf_flow_param_set_subtype(&fparam, SF_VIDEO_PACKED_RGB)");
+#endif // log
+            sf_flow_param_set_subtype(&fparam, SF_VIDEO_PACKED_RGB);
+        }
+#ifdef LOG
+        Log::instance().log("sf_flow_create(handle, &fparam, &err)");
+#endif // log
+        _emit =  sf_flow_create(handle, &fparam, &err);
+        if(err.error_code != SFE_OK)
+            throw Exception(
+            std::string("SmartFlow C++ Client: in VideoOutputFlow::init\n") +
+            std::string("                      could not initialize flow\n") );
+
+        updateName( SF_KIND_OUTPUT, i );
+        initVersionMetadata( handle );
+        initVideoMetadata( handle );
+
+        _initialized = true;
+        }
+
+        void initVideoMetadata( sf_handle* handle ) {
+        sf_error err;
+#ifdef LOG
+        Log::instance().log(std::string("sf_flow_set_metadata( handle, ") +
+            _name + ", " + _group + ", \"VideoMetadata\"" +
+            ", sizeof(VideoMetadata), \"VideoMetadata\", " +
+            "&_videoMetadata, &err);");
+#endif // log
+        sf_flow_set_metadata( handle, _name.c_str(), _group.c_str(),
+                    "VideoMetadata", sizeof(VideoMetadata), "VideoMetadata",
+                    &_videoMetadata, &err);
+        if(err.error_code != SFE_OK)
+            throw Exception(
+            std::string("SmartFlow C++ Client: in VideoOutputFlow::initVideoMetadata\n") +
+            std::string("                      could not set video metadata\n" ) );
+        }
+
+        void setTypeInfo() {
+        if( _videoMetadata.dataType == VideoMetadata::type_8u )
+            _ti = typeString<unsigned char>();
+        else if( _videoMetadata.dataType == VideoMetadata::type_16s )
+            _ti = typeString<short>();
+        else if( _videoMetadata.dataType == VideoMetadata::type_32f )
+            _ti = typeString<float>();
+        else
+            throw Exception(
+            std::string("SmartFlow C++ Client: in VideoOutputFlow::setTypeInfo\n") +
+            std::string("                      unknown video data type\n" ) );
+        };
+
+    private:
+
+        VideoMetadata _videoMetadata;
+
+    }; //class VideoOutputFlow
+
+
+    /*!
+    * \class DataInputFlow
+    * \brief implementing basic properties of data input flows
+    * \ingroup wrapper
+    */
+    class DataInputFlow : public InputFlow {
+
+    public:
+
+        virtual ~DataInputFlow() { }
+
+    private:
+
+        friend class Client;
+
+        explicit DataInputFlow( const std::string& name, const std::string& group, sf_init_param* iparam,
+            size_t historySize, int& version,
+            DataMetadata expectedDataMetadata ) :
+                InputFlow( name, group, iparam, historySize, version ),
+                _expectedDataMetadata( expectedDataMetadata )
+                { }
+
+        virtual void set( size_t i ) {
+            sf_init_param_set_flow_name(_iparam, SF_KIND_INPUT, i, copyString(_name));
+            sf_init_param_set_flow_group(_iparam, SF_KIND_INPUT, i, copyString(_group));
+            sf_init_param_set_flow_type(_iparam, SF_KIND_INPUT, i, SF_TYPE_DATA);
+#ifdef LOG
+            Log::instance().log(std::string("sf_init_param_set_flow_name(_iparam, SF_KIND_INPUT, i, ") +
+                _name + ")");
+            Log::instance().log(std::string("sf_init_param_set_flow_group(_iparam, SF_KIND_INPUT, i, ") +
+                _group + ")");
+            Log::instance().log("sf_init_param_set_flow_type(_iparam, SF_KIND_INPUT, i, SF_TYPE_DATA)");
+            std::ostringstream ss;
+            ss << "sf_init_param_set_flow_desc(_iparam, SF_KIND_INPUT, i, "
+            << _expectedDataMetadata.dataStructSize << ", "
+            << _expectedDataMetadata.dataStructName << ")";
+            Log::instance().log(ss.str());
+#endif // log
+            sf_init_param_set_flow_desc(_iparam, SF_KIND_INPUT, i,
+                            _expectedDataMetadata.dataStructSize,
+                            _expectedDataMetadata.dataStructName );
+        }
+
+        virtual void init( size_t i, sf_handle* handle ) {
+
+            sf_error err;
+            sf_flow_param fparam;
+            sf_flow_param_init(&fparam);
+#ifdef LOG
+            Log::instance().log("sf_flow_param_init(&fparam)");
+            Log::instance().log("sf_flow_param_get_flow(&fparam, _iparam, SF_KIND_INPUT, i)");
+#endif // log
+            sf_flow_param_get_flow(&fparam, _iparam, SF_KIND_INPUT, i);
+
+            updateName( SF_KIND_INPUT, i );
+            checkVersionMetadata( handle );
+            initDataMetadata( handle );
+
+
+            if ( _ignoreMetadata ) {
+                _dataMetadata = _expectedDataMetadata;
+            } else {
+                if ( _dataMetadata.dataStructVersion != _expectedDataMetadata.dataStructVersion ) {
+                    std::stringstream ss;
+                    ss << "SmartFlow C++ Client: in DataInputFlow::init" << std::endl
+                    << "                      version mismatch of data structure "
+                    << _dataMetadata.dataStructName << std::endl
+                    << "                      the incoming flow has version "
+                    << _dataMetadata.dataStructVersion << std::endl
+                    << "                      but you specified in SFClient::addDataIn() version: "
+                    << _expectedDataMetadata.dataStructVersion << std::endl;
+                    throw Exception( ss.str() );
+                }
+            }
+
+            _ti = _dataMetadata.dataStructName;
+            std::ostringstream ss;
+            ss << "sf_flow_subscribe_sync(handle, &fparam, _historySize (="
+            << _historySize << "), &err)";
+#ifdef LOG
+            Log::instance().log(ss.str());
+#endif // log
+            _sync = sf_flow_subscribe_sync(handle, &fparam, _historySize, &err);
+            if(err.error_code != SFE_OK) {
+                std::stringstream ss;
+                ss << "SmartFlow C++ Client: in DataInputFlow::init" << std::endl
+                << "                      could not initialize flow " << _name << std::endl
+                << "                      " << "error_code = " << err.error_code << std::endl;
+                sf_perror(&err, "SmartFlow error message from DataInputFlow::init");
+                throw Exception( ss.str() );
+            }
+            _initialized = true;
+        }
+
+        void initDataMetadata( sf_handle* handle ) {
+            if ( _ignoreMetadata ) {
+#ifdef LOG
+                Log::instance().log("DataMetadata ignored. Set to Zero.");
+#endif // log
+                strcpy(_dataMetadata.dataStructName,"");
+                _dataMetadata.dataStructSize = 0;
+                _dataMetadata.dataStructVersion = 0;
+            } else { // do not ignoreMetaData
+                sf_error err;
+#ifdef LOG
+                Log::instance().log(std::string("sf_flow_get_metadata( handle, ") +
+                    _name + ", " + _group + ", \"DataMetadata\", sizeof(DataMetadata), \"DataMetadata\", &_dataMetadata, &err)");
+#endif // log
+                sf_flow_get_metadata( handle, _name.c_str(), _group.c_str(),
+                            "DataMetadata", sizeof(DataMetadata), "DataMetadata",
+                            &_dataMetadata, &err);
+                if(err.error_code != SFE_OK)
+                throw Exception(
+                std::string("SmartFlow C++ Client: in DataInputFlow::getDataMetadata\n") +
+                std::string("                      could not get data Metadata\n" ) );
+            }
+        }
+
+    private:
+
+        DataMetadata _expectedDataMetadata;
+        DataMetadata _dataMetadata;
+
+    }; //class DataInputFlow
+
+    /*!
+    * \class DataOutputFlow
+    * \brief implementing basic properties of data output flows
+    * \ingroup wrapper
+    */
+    class DataOutputFlow : public OutputFlow {
+
+    public:
+
+        virtual ~DataOutputFlow() { }
+
+    private:
+
+        friend class Client;
+
+        explicit DataOutputFlow( const std::string& name, const std::string& group, sf_init_param* iparam,
+            const int& v, DataMetadata dataMetadata ) :
+            OutputFlow( name, group, iparam, v ),
+            _dataMetadata( dataMetadata ){
+            _ti = dataMetadata.dataStructName;
+            }
+
+        virtual void set( size_t i ) {
+            sf_init_param_set_flow_name(_iparam, SF_KIND_OUTPUT, i, copyString(_name));
+            sf_init_param_set_flow_group(_iparam, SF_KIND_OUTPUT, i, copyString(_group));
+            sf_init_param_set_flow_type(_iparam, SF_KIND_OUTPUT, i, SF_TYPE_DATA);
+#ifdef LOG
+            Log::instance().log(std::string("sf_init_param_set_flow_name(_iparam, SF_KIND_OUTPUT, i, ") +
+                _name + ")");
+            Log::instance().log(std::string("sf_init_param_set_flow_group(_iparam, SF_KIND_OUTPUT, i, ") +
+                _group + ")");
+            Log::instance().log("sf_init_param_set_flow_type(_iparam, SF_KIND_OUTPUT, i, SF_TYPE_DATA)");
+            std::ostringstream ss;
+            ss << "sf_init_param_set_flow_desc(_iparam, SF_KIND_OUTPUT, i, "
+            << _dataMetadata.dataStructSize << ", "
+            << _dataMetadata.dataStructName << ")";
+            Log::instance().log(ss.str());
+#endif // log
+            sf_init_param_set_flow_desc(_iparam, SF_KIND_OUTPUT, i,
+                            _dataMetadata.dataStructSize,
+                            _dataMetadata.dataStructName );
+        }
+
+        virtual void init( size_t i, sf_handle* handle ) {
+            sf_error err;
+            sf_flow_param fparam;
+            sf_flow_param_init(&fparam);
+            sf_flow_param_get_flow(&fparam, _iparam, SF_KIND_OUTPUT, i);
+#ifdef LOG
+            Log::instance().log("sf_flow_param_init(&fparam)");
+            Log::instance().log("sf_flow_param_get_flow(&fparam, _iparam, SF_KIND_OUTPUT, i)");
+            Log::instance().log("sf_flow_create(handle, &fparam, &err)");
+#endif // log
+            _emit =  sf_flow_create(handle, &fparam, &err);
+            if(err.error_code != SFE_OK)
+                throw Exception(
+                std::string("SmartFlow C++ Client: in DataOutputFlow::init\n") +
+                std::string("                      could not initialize flow\n") );
+
+            updateName( SF_KIND_OUTPUT, i );
+            initVersionMetadata( handle );
+            initDataMetadata( handle );
+
+            _initialized = true;
+        }
+
+        void initDataMetadata( sf_handle* handle ) {
+            sf_error err;
+#ifdef LOG
+            Log::instance().log(std::string("sf_flow_set_metadata( handle, ") +
+                _name + ", " + _group + ", " + "\"DataMetadata\", sizeof(DataMetadata), \"DataMetadata\"," +
+                "&_dataMetadata, &err)");
+#endif // log
+            sf_flow_set_metadata( handle, _name.c_str(), _group.c_str(),
+                        "DataMetadata", sizeof(DataMetadata), "DataMetadata",
+                        &_dataMetadata, &err);
+            if(err.error_code != SFE_OK)
+                throw Exception(
+                std::string("SmartFlow C++ Client: in DataOutputFlow::initDataMetadata\n") +
+                std::string("                      could not set data metadata\n" ) );
+        }
+
+    private:
+
+        DataMetadata _dataMetadata;
+
+    }; //class DataOutputFlow
+
+
+
+
+    /*!
+    * \class Client
+    * \brief main class
+    * \ingroup wrapper
+    */
+    class Client {
+
+    public:
+
+        explicit Client(const std::string& defaultName) :
+            _initialized( false )
+        {
+#ifdef LOG
+            Log::instance().log("sf_init_param_init(&_iparam)");
+#endif // log
+            sf_init_param_init(&_iparam);
+            char* string_copy = new char[defaultName.length()+1];
+            strcpy( string_copy, defaultName.c_str() );
+            // the two lines above introduces a memory leak. This is necessary to compensate for
+            // the fact that smartflow simply stores the string pointer instead of copying
+            // the string. In other words, sf takes ownership of your string
+#ifdef LOG
+            Log::instance().log(std::string("sf_init_param_set_name(&_iparam, ") + string_copy + ")");
+#endif // log
+            sf_init_param_set_name(&_iparam, string_copy);
+            setCtrlCHandler( Client::defaultCtrlCHandler );
+        }
+
+        ~Client() {
+            for( size_t i=0; i < _fin.size(); i++ )
+                delete _fin[i];
+            for( size_t i=0; i < _fout.size(); i++ )
+                delete _fout[i];
+
+#ifdef LOG
+            Log::destroyInstance();
+#endif // log
+        }
+
+        /// addVideoIn
+        /// \ingroup wrapper
+        VideoInputFlow* addVideoIn( const std::string& flowName, size_t historySize ) {
+            return addVideoIn( flowName, "default", historySize );
+        }
+        VideoInputFlow* addVideoIn( const std::string& flowName, const std::string& groupName, size_t historySize ) {
+            if( _initialized )
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Client::addVideoIn\n") +
+                std::string("                      cannot add flows after calling Client::init\n") );
+            int version = VideoMetadata::versionMajor;
+            VideoInputFlow* f = new VideoInputFlow( flowName, groupName, &_iparam, historySize, version );
+            _fin.push_back( f );
+            return f;
+        }
+
+        /// addVideoOut
+        /// \ingroup wrapper
+        VideoOutputFlow* addVideoOut( const std::string& flowName ) {
+            return addVideoOut(flowName, "default");
+        }
+        VideoOutputFlow* addVideoOut( const std::string& flowName, const std::string& groupName  ) {
+            if( _initialized )
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Client::addVideoOut\n") +
+                std::string("                      cannot add flows after calling Client::init\n") );
+
+            int version = VideoMetadata::versionMajor;
+            VideoOutputFlow* f = new VideoOutputFlow( flowName, groupName, &_iparam, version );
+            _fout.push_back( f );
+            return f;
+        }
+
+        /// addDataIn
+        /// \ingroup wrapper
+        template<typename T>
+        DataInputFlow* addDataIn( const std::string& flowName, size_t historySize ) {
+            if( _initialized )
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Client::addDataIn\n") +
+                std::string("                      cannot add flows after calling Client::init\n") );
+
+            int version = DataMetadata::versionMajor;
+
+            DataMetadata expectedDataMetadata;
+            strcpy(    expectedDataMetadata.dataStructName, typeString<T>().c_str() );
+            expectedDataMetadata.dataStructSize = sizeof(T);
+            #ifdef DISCARD_FLOW_VERSION
+            expectedDataMetadata.dataStructVersion = staticVersion;
+            #else
+            expectedDataMetadata.dataStructVersion = T::getVersion();
+            #endif
+
+            DataInputFlow* f = new DataInputFlow( flowName, "default", &_iparam, historySize, version,
+                                    expectedDataMetadata );
+            _fin.push_back( f );
+            return f;
+        }
+        template<typename T>
+        DataInputFlow* addDataIn( const std::string& flowName, const std::string& groupName, size_t historySize ) {
+            if( _initialized )
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Client::addDataIn\n") +
+                std::string("                      cannot add flows after calling Client::init\n") );
+
+            int version = DataMetadata::versionMajor;
+
+            DataMetadata expectedDataMetadata;
+            strcpy(    expectedDataMetadata.dataStructName, typeString<T>().c_str() );
+            expectedDataMetadata.dataStructSize = sizeof(T);
+            #ifdef DISCARD_FLOW_VERSION
+            expectedDataMetadata.dataStructVersion = staticVersion;
+            #else
+            expectedDataMetadata.dataStructVersion = T::getVersion();
+            #endif
+
+
+
+            DataInputFlow* f = new DataInputFlow( flowName, groupName, &_iparam, historySize, version,
+                                    expectedDataMetadata );
+            _fin.push_back( f );
+            return f;
+        }
+
+        // added by joachim to account for clients that accept input flows without metadata set
+        /// addDataIn with Metadata provided
+        ///
+        /// added by joachim to account for clients that accept input flows without metadata set
+        /// \ingroup wrapper
+        template<typename T>
+        DataInputFlow* addDataIn( const std::string& flowName,
+            size_t historySize, const DataMetadata manuallySetDataMetadata ) {
+            if( _initialized )
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Client::addDataIn\n") +
+                std::string("                      cannot add flows after calling Client::init\n") );
+
+            int version = DataMetadata::versionMajor;
+
+            DataInputFlow* f = new DataInputFlow( flowName, "default", &_iparam, historySize, version,
+                                    manuallySetDataMetadata );
+            f->_ignoreMetadata = true;
+            _fin.push_back( f );
+            return f;
+        }
+        template<typename T>
+        DataInputFlow* addDataIn( const std::string& flowName, const std::string& groupName,
+            size_t historySize, const DataMetadata manuallySetDataMetadata ) {
+            if( _initialized )
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Client::addDataIn\n") +
+                std::string("                      cannot add flows after calling Client::init\n") );
+
+            int version = DataMetadata::versionMajor;
+
+            DataInputFlow* f = new DataInputFlow( flowName, groupName, &_iparam, historySize, version,
+                                    manuallySetDataMetadata );
+            f->_ignoreMetadata = true;
+            _fin.push_back( f );
+            return f;
+        }
+
+        /// addDataOut
+        /// \ingroup wrapper
+        template<typename T>
+        DataOutputFlow* addDataOut( const std::string& flowName ) {
+            if( _initialized )
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Client::addDataOut\n") +
+                std::string("                      cannot add flows after calling Client::init\n") );
+
+            int version = DataMetadata::versionMajor;
+
+            DataMetadata dataMetadata;
+            strcpy( dataMetadata.dataStructName, typeString<T>().c_str() );
+            dataMetadata.dataStructSize = sizeof(T);
+            #ifdef DISCARD_FLOW_VERSION
+               dataMetadata.dataStructVersion = staticVersion;
+            #else
+               dataMetadata.dataStructVersion = T::getVersion();
+            #endif
+
+
+
+            DataOutputFlow* f = new DataOutputFlow( flowName, "default", &_iparam, version,
+                                dataMetadata );
+            _fout.push_back( f );
+            return f;
+        }
+
+        /// initClient
+        /// \ingroup wrapper
+        void initClient(int* argc, char** argv) {
+            sf_error err;
+
+            if( !_fin.size() && !_fout.size() )
+                throw Exception(
+                std::string("SmartFlow C++ Client: in Client::init\n") +
+                std::string("                      add flows before calling Client::init\n") );
+
+            std::ostringstream ss;
+            ss << "sf_init_param_set_flow_count(&_iparam, "
+            << _fin.size() << ", " << _fout.size() << ")";
+#ifdef LOG
+            Log::instance().log(ss.str());
+#endif // log
+            sf_init_param_set_flow_count(&_iparam, _fin.size(), _fout.size());
+
+            for( size_t i=0; i<_fin.size(); i++)
+                _fin[i]->set( i );
+
+            for( size_t i=0; i<_fout.size(); i++)
+                _fout[i]->set( i );
+
+            sf_init_param_args(&_iparam, argc, argv);
+#ifdef LOG
+            Log::instance().log("sf_init_param_args(&_iparam, argc, argv)");
+            Log::instance().log("sf_init(&_iparam, &err)");
+#endif // log
+            _sf_handle = sf_init(&_iparam, &err);
+            if(err.error_code != SFE_OK)
+                throw Exception(
+                std::string("SmartFlow C++ Client: in SFClient::init\n") +
+                std::string("                      could not initialize flows\n") );
+
+            _initialized = true;
+        }
+
+        /// initClient
+        /// \ingroup wrapper
+        void initInputFlows() {
+        for( size_t i=0; i<_fin.size(); i++)
+            _fin[i]->init( i, _sf_handle );
+        }
+
+        /// initClient
+        /// \ingroup wrapper
+        void initOutputFlows() {
+        for( size_t i=0; i<_fout.size(); i++)
+            _fout[i]->init( i, _sf_handle );
+        }
+
+        /// setCtrlCHandler
+        /// \ingroup wrapper
+        void setCtrlCHandler( void (*callback)(int) ) {
+            struct sigaction sa;
+            sa.sa_handler = callback;
+            sigemptyset(&sa.sa_mask);
+            sa.sa_flags = SA_ONESHOT;
+            sigaction(SIGINT,  &sa, 0);
+            sigaction(SIGTERM, &sa, 0);
+        }
+
+    public:
+        /// defaultCtrlCHandler
+        /// \ingroup wrapper
+        static void defaultCtrlCHandler(int x) {
+            std::stringstream ss;
+            ss << "### ERROR Control-C handler for flow ??? not implemented." << std::endl // private: String _clientName ?
+            << "### define a function static void my_callback(int x) { ... };" << std::endl
+            << "### and call YOUR_CLIENT.setCtrlCHandler( my_callback )" << std::endl;
+            throw Exception( ss.str() );
+        }
+
+    private: // non-copyable
+
+        Client( const Client& );
+        const Client& operator=( const Client& );
+
+    private:
+
+        bool _initialized;
+        sf_init_param _iparam;
+        sf_handle* _sf_handle;
+        std::vector<InputFlow*> _fin;
+        std::vector<OutputFlow*> _fout;
+
+    }; // class Client
+    
+    
+    template<class InputFlowType, typename T>
+    timespec get_buffer(InputFlowType*& flow, const T* & data)
+    {
+    	BufferIn b = flow->buffer();
+    	b.get(currentBuffer);
+    	data = b.data<T>();
+    	
+    	return b.timestamp();
+    }
+    
+    template<class OutputFlowType, typename T>
+    void get_buffer(OutputFlowType*& flow, T* & data)
+    {
+    	BufferOut b = flow->buffer();
+    	b.get();
+    	data = b.data<T>();	
+    }
+    
+    
+    template<class OutputFlowType>
+    void send_buffer(OutputFlowType*& flow, timespec ts)
+    {
+    	BufferOut b = flow->buffer();
+    	b.send(ts);	
+    }
+
+
+} // namespace SFC
+#endif // Client.hpp
+
+/*! \endcond */

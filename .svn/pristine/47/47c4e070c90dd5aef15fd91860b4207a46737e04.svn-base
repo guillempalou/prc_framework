@@ -1,0 +1,55 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file region_concept.hpp
+//!
+
+#ifndef IMAGEPLUS_CORE_REGION_CONCEPT_HPP
+#define IMAGEPLUS_CORE_REGION_CONCEPT_HPP
+
+namespace imageplus 
+{
+    /*!
+     * Helper class to check the Region Concept, just inherit from it
+     * 
+     * \tparam Derived : Class that inherits from this one (see ImaVolMask, for instance)
+     * 
+     * \author Jordi Pont Tuset <jordi.pont@upc.edu>
+     * 
+     */
+    template<class Derived>
+    class RegionConcept
+    {
+    public:
+        //! Type of region
+        typedef Derived* RegionPointer;
+
+        /*!
+         * \returns its parts (or children)
+         */
+        const std::vector<RegionPointer>& parts() const
+        {
+            return _children;
+        }
+        
+        /*!
+         * \returns whether it can have children
+         *
+         * \todo why returns false?
+         */
+        bool is_composite() const
+        {
+            return false;
+        }
+        
+        //! Pointer to the child regions
+        std::vector<RegionPointer> _children;
+    };
+}
+
+
+#endif
+

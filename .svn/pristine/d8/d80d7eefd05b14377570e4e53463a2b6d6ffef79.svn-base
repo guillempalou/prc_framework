@@ -1,0 +1,346 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file convolution.hpp
+//!
+//!  Funtions for convolution
+//! 
+
+#ifndef IMAGEPLUS_MATH_NUMERIC_CONVOLUTION_HPP
+#define IMAGEPLUS_MATH_NUMERIC_CONVOLUTION_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/math/numeric/kernel.hpp>
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            //! Enum type to define the possible directions to convolve a
+            //! 2D multiarray with a 1D kernel
+            enum ConvolutionType
+            {
+                ROWS,
+                COLUMNS,
+            };
+
+
+
+
+
+            //!
+            //! \brief Convolve the data (1D) with the given kernel
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] first_in     : Iterator to the beginning of the input data vector
+            //! \param[in] last_in      : Iterator to the beginning of the input data vector
+            //! \param[in] kernel       : Kernel to apply (1D)
+            //! \param[out] first_out   : Iterator to the beginning of the result data vector
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template< class InputIterator, class OutputIterator> 
+            void convolve(InputIterator first_in, InputIterator last_in,  const Kernel<1>& kernel, OutputIterator first_out)
+            {
+                typedef typename InputIterator::value_type  i_type;
+                typedef typename OutputIterator::value_type o_type;
+
+                uint64 num_elements = kernel.num_elements();
+                int64 ps_l         = kernel.pad_size(0,0);
+                int64 ps_r         = kernel.pad_size(0,1);
+
+                // Compute the number of elements of the input array
+                InputIterator tmp_first = first_in;
+                int64 size = 0;
+                for(; tmp_first!=last_in; ++tmp_first)
+                {
+                    ++size;
+                }
+
+                //int64 size = count_if (myvector.begin(), myvector.end(), true);
+
+                // Skip the computation in three zones: left, inside and right
+                // for efficiency reasons. In the middle part, no checking for
+                // 'out of borders' is necessary.
+
+                // Compute the left border.
+                int64 pos=0;
+                for(; pos < ps_l; ++first_in, ++first_out, ++pos)
+                {
+                    float64 s = 0;
+
+                    // Loop for all active elements in the kernel
+                    for (uint64 k=0; k < num_elements; ++k)
+                    {
+                        Coord<int64,1> coord_element( kernel.coord(k) );
+
+                        if (coord_element[0] + pos >= 0)
+                        {
+                            s += (*(first_in + coord_element[0]) * kernel.weight(k));
+                        }
+                    }
+
+                    *first_out = (std::numeric_limits<o_type>::is_integer) ? mnint<o_type>(s) : static_cast<o_type>(s);
+                }
+
+
+                // Compute the 'inside' part (no problems with borders)
+                // so no checking is necesary
+                for(; pos < size - ps_r; ++first_in, ++first_out, pos++)
+                {
+                    float64 s = 0;
+
+                    // Loop for all active elements in the kernel
+                    for (uint64 k=0; k < num_elements; ++k)
+                    {
+                        Coord<int64,1> coord_element( kernel.coord(k) );
+
+                        s += (*(first_in + coord_element[0]) * kernel.weight(k));
+                    }
+
+                    *first_out = (std::numeric_limits<o_type>::is_integer) ? mnint<o_type>(s) : static_cast<o_type>(s);
+                }
+
+                // Compute the right border 
+                for(; pos < size; ++first_in, ++first_out, ++pos)
+                {
+                    float64 s = 0;
+
+                    // Loop for all active elements in the kernel
+                    for (uint64 k=0; k < num_elements; ++k)
+                    {
+                        Coord<int64,1> coord_element( kernel.coord(k) );
+
+                        if (coord_element[0] + pos < size)
+                        {
+                            s += (*(first_in + coord_element[0]) * kernel.weight(k));
+                        }
+                    }
+
+                    *first_out = (std::numeric_limits<o_type>::is_integer) ? mnint<o_type>(s) : static_cast<o_type>(s);
+                }
+
+
+            }
+
+        
+            //!
+            //! \brief Convolve the multiarray (1D) with the given kernel (in-place version)
+            //!
+            //! If padding is applied (zero padding), the size of the result will be
+            //! size_input + size_kernel - 1.
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] in      : Multiarray to convolve
+            //! \param[in] kernel  : Kernel to apply (1D)
+            //! \param[in] pad     : Whether to apply padding or not (true = yes, false = no)
+            //! \param[out] out    : Output result
+            //!
+            //! \sa Kernel
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template <typename T1> 
+            void convolve(const MultiArray<T1,1>& in, const Kernel<1>& kernel, bool pad, MultiArray<T1,1>& out);
+
+
+
+            //!
+            //! \brief Convolve the multiarray (1D) with the given kernel
+            //!
+            //! If padding is applied (zero padding), the size of the result will be
+            //! size_input + size_kernel - 1.
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] in      : Multiarray to convolve
+            //! \param[in] kernel  : Kernel to apply (1D)
+            //! \param[in] pad     : Whether to apply padding or not (true = yes, false = no)
+            //! 
+            //! \return            : Output result
+            //!
+            //! \sa Kernel
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template <typename T1> 
+            MultiArray<T1,1> convolve(const MultiArray<T1,1>& in, const Kernel<1>& kernel, bool pad);
+
+            //!
+            //! \brief Convolve a 2D multiarray with the given 2D kernel (in-place version)
+            //!
+            //! If padding is applied (zero padding), the size of the result will be
+            //! (size_input_x + size_kernel_x - 1, size_input_y + size_kernel_y - 1)
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] in      : Multiarray to convolve
+            //! \param[in] kernel  : Kernel to apply
+            //! \param[in] pad     : Whether to apply padding or not (true = yes, false = no)
+            //! \param[out] out    : Output result
+            //!
+            //! \sa Kernel
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template <typename T1> 
+            void convolve(const MultiArray<T1,2>& in, const Kernel<2>& kernel, bool pad, MultiArray<T1,2>& out);
+
+
+            //!
+            //! \brief Convolve a 2D multiarray with the given 2D kernel
+            //!
+            //! If padding is applied (zero padding), the size of the result will be
+            //! (size_input_x + size_kernel_x - 1, size_input_y + size_kernel_y - 1)
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] in      : Multiarray to convolve
+            //! \param[in] kernel  : Kernel to apply
+            //! \param[in] pad     : Whether to apply padding or not (true = yes, false = no)
+            //!
+            //! \return            : Output result
+            //!
+            //! \sa Kernel
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template <typename T1> 
+            MultiArray<T1,2> convolve(const MultiArray<T1,2>& in, const Kernel<2>& kernel, bool pad);
+
+
+            //!
+            //! \brief Convolve a 2D multiarray with the given 1D kernel, in horizontal (ROWS) or vertical (COLUMNS) direction (in-place version)
+            //!
+            //! If padding is applied (zero padding), the size of the result will be
+            //! (size_input_x + size_kernel - 1, size_input_y) or (size_input_x, size_input_y + size_kernel - 1)
+            //! dependeing on the direction of the convolution
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] in      : Multiarray to convolve
+            //! \param[in] kernel  : Kernel to apply
+            //! \param[in] dir     : Direction to apply the kernel (ROWS or COLUMNS)
+            //! \param[in] pad     : Whether to apply padding or not (true = yes, false = no)
+            //! \param[out] out    : Output result
+            //!
+            //! \sa Kernel
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template <typename T1> 
+            void convolve(const MultiArray<T1,2>& in, const Kernel<1>& kernel, ConvolutionType dir, bool pad, MultiArray<T1,2>& out);
+
+            //!
+            //! \brief Convolve a 2D multiarray with the given 1D kernel, in horizontal (ROWS) or vertical (COLUMNS) direction
+            //!
+            //! If padding is applied (zero padding), the size of the result will be
+            //! (size_input_x + size_kernel - 1, size_input_y) or (size_input_x, size_input_y + size_kernel - 1)
+            //! dependeing on the direction of the convolution
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] in      : Multiarray to convolve
+            //! \param[in] kernel  : Kernel to apply
+            //! \param[in] dir     : Direction to apply the kernel (ROWS or COLUMNS)
+            //! \param[in] pad     : Whether to apply padding or not (true = yes, false = no)
+            //!
+            //! \return            : Output result
+            //!
+            //! \sa Kernel
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template <typename T1> 
+            MultiArray<T1,2> convolve(const MultiArray<T1,2>& in, const Kernel<1>& kernel, ConvolutionType dir, bool pad=false);
+
+
+            //!
+            //! \brief Convolve a 2D multiarray with two 1D kernels (in-place version)
+            //!
+            //! If padding is applied (zero padding), the size of the result will be
+            //! (size_input_x + size_kernel1 - 1, size_input_y + size_kernel2 - 1)
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] in      : Multiarray to convolve
+            //! \param[in] kernel1 : Kernel to apply in the horizontal direction (ROWS)
+            //! \param[in] kernel2 : Kernel to apply in the vectical direction (COLUMNS)
+            //! \param[in] pad     : Whether to apply padding or not (true = yes, false = no)
+            //! \param[out] out    : Output result
+            //!
+            //! \sa Kernel
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template <typename T1> 
+            void convolve(const MultiArray<T1,2>& in, const Kernel<1>& kernel1, const Kernel<1>& kernel2, bool pad, MultiArray<T1,2>& out);
+
+            //!
+            //! \brief Convolve a 2D multiarray with two 1D kernels
+            //!
+            //! If padding is applied (zero padding), the size of the result will be
+            //! (size_input_x + size_kernel1 - 1, size_input_y + size_kernel2 - 1)
+            //!
+            //! \tparam InputIterator   :  
+            //!
+            //! \param[in] in      : Multiarray to convolve
+            //! \param[in] kernel1 : Kernel to apply in the horizontal direction (ROWS)
+            //! \param[in] kernel2 : Kernel to apply in the vectical direction (COLUMNS)
+            //! \param[in] pad     : Whether to apply padding or not (true = yes, false = no)
+            //!
+            //! \return            : Output result
+            //!
+            //! \sa Kernel
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+            template <typename T1> 
+            MultiArray<T1,2> convolve(const MultiArray<T1,2>& in, const Kernel<1>& kernel1, const Kernel<1>& kernel2, bool pad=false);
+
+
+#if 0
+
+
+
+            template <typename T1> 
+            MultiArray<T1,2> convolve(const MultiArray<T1,2>& in, const MultiArray<float64,1>& kernel, ConvolutionType dir);
+
+            template <typename T1> 
+            MultiArray<T1,2> convolve(const MultiArray<T1,2>& in, const MultiArray<float64,1>& kernel1, const MultiArray<float64,1>& kernel2);
+
+
+//            MultiArray<T1,2> convolve(const MultiArray<T1,2>& in, const MultiArray<2>& kernel1);
+#endif
+
+        }
+    }
+}
+
+#endif
+

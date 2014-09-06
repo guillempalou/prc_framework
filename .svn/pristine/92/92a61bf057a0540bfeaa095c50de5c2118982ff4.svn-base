@@ -1,0 +1,543 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file coocurrence_matrix.hpp
+//!
+//!  Class to compute coocurrence matrices
+//!
+
+#ifndef IMAGEPLUS_MATH_STATISTICS_COOCURRENCE_MATRIX_HPP
+#define IMAGEPLUS_MATH_STATISTICS_COOCURRENCE_MATRIX_HPP
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/core/border.hpp>
+#include <imageplus/core/iterator.hpp>
+#include <imageplus/filters/linear_convolution.hpp>
+
+#include <boost/array.hpp>
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace statistics
+        {
+        
+	        //!
+	        //! \brief Default CoocurrenceMatrix mode
+	        //! 
+	        //! See the CoocurrenceMatrix class for more information on how to use this types.
+	        //!
+            struct CoocurrenceMatrixDefaultType
+            {
+            	//! Number of occurrences of the mode
+                static const std::size_t   num_coocurrences = 2;
+                
+                //! Identifier of the mode
+                static const std::size_t   id = 0; 
+            };
+    
+    
+            /*! Class to compute the coocurrence matrix of the channels of an input.
+             *  It computes the histogram of the relative occurrences of a given value with respect its neighbors.
+             *  See Felipe Calderero's work for further information about this matrix 
+             * 
+             * \tparam InputModel     : The input type: any ImaVol, Region, etc.
+             * \tparam T : Type of data of the bin counter (by default uint64) 
+             * \tparam CoocurrenceMatrixType : For generality purposes
+             * 
+             * \author Jordi Pont <jordi.pont@upc.edu>
+             * 
+             * \date 06-04-2010
+             */
+            template< class InputModel, typename T = uint64, class CoocurrenceMatrixType = CoocurrenceMatrixDefaultType>
+            class ChannelCoocurrenceMatrix : public DescriptorBase, 
+                                             public boost::array<MultiArray< T, CoocurrenceMatrixType::num_coocurrences>, InputModel::channels>
+            {
+            public:
+                
+                //! The data_type of expected input data.
+                typedef typename InputModel::data_type data_type;
+                
+                //! Type of a single channel
+                typedef MultiArray< T, CoocurrenceMatrixType::num_coocurrences> single_channel_type;
+                
+                //! Coocurrence matrix type (array of single_channel_type)
+                typedef boost::array<single_channel_type, InputModel::channels> vd_type;
+                
+                //! The number of channels of the CoocurrenceMatrix
+                static const std::size_t channels  = InputModel::channels;
+                
+                //! The number of occurrences taken into account to compute the matrix (usually 2). It is the same value tha n the dimension of the container
+                static const std::size_t dimension = CoocurrenceMatrixType::num_coocurrences;
+                
+                
+                /*! Constructor
+                 *  
+                 * \param[in] min_value : Minimum value to be expected from the input (limit of the quantizers)
+                 * \param[in] max_value : Maximum value to be expected from the input (limit of the quantizers)
+                 * \param[in] num_bins : Number of bins of the quantizers
+                 */
+                ChannelCoocurrenceMatrix( data_type min_value = 0, data_type max_value = 255, size_type num_bins = 256 )
+                    : DescriptorBase("ChannelCoocurrenceMatrix",true)
+                {
+                    ASSERT( num_bins > 0, "The number of bins should be bigger than 0" );                                     
+                
+                    // create the a homogeneous Quantizer, and initialize the _array_q whit it
+                    Quantizer<data_type> q_map( min_value, max_value, num_bins );
+                    for( size_type ii = 0; ii < channels; ++ii )
+                    {
+                        _array_q[ii] = q_map;
+                    }
+                
+                    // common initialization 
+                    _init();
+                }
+                               
+                //! \brief Calculates the coocurrence matrix given a pair of iterators. 
+                //!
+                //! \tparam IteratorModel: Type of iterator received
+                //! \param[in] first : Iterator to the beginning of the image
+                //! \param[in] last : Iterator to the end of the image
+                //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+                //!
+                template< class IteratorModel >
+                void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+                {
+                    ASSERT(peer_descs!=0x0, "ChannelCoocurrenceMatrix calculate: peer_descs must be non null");
+
+                    boost::array<std::size_t,InputModel::dimensions> borders;
+                    for(std::size_t ii = 0; ii<InputModel::dimensions; ++ii)
+                    {
+                        borders[ii] = 1;
+                    }
+                    
+                    Border<InputModel>* image_with_padding = NULL;
+                    if(peer_descs->global_desc()!=NULL)
+                    {
+                         image_with_padding = &(peer_descs->global_desc()->calculate(new Border<InputModel>(borders,0), (*first).global_begin(), (*first).global_end()));
+                    }
+                    else
+                    {
+                        throw ImagePlusNotImplemented("ChannelCoocurrenceMatrix without global descriptors.");
+                    }
+    
+                    Neighborhood2D neighb;
+                    neighb.resize(4);
+                    neighb[0]=Neighborhood2D::CoordType( 1, 0);
+                    neighb[1]=Neighborhood2D::CoordType( 0, 1);
+                    neighb[2]=Neighborhood2D::CoordType(-1, 0);
+                    neighb[3]=Neighborhood2D::CoordType( 0,-1);
+                    
+                    boost::array<std::size_t,InputModel::channels> q_color;
+    
+                    // Reset the Matrix
+                    _num_occurrences = 0;
+                    for( size_type ii = 0; ii< InputModel::channels; ++ii )
+                    {   
+                        this->at(ii) = 0;
+                    }
+                    
+                    // Calculate
+                    for(; first!=last; ++first)
+                    {
+                        for( size_type ch = 0; ch < channels; ++ch )
+                        {
+                            q_color[ch] = _array_q[ch].bin((*image_with_padding)(ch)((*first).position()));
+                        }
+                        
+                        typename IteratorModel::pixel_type::neighbor_iterator neigh_it     = (*first).local_begin(neighb);
+                        typename IteratorModel::pixel_type::neighbor_iterator neigh_it_end = (*first).local_end(neighb);
+                        for(; neigh_it!=neigh_it_end; ++neigh_it)
+                        {
+                            if(!image_with_padding->is_border((*neigh_it).position()))
+                            {
+                                for( size_type ch = 0; ch < channels; ++ch )
+                                {
+                                    (*this)[ch][q_color[ch]][_array_q[ch].bin((*image_with_padding)(ch)((*neigh_it).position()))]++;  
+                                }
+                                _num_occurrences++;
+                            }
+                        }
+                    }
+                }
+                
+                //! \brief Calculates coocurrence matrix of the parent given the childs
+                //!
+                //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+                //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+                //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+                void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+                {        
+                    (*this) = son1_descs.get(*this) + son2_descs.get(*this);
+                }
+                
+                /*!
+                 * \brief Operator "=" to copy a ChannelCoocurrenceMatrix
+                 * 
+                 * \param[in]  copy : ChannelCoocurrenceMatrix to be copied
+                 * \return Reference to the object to allow a = b = c
+                 */
+                const ChannelCoocurrenceMatrix& operator=( const ChannelCoocurrenceMatrix& copy)
+                {
+                    _id          = copy._id;
+                    _array_q     = copy._array_q;
+                    _num_bins    = copy._num_bins;
+                    _num_occurrences  = copy._num_occurrences;
+                    boost::array<MultiArray< T, CoocurrenceMatrixType::num_coocurrences>, InputModel::channels>::operator=(copy);
+                    
+                    return *this;
+                }
+                
+                /*!
+                 * \brief Operator "+" to sum two ChannelCoocurrenceMatrix
+                 * 
+                 * \param[in]  other : ChannelCoocurrenceMatrix to be summed
+                 * \return The sum of ChannelCoocurrenceMatrix
+                 */
+                ChannelCoocurrenceMatrix operator+( const ChannelCoocurrenceMatrix& other ) const
+                {
+                    ChannelCoocurrenceMatrix out;
+                    out._id = _id;
+                    out._array_q = _array_q;
+                    out._num_bins = _num_bins;
+                    out._num_occurrences = _num_occurrences + other._num_occurrences;
+                    
+                    out._init();
+                    
+                    for(std::size_t ch=0; ch<channels; ++ch)
+                    {
+                        T* p_out = out[ch].data();
+                        const T* p_in1 = boost::array<MultiArray< T, CoocurrenceMatrixType::num_coocurrences>, InputModel::channels>::at(ch).data();
+                        const T* p_in2 = other[ch].data();
+                        
+                        ASSERT((boost::array<MultiArray< T, CoocurrenceMatrixType::num_coocurrences>, InputModel::channels>::at(ch).num_elements()) == other.at(ch).num_elements(), "ChannelCoocurrenceMatrix sum: Trying tu sum histogram of different sizes");
+                        ASSERT((boost::array<MultiArray< T, CoocurrenceMatrixType::num_coocurrences>, InputModel::channels>::at(ch).num_elements()) == out.at(ch).num_elements(), "ChannelCoocurrenceMatrix sum: Something is wrong, out has different size");
+                               
+                        std::size_t n_elem = boost::array<MultiArray< T, CoocurrenceMatrixType::num_coocurrences>, InputModel::channels>::at(ch).num_elements();
+                        for(std::size_t ii = 0; ii< n_elem; ++ii)
+                        {
+                            *p_out = *p_in1 + *p_in2;
+                            ++p_out; ++p_in1; ++p_in2;
+                        }
+                    }      
+                    return out;
+                }
+                       
+                //! \return The number of occurrences counted in the matrix (i.e., the sum of the
+                //!         values in the matrix)
+                uint64 hist_sum() const
+                {
+                    return _num_occurrences;
+                }
+                
+            private:
+    
+                //! Common private method that initializes the number of bins given the array of quantizers 
+                //! and allocates memory
+                void _init()
+                {
+                    // Create _num_bins array based on the quantizer
+                    for( size_type ii = 0; ii < channels; ++ii )
+                    {
+                        for( size_type jj = 0; jj < dimension; ++jj )
+                        {
+                            _num_bins[ii][jj] = _array_q[ii].num_bins();
+                        }
+                    }
+                    
+                    // Allocate memory     
+                    for( size_type ii = 0; ii < channels; ++ii )
+                    {
+                        this->at(ii).resize( _num_bins[ii] );
+                    }
+                }
+                
+                //! Array of quantizers
+                boost::array<Quantizer<data_type>, channels> _array_q;
+                
+                //! Number of bins for each channel taken into account
+                boost::array<boost::array<std::size_t, dimension>, channels> _num_bins;
+                
+                //! Number of occurrences
+                uint64 _num_occurrences;
+            };
+
+                                             
+                                             
+           /*! Class to compute the normalized coocurrence matrix of the channels of an input. In other words, it normalizes the ChannelCoocurrenceMatrix. 
+            * 
+            * \tparam InputModel     : The input type: any ImaVol, Region, etc.
+            * \tparam T : Type of data of the bin counter (by default uint64) 
+            * \tparam CoocurrenceMatrixType  : For generality purposes
+            * 
+            * \author Jordi Pont <jordi.pont@upc.edu>
+            * 
+            * \date 06-04-2010
+            */
+            template< class InputModel, typename T = float64, class CoocurrenceMatrixType = CoocurrenceMatrixDefaultType>
+            class NormChannelCoocurrenceMatrix : public DescriptorBase, 
+                                                 public boost::array<MultiArray< T, CoocurrenceMatrixType::num_coocurrences>, InputModel::channels>
+            {
+            public:
+                
+                //! The data_type of expected input data.
+                typedef typename InputModel::data_type data_type;
+                
+                //! Type of a single channel
+                typedef MultiArray< T, CoocurrenceMatrixType::num_coocurrences> single_channel_type;
+
+                //! Type of the NormChannelCoocurrenceMatrix container (array of single_channel_type)
+                typedef boost::array<single_channel_type, InputModel::channels> vd_type;
+                
+                //! Number of channels
+                static const std::size_t channels  = InputModel::channels;
+                
+                //! The number of occurrences taken into account to compute the matrix (usually 2). It is the same value tha n the dimension of the container
+                static const std::size_t dimension = CoocurrenceMatrixType::num_coocurrences;
+                
+                /*! Constructor
+                 *  
+                 * \param[in] min_value : Minimum value to be expected from the input (limit of the quantizers)
+                 * \param[in] max_value : Maximum value to be expected from the input (limit of the quantizers)
+                 * \param[in] num_bins : Number of bins of the quantizers
+                 * \param[in] ker : Kernel of the convolution to smooth the histogram (if it has size 1, no smoothing is applied (def.))
+                 */
+                NormChannelCoocurrenceMatrix( data_type min_value = 0, data_type max_value = 255, size_type num_bins = 256, filters::Kernel<1> ker = filters::Kernel<1>())
+                    : DescriptorBase("NormChannelCoocurrenceMatrix",true), _conv2d(ker), _kernel(ker)
+                {                                   
+                    ASSERT( num_bins > 0, "The number of bins should be bigger than 0" );                                     
+                
+                    // Create a homogeneous Quantizer, and initialize the _array_q whit it
+                    Quantizer<data_type> q_map( min_value, max_value, num_bins );
+                    for( size_type ii = 0; ii < channels; ++ii )
+                    {
+                        _array_q[ii] = q_map;
+                    }
+                
+                    // common initialization 
+                    _init();
+                }
+                               
+                //! \brief Calculates the normalized coocurrence matrix given a pair of iterators. 
+                //!
+                //! \tparam IteratorModel: Type of iterator received
+                //! \param[in] first : Iterator to the beginning of the image
+                //! \param[in] last : Iterator to the end of the image
+                //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+                //!
+                template< class IteratorModel >
+                void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+                {
+                    boost::array<std::size_t,InputModel::dimensions> borders;
+                    for(std::size_t ii = 0; ii<InputModel::dimensions; ++ii)
+                    {
+                        borders[ii] = 1;
+                    }
+                    
+                    if(peer_descs->global_desc()!=NULL)
+                    {
+                        const Border<InputModel>& image_with_padding = peer_descs->global_desc()->calculate(new Border<InputModel>(borders,0), (*first).global_begin(), (*first).global_end());
+
+                        Neighborhood2D neighb;
+                        neighb.resize(4);
+                        neighb[0]=Neighborhood2D::CoordType( 1, 0);
+                        neighb[1]=Neighborhood2D::CoordType( 0, 1);
+                        neighb[2]=Neighborhood2D::CoordType(-1, 0);
+                        neighb[3]=Neighborhood2D::CoordType( 0,-1);
+
+                        boost::array<std::size_t,InputModel::channels> q_color;
+
+                        // Reset the Matrix
+                        for( size_type ii = 0; ii< InputModel::channels; ++ii )
+                        {
+                            this->at(ii) = 0;
+                        }
+
+                        // Calculate
+                        for(; first!=last; ++first)
+                        {
+                            for( size_type ch = 0; ch < channels; ++ch )
+                            {
+                                q_color[ch] = _array_q[ch].bin(image_with_padding(ch)((*first).position()));
+                            }
+
+                            typename IteratorModel::pixel_type::neighbor_iterator neigh_it     = (*first).local_begin(neighb);
+                            typename IteratorModel::pixel_type::neighbor_iterator neigh_it_end = (*first).local_end(neighb);
+                            for(; neigh_it!=neigh_it_end; ++neigh_it)
+                            {
+                                if(!image_with_padding.is_border((*neigh_it).position()))
+                                {
+                                    for( size_type ch = 0; ch < channels; ++ch )
+                                    {
+                                        (*this)[ch][q_color[ch]][_array_q[ch].bin(image_with_padding(ch)((*neigh_it).position()))]++;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Convolve with kernel
+                        _conv2d.kernel(_kernel);
+                        for( size_type ch = 0; ch < channels; ++ch )
+                        {
+                            _conv2d.calculate(this->at(ch),this->at(ch));
+                        }
+                        
+                        // Compute sum
+                        for( size_type ch = 0; ch < channels; ++ch )
+                        {
+                            single_channel_type& this_ch = this->at(ch);
+                            _hist_sum[ch] = 0;
+                            for(uint64 kk = 0; kk<_num_bins[ch][0]; kk++)
+                            {
+                                for(uint64 ll = 0; ll<_num_bins[ch][1]; ll++)
+                                {
+                                    _hist_sum[ch] = _hist_sum[ch] + this_ch[kk][ll];
+                                }
+                            }
+                        }
+
+                        // Normalize
+                        for( size_type ch = 0; ch < channels; ++ch )
+                        {
+                            filters::Kernel<1> tmp_ker;
+                            tmp_ker[0] = 1./pow(_hist_sum[ch],0.5);
+                            _conv2d.kernel(tmp_ker);
+
+                            _conv2d.calculate(this->at(ch),this->at(ch));
+                        }
+                    }
+                    else
+                    {
+                        throw ImagePlusNotImplemented("ChannelCoocurrenceMatrix without global descriptors.");
+                    }
+                }
+                
+                //! \brief Calculates coocurrence matrix of the parent given the childs
+                //!
+                //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+                //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+                //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+                void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+                {        
+                    (*this) = son1_descs.get(*this) + son2_descs.get(*this);
+                }
+                
+                /*!
+                 * \brief Operator "=" to copy a NormChannelCoocurrenceMatrix
+                 * 
+                 * \param[in]  copy : NormChannelCoocurrenceMatrix to be copied
+                 * \return Reference to the object to allow a = b = c
+                 */
+                const NormChannelCoocurrenceMatrix& operator=( const NormChannelCoocurrenceMatrix& copy)
+                {
+                    _id          = copy._id;
+                    _array_q     = copy._array_q;
+                    _num_bins    = copy._num_bins;
+                    _num_occurrences  = copy._num_occurrences;
+                    _hist_sum    = copy._hist_sum;
+                    _kernel      = copy._kernel;
+    
+                    vd_type::operator=(copy);
+                    
+                    return *this;
+                }
+                
+                /*!
+                 * \brief Operator "+" to sum two NormChannelCoocurrenceMatrix
+                 * 
+                 * \param[in]  other : NormChannelCoocurrenceMatrix to be summed
+                 * \return The sum of NormChannelCoocurrenceMatrix
+                 */
+                NormChannelCoocurrenceMatrix operator+( const NormChannelCoocurrenceMatrix& other ) const
+                {
+                    NormChannelCoocurrenceMatrix out;
+                    out._id = _id;
+                    out._array_q = _array_q;
+                    out._num_bins = _num_bins;
+                    out._num_occurrences = _num_occurrences + other._num_occurrences;
+                    out._hist_sum = _hist_sum + other._hist_sum;
+                    out._kernel = _kernel;
+    
+                    out._init();
+                    
+                    for(std::size_t ch=0; ch<channels; ++ch)
+                    {
+                        T* p_out = out[ch].data();
+                        const T* p_in1 = vd_type::at(ch).data();
+                        const T* p_in2 = other[ch].data();
+                        
+                        ASSERT((vd_type::at(ch).num_elements()) == other.at(ch).num_elements(), "ChannelCoocurrenceMatrix sum: Trying tu sum histogram of different sizes");
+                        ASSERT((vd_type::at(ch).num_elements()) == out.at(ch).num_elements(), "ChannelCoocurrenceMatrix sum: Something is wrong, out has different size");
+    
+                        float64 alpha1 = hist_sum()[ch]/(float64)(hist_sum()[ch]+other.hist_sum()[ch]);
+                        float64 alpha2 = other.hist_sum()[ch]/(float64)(hist_sum()[ch]+other.hist_sum()[ch]);
+                        
+                        std::size_t n_elem = vd_type::at(ch).num_elements();
+                        for(std::size_t ii = 0; ii< n_elem; ++ii)
+                        {
+                            *p_out = alpha1*(*p_in1) + alpha2*(*p_in2);
+                            ++p_out; ++p_in1; ++p_in2;
+                        }
+                    }      
+                    return out;
+                }
+                       
+                /*!
+                 * \return the sum of the unnormalized ChannelCoocurrenceMatrix of each channel
+                 *         to allow the proper sum of two Matrices
+                 */
+                const boost::array<T, channels>& hist_sum() const
+                {
+                    return _hist_sum;
+                }
+                
+            private:
+    
+                //! Common private method that initializes the number of bins given the array of quantizers 
+                //! and allocates memory
+                void _init()
+                {
+                    // Create _num_bins array based on the quantizer
+                    for( size_type ii = 0; ii < channels; ++ii )
+                    {
+                        for( size_type jj = 0; jj < dimension; ++jj )
+                        {
+                            _num_bins[ii][jj] = _array_q[ii].num_bins();
+                        }
+                    }
+                    
+                    // Allocate memory     
+                    for( size_type ii = 0; ii < channels; ++ii )
+                    {
+                        this->at(ii).resize( _num_bins[ii] );
+                    }
+                }
+                
+                //! Array of quantizers
+                boost::array<Quantizer<data_type>, channels> _array_q;
+                
+                //! Number of bins
+                boost::array<boost::array<std::size_t, dimension>, channels> _num_bins;
+                
+                //! Number of occurrences
+                uint64 _num_occurrences;
+                
+                //! Filter to perform the convolution
+                filters::SeparableLinearConvolution2D _conv2d;
+                
+                //! Kernel to smooth the Matrix
+                filters::Kernel<1> _kernel;
+                
+                //! Sum of the unnormalized Matrices
+                boost::array<T, channels> _hist_sum;
+            };                                    
+        }                   
+    }
+}
+
+
+#endif

@@ -1,0 +1,287 @@
+/*
+ * fundamental_matrix.hpp
+ *
+ *  Created on: May 16, 2013
+ *      Author: gpalou
+ */
+
+#ifndef FUNDAMENTAL_MATRIX_HPP_
+#define FUNDAMENTAL_MATRIX_HPP_
+
+//#include <opencv2/calib3d/calib3d.hpp>
+#include <imageplus/math/math_types.hpp>
+#include <iostream>
+#include <set>
+
+#include <imageplus/monocular_depth/structure_from_motion/sampson_error.hpp>
+
+namespace imageplus {
+	namespace monocular_depth {
+
+	math::Matrix normalize_points(math::Matrix& points) {
+		math::Vector m  			= points.colwise().mean().transpose();
+
+		points.rowwise() -= m.transpose();
+
+		float64 d 					= points.rowwise().norm().mean();
+		float64 s = sqrt(2)/d;
+
+		points *= s;
+
+		math::Matrix T(3,3); T << 	s,	0,	-m(0)*s,
+									0,	s,	-m(1)*s,
+									0,	0,	1;
+
+		return T;
+	}
+
+	//eight point algorithm
+	inline math::Matrix eight_point_fundamental_matrix(const math::Matrix& points1, const math::Matrix& points2) {
+
+		// Normalize the points
+		math::Matrix p1 = points1;
+		math::Matrix p2 = points2;
+
+		math::Matrix T1 = normalize_points(p1);
+		math::Matrix T2 = normalize_points(p2);
+
+		uint64 N = points1.rows();
+
+		// Build vectors
+		math::Matrix A(N,9);
+
+		math::Matrix x1_hom(N,3);
+		math::Matrix x2_hom(N,3);
+
+		x1_hom.block(0,0,N,2) = p1; x1_hom.col(2).fill(1);
+		x2_hom.block(0,0,N,2) = p2; x2_hom.col(2).fill(1);
+
+		for (uint64 i = 0; i < N; i++) {
+			A.row(i) = kronecker_product(x2_hom.row(i),x1_hom.row(i)).transpose();
+		}
+
+		// Find the normalized matrix
+		uint64 options = 0;
+		if (N > 8) {
+			options = Eigen::ComputeThinU | Eigen::ComputeThinV;
+		} else {
+			options = Eigen::ComputeFullU | Eigen::ComputeFullV;
+		}
+		Eigen::JacobiSVD<math::Matrix> svd(A, options);
+
+		math::Vector f = svd.matrixV().col(8);
+
+		math::Matrix Fm(3,3);
+		Fm.row(0) = f.head(3).transpose();
+		Fm.row(1) = f.segment(3,3).transpose();
+		Fm.row(2) = f.tail(3).transpose();
+
+		//Reproject to ensure rank 2
+		svd.compute(Fm);
+		math::Matrix D = svd.singularValues(); D(2) = 0;
+
+		math::Matrix F = svd.matrixU() * D.asDiagonal() * svd.matrixV().transpose();
+
+		F = T2.transpose()*F*T1;
+
+		return F;
+	}
+
+
+	//RANSAC + 8-point + refining by sampson error
+	inline math::Matrix estimate_fundamental_matrix(const math::Matrix& points1, const math::Matrix& points2, bool iterative = true, uint64 max_N = 1000, float64 inlier_threshold = 1e-6) {
+
+		uint64 N = points1.rows();
+		uint64 Np = 8;
+
+		math::Matrix norm_p1 = points1;
+		math::Matrix norm_p2 = points2;
+		math::Matrix T1 = normalize_points(norm_p1);
+		math::Matrix T2 = normalize_points(norm_p2);
+
+		math::Matrix p1(Np,2);
+		math::Matrix p2(Np,2);
+
+		uint64 max_inliers = 0;
+		math::Matrix F;
+
+		std::vector<bool> is_inlier(N,true);
+		std::vector<bool> v_inliers(N,true);
+
+		uint64 N_ransac = 1e10;
+
+		srand(1);
+
+		if (max_N == 0)
+			max_inliers = N;
+
+		for (uint64 i = 0; i < N_ransac && i < max_N; i++) {
+			std::set<uint64> done;
+
+			// Sample a random set of points
+			for (uint64 k = 0; k < Np; k++) {
+				uint64 idx;
+				do {
+					idx = rand() % N;
+				} while (done.find(idx) != done.end());
+
+				done.insert(idx);
+				p1.row(k) = norm_p1.row(idx);
+				p2.row(k) = norm_p2.row(idx);
+			}
+
+			// Run an exact 8 point algorithm
+			math::Matrix Fa = eight_point_fundamental_matrix(p1,p2);
+
+			//std::cout << "checking for inliers" << std::endl;
+			// Check for inliers with sampson error
+			uint64 inliers = 0;
+			for (uint64 k = 0; k < N; k++) {
+				math::Vector x1(3); x1(0) = norm_p1(k,0); x1(1) = norm_p1(k,1); x1(2) = 1;
+				math::Vector x2(3); x2(0) = norm_p2(k,0); x2(1) = norm_p2(k,1); x2(2) = 1;
+				math::Vector l1 = Fa*x1; l1(2) = 0;
+				math::Vector l2 = Fa.transpose()*x2; l2(2) = 0;
+
+				float64 d = (x2.transpose()*Fa*x1).squaredNorm() / (l1.squaredNorm() + l2.squaredNorm());
+
+				if (d < inlier_threshold) { inliers++; is_inlier[k] = true;} else {is_inlier[k] = false;}
+			}
+
+			float64 p = 0.99;
+			float64 eps = 1 - inliers*1.0/N;
+			float64 N_new = (uint64)(log(1-p) / log(1-pow(1-eps,Np)));
+			N_ransac = std::min((float64)N_ransac,N_new+1);
+
+			//std::cout << "inliers " << inliers << " " << inliers*1.0/N << " " << N_ransac << " " << N_new << std::endl;
+			if (inliers > max_inliers) {
+				F = Fa;
+				max_inliers = inliers;
+				v_inliers = is_inlier;
+			}
+		}
+
+		math::Matrix ip1(max_inliers,2);
+		math::Matrix ip2(max_inliers,2);
+
+		uint64 idx = 0;
+		for (uint64 i = 0; i < N; i++) {
+			if (v_inliers[i] == true) {
+				ip1.row(idx) = norm_p1.row(i);
+				ip2.row(idx) = norm_p2.row(i);
+				idx++;
+			}
+		}
+		N = max_inliers;
+
+		//Final estimate with all the inliers
+		F = eight_point_fundamental_matrix(ip1,ip2);
+
+		//Refine the matrix with the inlier points
+		if (iterative) {
+
+			math::Vector f(9);
+			f.head(3) 		= F.row(0).transpose();
+			f.segment(3,3) 	= F.row(1).transpose();
+			f.tail(3) 		= F.row(2).transpose();
+
+			math::Matrix x1_hom(N,3);
+			math::Matrix x2_hom(N,3);
+
+			x1_hom.block(0,0,N,2) = ip1; x1_hom.col(2).fill(1);
+			x2_hom.block(0,0,N,2) = ip2; x2_hom.col(2).fill(1);
+
+			SampsonError<float64> sampson_error(x1_hom,x2_hom, N);
+			Eigen::NumericalDiff<SampsonError<float64> > num_dif(sampson_error);
+
+			Eigen::LevenbergMarquardt<Eigen::NumericalDiff<SampsonError<float64> >, float64> lm(num_dif);
+
+			float64 tol = 1e-15;
+			lm.parameters.ftol = tol;
+			lm.parameters.xtol = tol;
+			lm.parameters.maxfev = 2000;
+
+			lm.minimize(f);
+
+			F.row(0) = f.head(3).transpose();
+			F.row(1) = f.segment(3,3).transpose();
+			F.row(2) = f.tail(3).transpose();
+
+
+			//Reproject to ensure rank 2
+			Eigen::JacobiSVD<math::Matrix> svd(F, Eigen::ComputeFullU | Eigen::ComputeFullV);
+			math::Matrix D = svd.singularValues(); D(2) = 0;
+
+			F = svd.matrixU() * D.asDiagonal() * svd.matrixV().transpose();
+		}
+
+		//denormalize
+		F = T2.transpose() * F * T1;
+
+		//Put the maximum coefficient to 1
+		float64 mx = F.array().abs().maxCoeff();
+
+		if (mx != 0)
+			F /= mx;
+
+		return F;
+	}
+
+	inline float64 fundamental_matrix_sampson_error(math::Matrix points1, math::Matrix points2, math::Matrix F) {
+		uint64 N = points1.rows();
+
+		float64 e = 0;
+
+		math::Vector x1(3); x1(2) = 1;
+		math::Vector x2(3); x2(2) = 1;
+		for (uint64 i = 0; i < N; i++) {
+			x1.head(2) = points1.row(i).transpose();
+			x2.head(2) = points2.row(i).transpose();
+
+			math::Vector l1 = F*x1; l1(2) = 0;
+			math::Vector l2 = F.transpose()*x2; l2(2) = 0;
+
+			float64 num = (x2.transpose()*F*x1).squaredNorm();
+			float64 den = l1.squaredNorm() + l2.squaredNorm();
+
+			if (den != 0) {
+				e += sqrt(num / den);
+			}
+		}
+
+		return e;
+	}
+
+	inline float64 fundamental_matrix_sampson_outliers(math::Matrix points1, math::Matrix points2, math::Matrix F, float64 th) {
+		uint64 N = points1.rows();
+
+		float64 e = 0;
+		float64 outliers = 0;
+
+		math::Vector x1(3); x1(2) = 1;
+		math::Vector x2(3); x2(2) = 1;
+		for (uint64 i = 0; i < N; i++) {
+			x1.head(2) = points1.row(i).transpose();
+			x2.head(2) = points2.row(i).transpose();
+
+
+
+			math::Vector l1 = F*x1; l1(2) = 0;
+			math::Vector l2 = F.transpose()*x2; l2(2) = 0;
+
+			float64 num = (x2.transpose()*F*x1).squaredNorm();
+			float64 den = l1.squaredNorm() + l2.squaredNorm();
+
+			if (den != 0) {
+				e = num / den;
+				outliers += std::sqrt(e/th);
+			}
+		}
+
+		return outliers;
+	}
+
+	}
+}
+
+
+#endif /* FUNDAMENTAL_MATRIX_HPP_ */

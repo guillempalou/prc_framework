@@ -1,0 +1,471 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//! \file captureip.cpp
+//!
+//! Interface for Captureip class
+//!
+
+#ifdef USE_SMARTFLOW
+
+
+#include <string>
+
+#include <boost/smart_ptr.hpp>
+#include <boost/filesystem.hpp>
+
+#include <imageplus/core.hpp>
+
+#include <imageplus/io/captureip.hpp>
+
+#include <bayer.hpp>
+
+/*
+ * For the inet_addr method
+ */
+#include <arpa/inet.h>
+
+namespace bf = boost::filesystem;
+
+namespace imageplus
+{
+    namespace io
+    {
+        CaptureIP::CaptureIP( const CaptureIP& cpy)
+        {
+            ASSERT(false, "You shouldn't call this constructor");
+        }
+
+        CaptureIP::CaptureIP ( std::string ipstr,
+                               uint32      width,
+                               uint32      height,
+                               uint32      fps )
+                    : _vec_bayer(FRAMESCOUNT)
+        {
+            _width   = width;
+            _height  = height;
+            _fps     = fps;
+
+            _curr   =0;
+            _first  =true;
+            
+            /*
+             * Initialize Bayer buffers
+             */
+            for (std::size_t i=0; i<_vec_bayer.size(); ++i)
+            {
+                _vec_bayer[i] = MultiArray<uint8,2>(width, height);
+            }
+            
+
+            /*
+             * Initialize the camera device
+             */ 
+            tPvErr err;
+            
+            err = PvInitialize();
+            if( err != ePvErrSuccess ) throw ImagePlusError("Error initializing the camera");
+            std::cout << "Camera initialized" << std::endl;
+            
+            
+            /*
+             * Opening the camera device
+             */
+            uint32         ip    = inet_addr (ipstr.c_str());
+            tPvAccessFlags flags = ePvAccessMaster;;  //or ePvAccessMonitor?
+
+            err = PvCameraOpenByAddr(ip, flags, &_cam_handle);
+            if( err != ePvErrSuccess ) throw ImagePlusError("Error openning the camera");
+            std::cout << "Camera opened at " << ipstr << std::endl;
+            
+            /*
+             * Get the attributes list
+             */
+//                tPvAttrListPtr     listPtr;
+//                tPvUint32       listLength;
+//                if (PvAttrList(_cam_handle, &listPtr, &listLength) != ePvErrSuccess) throw ImagePlusError("Error setting up the camera");
+//                
+//                std::cout << "AVAILABLE ATTRIBUTES:" << std::endl;
+//                for (tPvUint32 i = 0; i < listLength; i++)
+//                {
+//                    std::cout << listPtr[i] << std::endl;
+//                }
+            
+            char        str[256];
+            tPvUint32       size;
+            tPvUint32        var;
+            if( PvAttrStringGet    ( _cam_handle, "DeviceEthAddress" , str, sizeof(str), &size     ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "DeviceEthAddress: " << str << std::endl;
+            if( PvAttrStringGet    ( _cam_handle, "DeviceIPAddress"  , str, sizeof(str), &size     ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "DeviceIPAddress:  " << str << std::endl;
+            if( PvAttrStringGet    ( _cam_handle, "HostEthAddress"   , str, sizeof(str), &size     ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "HostEthAddress:   " << str << std::endl;
+            if( PvAttrStringGet    ( _cam_handle, "HostIPAddress"    , str, sizeof(str), &size     ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "HostIPAddress:    " << str << std::endl;
+
+            if( PvAttrStringGet    ( _cam_handle, "CameraName"         , str, sizeof(str), &size      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "CameraName: " << str << std::endl;
+            if( PvAttrStringGet    ( _cam_handle, "ModelName"         , str, sizeof(str), &size      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "ModelName: " << str << std::endl;
+
+            if( PvAttrUint32Get    ( _cam_handle, "UniqueId"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "UniqueId: " << var << std::endl;
+            if( PvAttrUint32Get    ( _cam_handle, "PartNumber"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "PartNumber: " << var << std::endl;
+//                if( PvAttrUint32Get    ( _cam_handle, "PartVersion"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+//                std::cout << "PartVersion: " << var << std::endl;
+
+//                if( PvAttrStringGet    ( _cam_handle, "SerialNumber"         , str, sizeof(str), &size      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+//                std::cout << "SerialNumber: " << str << std::endl;
+            if( PvAttrStringGet    ( _cam_handle, "PartRevision"         , str, sizeof(str), &size      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "PartRevision: " << str << std::endl;
+
+            if( PvAttrUint32Get    ( _cam_handle, "FirmwareVerMajor"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "FirmwareVerMajor: " << var << std::endl;
+            if( PvAttrUint32Get    ( _cam_handle, "FirmwareVerMinor"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "FirmwareVerMinor: " << var << std::endl;
+            if( PvAttrUint32Get    ( _cam_handle, "FirmwareVerBuild"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "FirmwareVerBuild: " << var << std::endl;
+
+            if( PvAttrEnumGet    ( _cam_handle, "SensorType"         , str, sizeof(str), &size      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "SensorType: " << str << std::endl;
+
+            if( PvAttrUint32Get    ( _cam_handle, "SensorBits"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "SensorBits: " << var << std::endl;
+            if( PvAttrUint32Get    ( _cam_handle, "SensorWidth"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "SensorWidth: " << var << std::endl;
+            if( PvAttrUint32Get    ( _cam_handle, "SensorHeight"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "SensorHeight: " << var << std::endl;
+            if( PvAttrUint32Get    ( _cam_handle, "TimeStampFrequency"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "TimeStampFrequency: " << var << std::endl;
+
+            
+            //if( PvAttrEnumGet    ( _cam_handle, "StatDriverType"    , str, sizeof(str), &size     ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            err = PvAttrEnumGet    ( _cam_handle, "StatDriverType"    , str, sizeof(str), &size     ); 
+            
+            if     ( err == ePvErrNotFound  ) std::cout << "StatDriverType: Attribute not found." << std::endl;
+            else if( err == ePvErrWrongType ) std::cout << "StatDriverType: Attribute is not an eumeration." << std::endl;
+            else          /* ePvErrSuccess */ std::cout << "StatDriverType:    " << str << std::endl;
+            
+            /*
+             * Set up the camera parameters
+             */
+            std::string format = "Bayer8";
+            if( PvAttrUint32Set  ( _cam_handle, "Width"                , _width          ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera"); 
+            if( PvAttrUint32Set  ( _cam_handle, "Height"               , _height         ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            if( PvAttrEnumSet    ( _cam_handle, "PixelFormat"          , format.c_str()  ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            if( PvAttrFloat32Set ( _cam_handle, "FrameRate"            , _fps            ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            if( PvAttrEnumSet    ( _cam_handle, "FrameStartTriggerMode", "FixedRate"     ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            std::cout << "Setting campture parameters: "       << std::endl;
+            std::cout << "  Width       : " << _width          << std::endl;
+            std::cout << "  Height      : " << _height         << std::endl;
+            std::cout << "  PixelFormat : " << format          << std::endl;
+            std::cout << "  FrameRate   : " << _fps            << std::endl;
+
+            /*
+             * AGIL: We should config the MTU to use 8228 packages
+             */
+            tPvUint32       max_packed_size = 8228; /*8228; also 16456?*/ 
+            std::cout << "Setting packed size to " << max_packed_size << " bytes."<< std::endl;
+            if( PvCaptureAdjustPacketSize(_cam_handle, max_packed_size ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            if( PvAttrUint32Get( _cam_handle ,"PacketSize",&size) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            if (size != max_packed_size ) std::cerr << "The MTU (eth) configuration only suports packets of " << size << " bytes instead of the optimal size of " <<  max_packed_size << " bytes."<< std::endl;
+
+            
+            if( PvAttrEnumSet    ( _cam_handle, "ExposureMode" , "AutoOnce" ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            if( PvAttrEnumSet    ( _cam_handle, "GainMode"     , "AutoOnce" ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            if( PvAttrEnumSet    ( _cam_handle, "WhitebalMode" , "AutoOnce" ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            //if( PvAttrUint32Set  ( _cam_handle, "ExposureValue", 10000 /*us*/) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            
+            if( PvAttrEnumSet(  _cam_handle, "AcquisitionMode", "Continuous") != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+            
+            
+            
+            /*
+             * Get the camara information
+             */
+            
+//                if( PvAttrUint32Get    ( _cam_handle, "StreamHoldCapacity"         , &var      ) != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+//                std::cout << "StreamHoldCapacity: " << var << std::endl;
+
+        }
+
+        CaptureIP::~CaptureIP(void)
+        {
+            // close the camera
+            std::cout << "Clossing camera" << std::endl; 
+            PvCameraClose(_cam_handle);
+            
+            // uninitialise the API
+            PvUnInitialize();
+        };
+                
+        void CaptureIP::start()
+        {
+            tPvErr err;
+            
+            /*
+             * Start capture
+             */
+            err = PvCaptureStart(_cam_handle);
+            if(  err != ePvErrSuccess ) throw ImagePlusError("Error starting capture");
+            std::cout << "Capture started" << std::endl;
+
+            /*
+             * Set the frame buffers
+             */
+            tPvUint32 frame_size = 0;
+            PvAttrUint32Get( _cam_handle, "TotalBytesPerFrame", &frame_size);
+            ASSERT( frame_size == _width * _height, "Frame size is not correct");
+
+            for( std::size_t i=0; i < _vec_bayer.size(); ++i )
+            {
+                ASSERT( frame_size == _vec_bayer[i].num_elements() , "Buffer size is not correct");
+                        
+                _frames[i].ImageBufferSize = frame_size;
+                _frames[i].ImageBuffer     = _vec_bayer[i].data(); //li donem de buffer el punter a la multiarray
+            }
+
+            
+            /*
+             * Set the aquisition mode
+             */
+            if( PvAttrEnumSet(  _cam_handle, "AcquisitionMode", "Continuous") != ePvErrSuccess ) throw ImagePlusError("Error setting up the camera");
+
+            /*
+             * Start the acquisition
+             */
+            err = PvCommandRun(_cam_handle,"AcquisitionStart");
+            if( err != ePvErrSuccess )
+            {
+                // if that fail, we reset the camera to non capture mode
+                PvCaptureEnd(_cam_handle) ;
+                throw ImagePlusError("Error starting aquisition");
+            }
+            else               
+            {
+                std::cout << "Aquisition Started" << std::endl;
+                
+                
+                /*
+                 * Initialize image frames and enqueue them
+                 */
+                for( std::size_t i=0; i < _vec_bayer.size(); ++i )
+                {
+                    ASSERT( frame_size == _vec_bayer[i].num_elements() , "Buffer size is not correct");
+                            
+                    err = PvCaptureQueueFrame(_cam_handle,&_frames[i],NULL);
+                    if( err != ePvErrSuccess ) throw ImagePlusError("Error enqueue frame");
+                }
+            }
+        }
+
+        void CaptureIP::stop()
+        {
+            std::cout << "Stopping aquisition" << std::endl;
+            
+            /*
+             * Dequeue all the frame still queued (this will block until they all have been dequeued)
+             */
+            PvCaptureQueueClear(_cam_handle);
+            
+            /*
+             * Stop Aquisition
+             */
+            PvCommandRun(_cam_handle,"AcquisitionStop");
+            PvCaptureEnd(_cam_handle);  
+            
+            
+            /*
+             * Show capture statistics
+             */
+            tPvUint32       stat;
+            
+            if( PvAttrUint32Get( _cam_handle, "StatFramesDropped", &stat) != ePvErrSuccess ) throw ImagePlusError("Error getting capture statistics");
+            std::cout << "StatFramesDropped:    " << stat << std::endl;
+            if( PvAttrUint32Get( _cam_handle, "StatFramesCompleted", &stat) != ePvErrSuccess ) throw ImagePlusError("Error getting capture statistics");
+            std::cout << "StatFramesCompleted:  " << stat << std::endl;
+            if( PvAttrUint32Get( _cam_handle, "StatPacketsErroneous", &stat) != ePvErrSuccess ) throw ImagePlusError("Error getting capture statistics");
+            std::cout << "StatPacketsErroneous: " << stat << std::endl;
+            if( PvAttrUint32Get( _cam_handle, "StatPacketsReceived", &stat) != ePvErrSuccess ) throw ImagePlusError("Error getting capture statistics");
+            std::cout << "StatPacketsReceived:  " << stat << std::endl;
+            if( PvAttrUint32Get( _cam_handle, "StatPacketsRequested", &stat) != ePvErrSuccess ) throw ImagePlusError("Error getting capture statistics");
+            std::cout << "StatPacketsRequested: " << stat << std::endl;
+            if( PvAttrUint32Get( _cam_handle, "StatPacketsResent", &stat) != ePvErrSuccess ) throw ImagePlusError("Error getting capture statistics");
+            std::cout << "StatPacketsResent:    " << stat << std::endl;
+            if( PvAttrUint32Get( _cam_handle, "StatPacketsMissed", &stat) != ePvErrSuccess ) throw ImagePlusError("Error getting capture statistics");
+            std::cout << "StatPacketsMissed:    " << stat << std::endl;
+        }
+
+        CaptureIP& CaptureIP::operator>>( ImageRGB<uint8>& rgb ) 
+        {
+            /*
+             * Get a new frame
+             */
+            get_new_frame();
+            
+            /*
+             * Convert from Bayer to RGB
+             */
+            convert_bayer( _vec_bayer[_curr], rgb);
+            
+            /*
+             * Update the current frame
+             */
+            ++_curr;
+            _curr=(_curr)%FRAMESCOUNT;
+
+            /*
+             * Return the "stream"
+             */
+            return *this;
+        }
+
+             
+        CaptureIP& CaptureIP::operator>>( Timestamp& ts )
+        {
+            ts = _ts_curr_clk;
+            return *this;
+        }
+                
+
+        CaptureIP& CaptureIP::operator>>( MultiArray<uint8,2>& bayer ) 
+        {
+            /*
+             * Get a new frame
+             */
+            get_new_frame();
+            
+            /*
+             * Fill up the data
+             */
+            bayer = _vec_bayer[_curr];
+            
+            /*
+             * Update the current frame
+             */
+            ++_curr;
+            _curr=(_curr)%FRAMESCOUNT;
+
+            /*
+             * Return the "stream"
+             */
+            return *this;
+        }
+    
+        void CaptureIP::get_new_frame()
+        {
+            /*
+             * Wait until a new image is available
+             */
+            tPvErr err = PvCaptureWaitForFrameDone(_cam_handle, &_frames[_curr], PVINFINITE);
+            if ( err != ePvErrSuccess)                   std::cerr<<"Error capturing frame. Error: "  << err <<std::endl;
+            if ( _frames[_curr].Status != ePvErrSuccess) std::cerr<<"Error capturing frame. Status: " << err2string(_frames[_curr].Status) <<std::endl;
+            
+            /*
+             * Get the associated timestamp
+             */
+            get_timestamp();
+            
+            /*
+             * Requeue the frame buffer
+             */
+            err = PvCaptureQueueFrame(_cam_handle,&_frames[_curr],NULL);
+            if ( err != ePvErrSuccess) std::cerr<<"Error requeue frame buffer!!!" << err <<std::endl;
+        }
+        
+        void CaptureIP::get_timestamp()
+        {
+            /*
+             * Timestamp from clock
+             */
+            _ts_curr_clk = clock_ts(); 
+            
+            /*
+             * Timestamp from camera
+             */
+            uint64 ts_lo = _frames[_curr].TimestampLo;
+            uint64 ts_hi = _frames[_curr].TimestampHi;
+            
+            Timestamp ts_cam_lo(0,0,0,((int64)ts_lo*27)/1000);
+            Timestamp ts_cam_hi(0,0,((int64)ts_hi)*115,((int64)ts_hi)*964117);
+            
+            _ts_curr_cam = ts_cam_hi + ts_cam_lo;
+
+            /*
+             * Validate timestamp from clock and check dropped frames
+             */
+            if(_first) _first=false; // do no check anything for the first frame!
+            else
+            {
+                /*
+                 * Get the timestamps increment / delta
+                 */
+                Timestamp ts_delta_clk = _ts_curr_clk -_ts_prev_clk;
+                Timestamp ts_delta_cam = _ts_curr_cam -_ts_prev_cam;
+
+                /*
+                 * If the delta_clk doesn't correspond with the delta_cam, overwritte it
+                 * 
+                 * Note: This behavior is probably caused by non-constant network delays 
+                 */
+                if ( ( ts_delta_clk <  ts_delta_cam/2) || 
+                     ( ts_delta_clk >  ts_delta_cam*3/2))
+                {
+                    _ts_curr_clk = _ts_curr_clk + ts_delta_cam;
+                }
+                
+                /*
+                 * Any way, check the cam info to detect dropped frames
+                 */
+                if( ts_delta_cam > 3.0/(2.0*_fps))
+                {
+                    std::cout << "DROPPED FRAME: " << _ts_curr_clk << std::endl;
+                }
+            }
+            
+            _ts_prev_clk = _ts_curr_clk;
+            _ts_prev_cam = _ts_curr_cam;
+        }
+        
+        
+        std::string CaptureIP::err2string( tPvErr err )
+        {
+            switch( err )
+            {
+                case ePvErrSuccess       : return "Success";
+                case ePvErrCameraFault   : return "Unexpected camera fault";
+                case ePvErrInternalFault : return "Unexpected fault in PvAPI or driver.";
+                case ePvErrBadHandle     : return "Camera handle is bad.";
+                case ePvErrBadParameter  : return "Function parameter is bad.";
+                case ePvErrBadSequence   : return "Incorrect sequence of API calls. For example, queuing a frame before starting image capture.";
+                case ePvErrNotFound      : return "Returned by PvCameraOpen when the requested camera is not found.";
+                case ePvErrAccessDenied  : return "Returned by PvCameraOpen when the camera cannot be opened in the requested mode, because it is already in use by another application.";
+                case ePvErrUnplugged     : return "Returned when the camera has been unexpectedly unplugged.";
+                case ePvErrInvalidSetup  : return "Returned when the user attempts to capture images, but the camera setup is incorrect.";
+                case ePvErrResources     : return "Required system or network resources are unavailable.";
+                case ePvErrQueueFull     : return "The frame queue is full.";
+                case ePvErrBufferTooSmall: return "The frame buffer is too small to store the image.";
+                case ePvErrCancelled     : return "Frame is cancelled. This is returned when frames are aborted using PvCaptureQueueClear.";
+                case ePvErrDataLost      : return "The data for this frame was lost. The contents of the image buffer are invalid.";
+                case ePvErrDataMissing   : return "Some of the data in this frame was lost.";
+                case ePvErrTimeout       : return "Timeout expired. This is returned only by functions with a specified timeout.";
+                case ePvErrOutOfRange    : return "The attribute value is out of range.";
+                case ePvErrWrongType     : return "This function cannot access the attribute, because the attribute type is different.";
+                case ePvErrForbidden     : return "The attribute cannot be written at this time.";
+                case ePvErrUnavailable   : return "The attribute is not available at this time.";
+                case ePvErrFirewall      : return "Firewall is blocking the streaming port.";
+                
+                case ePvErrBandwidth     : return "ePvErrBandwidth";
+                default                  : return "Unknown error code";
+            }
+        }
+            
+    } // namespace io
+} //namespace imageplus
+
+#endif // USE_SMARTFLOW

@@ -1,0 +1,55 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file distance_utils.test
+ */ 
+
+#include <imageplus/segmentation/distance_utils.hpp>
+#include <imageplus/segmentation/distances.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+BOOST_AUTO_TEST_SUITE ( Segmentation_Distance_Utils_Suite );
+
+using namespace imageplus;
+using namespace segmentation;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE( asymmetric_partition_distance_mask_test )
+{
+    io::ReadImage ref( string(TEST_DATA_PATH_R) + "/segmentation/reference.png");
+    ImageGray<uint8> ref_ima;
+    ref >> ref_ima;
+
+    io::ReadImage fine( string(TEST_DATA_PATH_R) + "/segmentation/fine.png" );
+    ImageGray<uint8> fine_ima;
+    fine >> fine_ima;
+
+    io::ReadImage ri1(string(TEST_DATA_PATH_R) + "/segmentation/mask_ref_fine.png");
+    ImageMask mask_res1;
+    ri1 >> mask_res1;
+
+    io::ReadImage ri2(string(TEST_DATA_PATH_R) + "/segmentation/mask_fine_ref.png");
+    ImageMask mask_res2;
+    ri2 >> mask_res2;
+
+    ImagePartition<uint32> refp(convert<uint32>(ref_ima));
+    ImagePartition<uint32> finep(convert<uint32>(fine_ima));
+    
+    std::map<uint32,uint32> lut_t1; 
+    uint64 t1         = asymmetric_partition_distance(refp, finep, lut_t1);
+    ImageMask mask_t1 = asymmetric_partition_distance_mask (refp, finep, lut_t1);
+    BOOST_CHECK(t1 == 10360);
+    BOOST_CHECK( mask_t1==mask_res1 );
+
+    std::map<uint32,uint32> lut_t2; 
+    uint64 t2         = asymmetric_partition_distance(finep, refp, lut_t2);
+    ImageMask mask_t2 = asymmetric_partition_distance_mask (finep, refp, lut_t2);
+    BOOST_CHECK(t2==40284);
+    BOOST_CHECK( mask_t2==mask_res2 );
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

@@ -1,0 +1,111 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//!  \file neighborhood.hpp
+//!
+
+#ifndef IMAGEPLUS_CORE_NEIGHBORHOOD_HPP
+#define IMAGEPLUS_CORE_NEIGHBORHOOD_HPP
+
+#include <imageplus/core/geometric_region.hpp>
+#include <imageplus/core/coord.hpp>
+
+namespace imageplus
+{
+
+	//! Class to handle neighborhoods, i.e., a set of coordinates with respect an origin.
+	//! It is used to iterate through neighbors using neighbor_iterators
+	//!
+	//! \author Jordi Pont Tuset <jordi.pont@upc.edu>
+    //!
+    //! \date 31-03-2010
+    template<class PositionModel>
+    class Neighborhood : public GeometricRegion<PositionModel>
+    {
+    public:
+        
+    	//! Type to refer to the type of coords used
+        typedef PositionModel CoordType;
+        
+        //! Default constructor
+        IMAGEPLUS_INLINE
+        Neighborhood() : GeometricRegion<PositionModel>()
+        {
+        }
+        
+        //!
+        //! \brief Constructor with the dimension of the Coords
+        //!
+        //! \param[in] initial_size : Initial number of coordinates
+        IMAGEPLUS_INLINE
+        Neighborhood(std::size_t initial_size)
+                : GeometricRegion<PositionModel>(initial_size)
+        {
+        }
+        
+        //! Virtual destructor
+        virtual ~Neighborhood()
+        {
+        }
+        
+        //!
+        //! \brief Change the axes origin of the GeometricShpe 
+        //!
+        //! This method change all the coordinates to refer them to the new_orgin
+        //!
+        //! \param[in] new_origin : the new axis origin
+        //!
+        IMAGEPLUS_INLINE
+        void origin(const CoordType& new_origin)
+        {   
+            CoordType offset;
+            
+            if(_origin == CoordType())
+            {
+                offset = new_origin;
+                
+            }
+            else
+            {
+                offset = new_origin - _origin;
+            }
+            
+            _origin = new_origin;
+
+            // Use the STL algorithm 'transform' with the function object 'plus()'
+            std::transform( this->begin(),
+                            this->end(),
+                            this->begin(),
+                            std::bind2nd(std::plus< CoordType >(),offset));
+        }
+
+        //!
+        //! \brief Constant access to the axis origin 
+        //!
+        //! \return constant reference to the axis origin coordinates of the shape
+        //!
+        IMAGEPLUS_INLINE
+        const CoordType& origin() const
+        {
+            return _origin;
+        }
+        
+        
+    private:
+        CoordType  _origin; //!< The coordinates origin
+    };
+    
+    
+    //! Specialization of Neighborhood for 2D
+    typedef Neighborhood<Coord<int64,2> > Neighborhood2D;
+    
+    //! Specialization of Neighborhood for 3D
+    typedef Neighborhood<Coord<int64,3> > Neighborhood3D;
+    
+}
+
+#endif

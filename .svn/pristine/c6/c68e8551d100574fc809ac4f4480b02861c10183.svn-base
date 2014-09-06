@@ -1,0 +1,195 @@
+/*
+ * temporal_model.hpp
+ *
+ *  Created on: Apr 12, 2013
+ *      Author: gpalou
+ */
+
+#ifndef TEMPORAL_MODEL_HPP_
+#define TEMPORAL_MODEL_HPP_
+
+#include <imageplus/descriptors/descriptor_base.hpp>
+#include <imageplus/math/math_types.hpp>
+
+#include <imageplus/math/algebra/robust_regression.hpp>
+#include <imageplus/math/math_types.hpp>
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Area visual descriptor
+        //!
+        //! \author Jordi Pont <jpont@gps.tsc.upc.edu>, Guillem Palou <guillem.palou@gmail.com>
+        //!
+        //! \date 02-06-2009
+    	template<class Signal>
+        class TemporalModel : public DescriptorBase
+        {
+        public:
+
+        	//! base structur for descriptors using parameters
+        	struct TemporalModelParameters {
+        	};
+
+        	typedef TemporalModelParameters 			Parameters;
+
+            //! Type to refer to the type of data which will be returned by this descriptor
+
+        	typedef typename Signal::value_float_type	motion_type;
+        	typedef math::Vector						parametric_type;
+            typedef typename Area::type					area_type;
+            typedef typename Signal::coord_type			coord_type;
+
+            struct MotionModelType {
+            	std::vector<parametric_type> model;
+            	std::vector<area_type> area;
+            	int64 begin_frame;
+            	int64 end_frame;
+
+            	inline parametric_type model_flow(int64 frame) const {
+            		return model[frame - begin_frame];
+            	}
+
+            	int64 length() const {
+            		return end_frame - begin_frame + 1;
+            	}
+            };
+
+            typedef MotionModelType						type;
+
+            //! function returning the id given a set of parameters
+            //! \param[in] pars: parameters to the descriptors (null in this case)
+            static const std::string id(const Parameters& pars = default_parameters()) {
+            	return "motion_model";
+            }
+
+            //! Default parameters for descriptors
+            static const Parameters default_parameters() {
+            	return Parameters();
+            }
+
+            //!
+            //! \brief Default constructor
+            //!
+            TemporalModel(const Parameters& pars = default_parameters()) : DescriptorBase(true) {};
+
+            //! Virtual destructor
+            ~TemporalModel(){};
+
+
+            template< class SignalModel, class RegionModel >
+            parametric_type projective_flow_model(SignalModel& flow, RegionModel& region, uint64 frame) {
+
+            	uint64 N = 0;
+            	for (typename RegionModel::iterator c = region.begin(); c != region.end(); ++c) {
+            		uint64 t = (*c)(2);
+            		if (t != frame) continue;
+            		N++;
+            	}
+
+            	//std::cout << "region " << N << std::endl;
+
+            	if (N < 9)
+            		return math::Vector::Zero(8);
+
+            	typedef math::algebra::RobustRegression<math::numeric::L1Robust> RobustRegression; // We fit 8 parameters, hence the dimension is 8
+
+            	uint64 p = 0;
+            	math::Matrix A = math::Matrix::Zero(2*N,8);
+            	math::Vector b = math::Vector::Zero(2*N);
+
+
+            	//std::cout << "data" << N << std::endl;
+            	for (typename RegionModel::iterator c = region.begin(); c != region.end(); ++c) {
+            		uint64 x = (*c)(0);
+            		uint64 y = (*c)(1);
+            		uint64 t = (*c)(2);
+
+            		if (t != frame) continue;
+
+            		//std::cout << x << " " << y << " " << flow.sizes().transpose() << std::endl;
+
+            		// Each point contributes to 2 equations
+            		b(p)  = flow(x,y,t)(0);
+            		b(p+1) = flow(x,y,t)(1);
+
+            		A(p,0) = 1; A(p,1) = x; A(p,2) = y; A(p,6) = x*x; A(p,7) = x*y;
+            		A(p+1,3) = 1; A(p+1,4) = x; A(p+1,5) = y; A(p+1,6) = x*y; A(p+1,7) = y*y;
+
+            		p+=2;
+            	}
+
+            	//std::cout << "fit" << std::endl;
+            	//
+            	// Fitting:
+            	math::numeric::L1Robust f;
+            	RobustRegression rr;
+            	rr.fit(A,b);
+
+            	parametric_type a = rr.solution();
+
+            	return a;
+            }
+
+            template< class SignalModel, class RegionModel >
+            void calculate_model(SignalModel& signal, RegionModel& region, const Parameters& pars, typename DescriptorBase::ManagerType* manager) {
+            	_value.begin_frame 	= region.frame_begin();
+            	_value.end_frame 	= region.frame_end();
+
+            	_value.area.clear();
+            	_value.model.clear();
+
+            	_value.area.resize(_value.length(),0);
+            	_value.model.resize(_value.length());
+
+            	typedef typename RegionModel::coord_type 			coord_type;
+            	typedef typename Signal::value_float_type			value_type;
+            	for (typename RegionModel::iterator p = region.begin(); p != region.end(); ++p) {
+            		int64 frame = (*p)(2);
+            		_value.area[frame - _value.begin_frame]++;
+            	}
+
+            	for (int64 f = _value.begin_frame; f <= _value.end_frame; f++) {
+            		_value.model[f-_value.begin_frame] = projective_flow_model(signal,region,f);
+            	}
+            }
+
+
+            //! \brief Calculates the area of a region, given a pair of iterators.
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class SignalModel, class RegionModel >
+            void calculate(SignalModel& signal, RegionModel& region, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+            	calculate_model(signal,region,pars,manager);
+            }
+
+            //!
+            //! \brief Calculates recursively area of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template<class SignalModel, class RegionModel, class ChildContainer>
+            void recursive_calculate(SignalModel& signal, RegionModel& region, ChildContainer& childs, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+            	calculate_model(signal,region,pars,manager);
+            }
+
+            const type& value() const {
+            	return _value;
+            }
+
+        private:
+            //! temporal mean
+            type _value;
+
+        };
+    }
+}
+
+#endif /* TEMPORAL_MODEL_HPP_ */

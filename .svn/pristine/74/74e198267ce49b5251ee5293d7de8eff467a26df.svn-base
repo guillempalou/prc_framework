@@ -1,0 +1,265 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file region.hpp
+ */
+
+#ifndef IMAGEPLUS_CORE_REGION_HPP
+#define IMAGEPLUS_CORE_REGION_HPP
+
+#include <vector>
+#include <set>
+
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/geometric_region.hpp>   
+#include <imageplus/core/region_traits.hpp>   
+#include <imageplus/core/iterator.hpp>
+
+namespace imageplus
+{
+    /*!
+     * \brief Class to handle regions (vector of coordinates) with descriptors
+     *
+     * It can take advantage of a BPT to compute the descriptors recursively.
+     *
+     * \author Jordi Pont Tuset - 05-05-2009
+     *
+     * \todo Store the coordinates in sweeping order: Instead of a vector, use a sorted queue
+     */
+    template<class CoordModel, typename IdentifierType=uint32>
+    class Region : public GeometricRegion<CoordModel >,
+                   public collaborative_descriptors_traits,
+                   public tree_traits<Region<CoordModel,IdentifierType> >,
+                   public neighbor_traits<Region<CoordModel,IdentifierType> >
+    {
+    public:
+        //! Coordinates Type
+        typedef CoordModel CoordType;
+        //! Pointer type of the region
+        typedef Region* RegionPointer;
+        //! Type of Gerometric region (father)
+        typedef GeometricRegion<CoordModel> GeomRegType;
+        //! iterator of the region coordinates
+        typedef RegionIteratorBase<Region, typename GeomRegType::position_iterator> position_iterator;
+        //! const iterator of the region coordinates
+        typedef RegionIteratorBase<const Region, typename GeomRegType::const_position_iterator> const_position_iterator;
+        
+        /*!
+         * Constructor from children
+         *
+         * \param[in] child1 : Pointer to one of the child regions that formed it via a merging process
+         * \param[in] child2 : Pointer to the other child
+         * \param[in] label  : Label of the region in the base partition of the Partition (by def. NOT_ASSGNED)
+         */
+        Region( RegionPointer  child1 = RegionPointer(),
+                RegionPointer  child2 = RegionPointer(),
+                IdentifierType label  = not_assigned<IdentifierType>() )
+        :   GeomRegType(),
+            collaborative_descriptors_traits((CollaborativeDescriptors*)0x0),
+            _label(label)
+        {
+            _init(child1, child2);
+        }
+        
+        /*!
+         * \brief Desctructor
+         */
+        virtual
+        ~Region()
+        {}
+        
+        /*!
+         * Constructor
+         *
+         * \param[in] global_vd : Pointer to the collaborative descriptors (CollaborativeDescriptors) of the global image
+         * \param[in] child1    : Pointer to one of the child regions that formed it via a merging process
+         * \param[in] child2    : Pointer to the other child
+         * \param[in] label     : Label of the region in the base partition of the Partition
+         *                        (by def. NOT_ASSGNED)
+         */
+        Region( CollaborativeDescriptors* global_vd,
+                const RegionPointer&      child1 = RegionPointer(),
+                const RegionPointer&      child2 = RegionPointer(),
+                IdentifierType            label  = not_assigned<IdentifierType>())
+        :   GeomRegType(),
+            collaborative_descriptors_traits(global_vd),
+            _label(label)
+        {
+            _init(child1, child2);
+        }
+        
+        /*!
+         * Constructor receiving the first coordinate of the region and a reference to the partition
+         * where it belongs (optional). And the collaborative descriptors.
+         *
+         * \param[in] global_vd      : Pointer to the collaborative descriptors (CollaborativeDescriptors)
+         *                             of the global image
+         * \param[in] first_position : First position (coordinate) of the region
+         * \param[in] label          : Label of the region in the base partition of the Partition
+         *                             (by def. NOT_ASSGNED)
+         */
+        Region( CollaborativeDescriptors* global_vd,
+                CoordModel                first_position,
+                IdentifierType            label          = not_assigned<IdentifierType>() )
+        :   GeomRegType(),
+            collaborative_descriptors_traits(global_vd),
+            _label(label)
+        {
+            this->push_back(first_position);
+        }
+        
+        /*!
+         * Constructor receiving the first coordinate of the region and a reference to the partition
+         * where it belongs (optional).
+         *
+         * \param[in] first_position : First position (coordinate) of the region
+         * \param[in] label          : Label of the region in the base partition of the Partition
+         *                            (by def. NOT_ASSGNED)
+         */
+        Region( CoordModel first_position, IdentifierType label=not_assigned<IdentifierType>() )
+        :   GeomRegType(),
+            collaborative_descriptors_traits((CollaborativeDescriptors*)NULL),
+            _label(label)
+        {
+            this->push_back(first_position);
+        }
+        
+        /*!
+         * \brief function to update the link traits when performing region operations
+         * \param[in] curr_part : current partition from which we will update
+         */
+        template<class PartitionModel>
+        void update_traits(PartitionModel& curr_part)
+        {
+            tree_traits    < Region<CoordModel> >::update_traits(curr_part);
+            neighbor_traits< Region<CoordModel> >::update_traits(curr_part);
+        }
+        
+    public:   
+        
+        /*!
+         * \returns the label of the region in the context of a Partition
+         */
+        IdentifierType label() const
+        {
+            return _label;
+        }
+        
+        /*!
+         * \returns true because the region can have child
+         */
+        bool is_composite() const
+        {
+            return true;
+        }
+
+        /*!
+         * \brief Function to iterate along the region coordinates. The coordinates may be given in any order
+         * \return iterator to the beginning of the coordinates
+         */
+        position_iterator begin()
+        {
+            return position_iterator(this);
+        }
+
+        /*!
+         * \brief Function to iterate along the region coordinates. The coordinates may be given in any order
+         * \return iterator to the end of the coordinates
+         */
+        position_iterator end()
+        {
+            return position_iterator(this,true);
+        }
+
+        /*!
+         * \brief Function to iterate along the region coordinates. The coordinates may be given in any order
+         * \return const iterator to the beginning of the coordinates
+         */
+        const_position_iterator begin() const
+        {
+            return const_position_iterator(this);
+        }
+
+        /*!
+         * \brief Function to iterate along the region coordinates. The coordinates may be given in any order
+         * \return iterator to the end of the coordinates
+         */
+        const_position_iterator end() const
+        {
+            return const_position_iterator(this,true);
+        }
+
+        
+    protected:
+        
+        /*!
+         * Sets the label
+         *
+         * \param[in] label : the label of the region in the context of a Partition
+         */
+        void label(IdentifierType label)
+        {
+            _label = label;
+        }
+
+        /*!
+         * Initializes the class
+         *
+         * \param[in] child1 : Pointer to one of the child regions that formed it via a merging process
+         * \param[in] child2 : Pointer to the other child
+         */
+        void _init(RegionPointer child1, RegionPointer child2) 
+        {
+            std::size_t size1 = 0;
+            if(child1!=0)
+            {
+                this->_children.push_back(child1);
+                size1 = child1->size();
+                this->resize(size1);
+                std::copy(child1->position_begin(), child1->position_end(), GeomRegType::begin());
+
+                if (child1->parts().size() != 0) child1->clear(); // we only maintain a copy of the coordinates at the roots
+            }
+
+            if(child2!=0)
+            {
+                this->_children.push_back(child2);
+                this->resize(size1+child2->size());
+                std::copy(child2->position_begin(), child2->position_end(), GeomRegType::begin()+size1);
+
+                if (child2->parts().size() != 0) child2->clear(); // we only maintain a copy of the coordinates at the roots
+            }
+        }
+
+    protected:
+        
+        //! Region identifier
+        IdentifierType _label;
+        
+        /*! 
+         * \cond SKIP_DOC 
+         * 
+         * Friends 
+         */
+//        template<class RM>
+//        friend class Partition;
+        
+        template<class PM>
+        friend void prune(typename PM::RegionType&, PM&);
+        
+        template<class PartitionModel>
+        friend void merge_regions(typename PartitionModel::RegionType&, typename PartitionModel::RegionType&, typename PartitionModel::IdentifierType, PartitionModel&);
+        
+        template<class PM>
+        friend void relabel(PM&);
+        /*! 
+         * \endcond SKIP_DOC 
+         */
+    }; 
+}
+
+#endif // IMAGEPLUS_CORE_REGION_HPP

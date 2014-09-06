@@ -1,0 +1,12 @@
+Import('moduleEnv')
+
+dependences = Split('''
+
+core
+math
+descriptors
+
+''')
+
+
+Return('dependences')

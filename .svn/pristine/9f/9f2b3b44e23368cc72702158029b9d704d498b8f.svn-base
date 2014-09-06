@@ -1,0 +1,80 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file multiarray_comparison.test
+//!
+//! Tests for imavol comparisons 
+//!
+
+#include <iostream>
+#include <imageplus/core.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ImaVolComparisonSuite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list<uint8,int16,int64,float64> DataTypes;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_notsame, T, DataTypes)
+{
+	ImaVol<T,1,2> ma1(10,10);
+	ImaVol<T,1,2> ma2(10,10);
+	ImaVol<T,1,2> ma3(10,10);
+
+	ImaVol<T,1,2> *pma4;
+
+    T val1 = static_cast<T>(10);
+	
+    ma1  = val1;
+    ma2  = val1;
+    ma3  = ma1;
+    pma4 = &ma1;
+
+	BOOST_CHECK_THROW(notsame(ma1, ma1), ImagePlusError);	
+	BOOST_CHECK_NO_THROW(notsame(ma1, ma2));	
+	BOOST_CHECK_NO_THROW(notsame(ma3, ma1));	
+	BOOST_CHECK_THROW(notsame(*pma4, ma1), ImagePlusError);	
+
+	ImageRGB<T> mb1(10,10);
+	ImageRGB<T> mb2(10,10);
+	ImageRGB<T> mb3(10,10);
+
+	ImageRGB<T> *pmb4;
+
+    mb1  = val1;
+    mb2  = val1;
+    mb3  = mb1;
+    pmb4 = &mb1;
+
+	BOOST_CHECK_THROW(notsame(mb1, mb1), ImagePlusError);	
+	BOOST_CHECK_NO_THROW(notsame(mb1, mb2));
+	BOOST_CHECK_NO_THROW(notsame(mb3, mb1));	
+	BOOST_CHECK_THROW(notsame(*pmb4, mb1), ImagePlusError);	
+
+
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_compatible, T, DataTypes)
+{
+	ImaVol<T,3,2> ma1(10,10);
+	ImaVol<T,3,2> ma2(5,5);
+	ImaVol<T,3,2> ma3(10,10);
+	
+    T val1 = static_cast<T>(9);
+    T val2 = static_cast<T>(7);
+
+
+    ma1 = val1;
+    ma2 = val1;
+    ma3 = val2;
+
+	BOOST_CHECK_NO_THROW(compatible(ma1, ma1));	
+	BOOST_CHECK_THROW(compatible(ma1, ma2), ImagePlusError);	
+	BOOST_CHECK_NO_THROW(compatible(ma1, ma3));	
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

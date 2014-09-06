@@ -1,0 +1,104 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file multiarray_math.hpp
+//!
+//!  Math functions on multiarrays.
+//!
+
+#ifndef IMAGEPLUS_CORE_MULTIARRAY_MATH_HPP
+#define IMAGEPLUS_CORE_MULTIARRAY_MATH_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \brief absolute value of the elements of a multiarray
+    //!
+    //! Template T is the type of the data \n
+    //! Template D is the number of dimensions (2 for images, 3 for volumes) \n
+    //!
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 07-04-2008
+    //!
+    //! \param[in] input1 : First operand (multiarray)
+    //!
+    //! \return Absolute value of the elements of the multiarray
+    //!
+    template<typename T, std::size_t D>
+    MultiArray<T,D> abs( const MultiArray<T,D>& input1 );
+
+    //!
+    //! \brief Square of the elements of a multiarray
+    //!
+    //! Template T is the type of the data \n
+    //! Template D is the number of dimensions (2 for images, 3 for volumes) \n
+    //!
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 07-04-2008
+    //!
+    //! \param[in] input1 : First operand (multiarray)
+    //!
+    //! \return Square of the elements of the multiarray
+    //!
+    template<typename T, std::size_t D>
+    MultiArray<T,D> sqr( const MultiArray<T,D>& input1 );
+
+    //!
+    //! \brief Square root of the elements of a multiarray
+    //!
+    //! Template T is the type of the data \n
+    //! Template D is the number of dimensions (2 for images, 3 for volumes) \n
+    //!
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 07-04-2008
+    //!
+    //! \param[in] input1 : First operand (multiarray)
+    //!
+    //! \return Square root of the elements of the multiarray
+    //!
+    template<typename T, std::size_t D>
+    MultiArray<float64,D> sqrt( const MultiArray<T,D>& input1 );
+
+    //!
+    //! \brief Fills an integer multiarray with random values using an uniform distrobution
+    //!
+    //! \tparam T : Type of the data (Integer type. A specialization is provided for fp types)
+    //! \tparam D : The number of dimensions of the multiarray
+    //!
+    //! \param[in] in     : First operand (multiarray)
+    //! \param[in] maxval : Range limit for the generated random numbers
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-04-2008
+    //!
+    template<typename T, std::size_t D>
+    void random (MultiArray<T,D>& in, T maxval);
+
+    //!
+    //! \brief Fills a floating type multiarray with random values using an uniform distrobution
+    //!
+    //! \tparam D : Number of dimensions of the multiarray
+    //!
+    //! \param[in] in     : First operand (multiarray)
+    //! \param[in] maxval : Range limit for the generated random numbers
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-04-2008
+    //!
+    template<std::size_t D>
+    void random (MultiArray<float64,D>& in, float64 maxval);
+}
+
+
+#endif

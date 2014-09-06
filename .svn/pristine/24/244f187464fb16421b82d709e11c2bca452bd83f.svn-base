@@ -1,0 +1,1151 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \file padding.hpp
+//!
+//! Declaration and template implementation of border padding functions
+//!
+#ifndef IMAGEPLUS_CORE_PADDING_HPP
+#define IMAGEPLUS_CORE_PADDING_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+#include <imageplus/core/coord.hpp>
+#include <imageplus/core/coord2d.hpp>
+#include <imageplus/core/coord3d.hpp>
+#include <imageplus/core/rectangles.hpp>
+#include <imageplus/core/bbox.hpp>
+
+
+namespace imageplus
+{
+    //!
+    //! \brief Applies border padding to 2D MultiArrays
+    //!
+    //! The padded version is copied to out. The padding is done using the
+    //! closest value to the border of the input MultiArray.
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[out] out         : Final result
+    //!
+    //! \return Reference to out.
+    //!
+    //! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.edu>
+    //!
+    //! \date 10-6-2008
+    //!
+    template <typename T>
+    MultiArray<T, 2>& border_padding(const MultiArray<T, 2>& in,
+                                     const boost::array<size_type, 2>& pad_size,
+                                     MultiArray<T, 2>& out);
+
+    //!
+    //! \brief Applies border padding to 2D MultiArrays
+    //!
+    //! The padded version is copied to out. The padding is done using the
+    //! closest value to the border of the input MultiArray.
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[out] out         : Final result
+    //!
+    //! \return Reference to out.
+    //!
+    //! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.edu>
+    //!
+    //! \date 10-6-2008
+    //!
+    template <typename T>
+    MultiArray<T, 2>& border_padding(const MultiArray<T, 2>& in,
+                                     const size_type pad_size,
+                                     MultiArray<T, 2>& out)
+    {
+        boost::array<size_type, 2> pad_size_tmp = {{ pad_size, pad_size }};
+        return border_padding(in, pad_size_tmp, out);
+    }
+
+    //!
+    //! \brief Applies mirror padding to 2D MultiArrays
+    //!
+    //! The padded version is copied to out. The padding is done using the
+    //! mirrored value of the border of the input MultiArray.
+    //!
+    //! e.g. if image is ABC then mirror padding is BA|ABC|CB
+    //! 
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[out] out         : Final result
+    //!
+    //! \return Reference to out.
+    //!
+    //! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.edu>
+    //!
+    //! \date 10-6-2008
+    //!
+    template <typename T>
+    MultiArray<T, 2>& mirror_padding(const MultiArray<T, 2>& in,
+                                     const boost::array<size_type, 2>& pad_size,
+                                     MultiArray<T, 2>& out);    
+
+    //!
+    //! \brief Applies mirror padding to 2D MultiArrays
+    //!
+    //! The padded version is copied to out. The padding is done using the
+    //! mirrored value of the border of the input MultiArray.
+    //!
+    //! e.g. if image is ABC then mirror padding is BA|ABC|CB
+    //! 
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[out] out         : Final result
+    //!
+    //! \return Reference to out.
+    //!
+    //! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.edu>
+    //!
+    //! \date 10-6-2008
+    //!
+    template <typename T>
+    MultiArray<T, 2>& mirror_padding(const MultiArray<T, 2>& in,
+                                     const size_type pad_size,
+                                     MultiArray<T, 2>& out)
+    {
+        boost::array<size_type, 2> pad_size_tmp = {{ pad_size, pad_size }};
+        return mirror_padding(in, pad_size_tmp, out);
+    }
+
+    //!
+    //! \brief Applies border centered mirror padding to 2D MultiArrays
+    //!
+    //! The padded version is copied to out. The padding is done using the
+    //! mirrored value from the border of the input MultiArray.
+    //! 
+    //! e.g. if image is ABC then mirror padding is CB|ABC|BA
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[out] out         : Final result
+    //!
+    //! \return Reference to out.
+    //!
+    //! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.edu>
+    //!
+    //! \date 10-6-2008
+    //!
+    template <typename T>
+    MultiArray<T, 2>& mirror_padding_centered(const MultiArray<T, 2>& in,
+                                              const boost::array<size_type, 2>& pad_size,
+                                              MultiArray<T, 2>& out);    
+
+    //!
+    //! \brief Applies border centered mirror padding to 2D MultiArrays
+    //!
+    //! The padded version is copied to out. The padding is done using the
+    //! mirrored value from the border of the input MultiArray.
+    //! 
+    //! e.g. if image is ABC then mirror padding is CB|ABC|BA
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[out] out         : Final result
+    //!
+    //! \return Reference to out.
+    //!
+    //! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.edu>
+    //!
+    //! \date 10-6-2008
+    //!
+    template <typename T>
+    MultiArray<T, 2>& mirror_padding_centered(const MultiArray<T, 2>& in,
+                                              const size_type pad_size,
+                                              MultiArray<T, 2>& out)
+    {
+        boost::array<size_type, 2> pad_size_tmp = {{ pad_size, pad_size }};
+        return mirror_padding_centered(in, pad_size_tmp, out);
+    }
+
+    //!
+    //! \brief Applies padding to MultiArrays (in-place version)
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding (boost array)
+    //! \param[in] pad_value    : New spaces are filled with this value
+    //! \param[out] out         : Padded multiarray
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void padding (const MultiArray<T,D>& in,
+                  const boost::array<size_type,D>& pad_size,
+                  T pad_value,
+                  MultiArray<T,D>& out);
+
+    //!
+    //! \brief Applies padding to MultiArrays
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding (boost array)
+    //! \param[in] pad_value    : New spaces are filled with this value
+    //!
+    //! \return                 : Padded MultiArray
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> padding (const MultiArray<T,D>& in,
+                             const boost::array<size_type,D>& pad_size,
+                             T pad_value);
+
+    //!
+    //! \brief Applies padding to MultiArrays (in-place-version)
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[in] pad_value    : New spaces are filled with this value
+    //! \param[out] out         : Padded MultiArray
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void padding(const MultiArray<T,D>& in,
+                 size_type pad_size,
+                 T pad_value,
+                 MultiArray<T,D>& out);
+
+    //!
+    //! \brief Applies padding to MultiArrays
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[in] pad_value    : New spaces are filled with this value
+    //!
+    //! \return                 : Padded MultiArray
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> padding (const MultiArray<T,D>& in,
+                             size_type pad_size,
+                             T pad_value);
+
+    //!
+    //! \brief Applies asymmetric padding to N-D MultiArrays (in-place version)
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[in] pad_value    : New spaces are filled with this value
+    //! \param[out] out         : Padded multiarray
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 22-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void asymmetric_padding(const MultiArray<T,D>& in,
+                            const boost::array < std::pair<uint64,uint64>, D > & pad_size,
+                            T pad_value,
+                            MultiArray<T,D>& out);
+
+    //!
+    //! \brief Applies asymmetric padding to N-D MultiArrays
+    //!
+    //! The padding can be asymmetric. For instance, the amount right and left sides may differ
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[in] pad_value    : New spaces are filled with this value
+    //!
+    //! \return out             : Padded multiarray
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 22-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> asymmetric_padding(const MultiArray<T,D>& in,
+                                       const boost::array < std::pair<uint64,uint64> , D > & pad_size,
+                                       T pad_value);
+
+    //!
+    //! \brief Applies asymmetric padding to one dimension of the MultiArray
+    //!
+    //! The padding can be asymmetric. For instance, the amount right and left sides may differ.<br>
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[in] dir          : Direction in which the padding is applied
+    //! \param[in] pad_value    : New spaces are filled with this value
+    //! \param[out] out         : Padded multiarray.
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 22-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void asymmetric_padding(const MultiArray<T,D>& in,
+                            const std::pair<uint64, uint64>& pad_size,
+                            uint64 dir,
+                            T pad_value,
+                            MultiArray<T, D>& out);
+
+    //!
+    //! \brief Applies asymmetric padding to MultiArrays
+    //!
+    //! The padding can be asymmetric. For instance, the amount right and left sides may differ
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[in] dir          : Direction in which the padding is applied
+    //! \param[in] pad_value    : New spaces are filled with this value
+    //!
+    //! \return                 : Padded multiarray
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 22-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> asymmetric_padding(const MultiArray<T,D>& in,
+                                       const std::pair<uint64,uint64>& pad_size,
+                                       uint64 dir,
+                                       T pad_value);
+
+    //!
+    //! \brief Removes padding to MultiArrays (in-place version)
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in,out] in   : MultiArray to remove padding
+    //! \param[in] pad_size : Size of padding
+    //! \param[out] out     : Multiarray without padding. Can be the same as in ( i.e remove_padding(ma, 3, ma) )
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void remove_padding (const MultiArray<T,D>& in, const boost::array<size_type,D>& pad_size, MultiArray<T,D>& out);
+
+    //!
+    //! \brief Removes padding to MultiArrays
+    //!
+    //! \param[in] in           : MultiArray to remove padding
+    //! \param[in] pad_size     : Size of padding
+    //!
+    //! \return                   a Multiarray without borders
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> remove_padding (const MultiArray<T,D>& in, const boost::array<size_type,D>& pad_size);
+
+    //!
+    //! \brief Removes padding to MultiArrays
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in,out] in   : MultiArray to apply padding
+    //! \param[in] pad_size : Size of padding
+    //! \param[out] out     : Multiarray without padding. Can be the same as in ( i.e remove_padding(ma, 3, ma) )
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void remove_padding (const MultiArray<T,D>& in, size_type pad_size, MultiArray<T,D>& out);
+
+    //!
+    //! \brief Removes padding to MultiArrays
+    //!
+    //! \param[in] in           : MultiArray to remove padding
+    //! \param[in] pad_size     : Size of padding
+    //!
+    //! \return                 : Final result
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> remove_padding (MultiArray<T,D>& in, size_type pad_size);
+
+    //!
+    //! \brief Applies zero padding to MultiArrays (in-place version)
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[out] out         : Final result
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void zero_padding (const MultiArray<T,D>& in,
+                       const boost::array<size_type,D>& pad_size,
+                       MultiArray<T,D>& out);
+
+    //!
+    //! \brief Applies zero padding to MultiArrays  (in-place version)
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //! \param[out] out         : Final result
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void zero_padding (const MultiArray<T,D>& in, size_type pad_size, MultiArray<T,D>& out);
+
+    //!
+    //! \brief Applies zero padding to MultiArrays
+    //!
+    //! The padded version is copied to out.
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //!
+    //! \return                 : Final result
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> zero_padding (const MultiArray<T,D>& in,
+                                  const boost::array<size_type,D>& pad_size);
+
+    //!
+    //! \brief Applies zero padding to MultiArrays
+    //!
+    //! The padded version is copied to out.
+    //!
+    //! \param[in] in           : MultiArray to apply padding
+    //! \param[in] pad_size     : Size of padding
+    //!
+    //! \return                 : Final result
+    //!
+    //! \author Eduardo Mendonça <eduardo@gps.tsc.upc.edu>
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> zero_padding (const MultiArray<T,D>& in, size_type pad_size);
+
+    //!
+    //! \brief Removes padding to MultiArrays (in-place version)
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in,out] in   : MultiArray to remove padding
+    //! \param[in] pad_size : Size of padding
+    //! \param[out] out     : Multiarray without padding. Can be the same as in ( i.e remove_padding(ma, 3, ma) )
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void remove_asymmetric_padding (MultiArray<T,D>& in, const boost::array<std::pair<uint64,uint64>,D>& pad_size, MultiArray<T,D>& out);
+
+    //!
+    //! \brief Removes padding to MultiArrays
+    //!
+    //! \param[in,out] in       : MultiArray to remove padding
+    //! \param[in] pad_size     : Size of padding
+    //!
+    //! \return                   a Multiarray without padding
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> remove_asymmetric_padding (MultiArray<T,D>& in, const boost::array<std::pair<uint64,uint64>,D>& pad_size);
+
+    //!
+    //! \brief Removes padding to MultiArrays (in-place version)
+    //!
+    //! In this version is safe to use the same object as input and output
+    //! i.e. padding (in, pad_size, 0, in)
+    //!
+    //! \param[in,out] in    : MultiArray to remove padding
+    //! \param[in] pad_size  : Size of padding
+    //! \param[in] dir       : Direction or the dimension to apply the padding, from 0 to D-1
+    //! \param[out] out      : Multiarray without padding. Can be the same as in ( i.e remove_padding(ma, 3, ma) )
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    void remove_asymmetric_padding (MultiArray<T,D>& in, const std::pair<uint64,uint64>& pad_size, uint64 dir, MultiArray<T,D>& out);
+
+    //!
+    //! \brief Removes padding to MultiArrays
+    //!
+    //! \param[in,out] in    : MultiArray to remove padding
+    //! \param[in] pad_size  : Size of padding
+    //! \param[in] dir       : Direction or the dimension to apply the padding, from 0 to D-1
+    //!
+    //! \return                a Multiarray without padding
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template <typename T, std::size_t D>
+    MultiArray<T,D> remove_asymmetric_padding (MultiArray<T,D>& in, const std::pair<uint64,uint64>& pad_size, uint64 dir);
+}
+
+    
+//
+// Implementation
+//
+namespace imageplus
+{
+    template <typename T>
+    MultiArray<T, 2>& border_padding(const MultiArray<T, 2>& in,
+                                     const boost::array<size_type, 2>& pad_size,
+                                     MultiArray<T, 2>& out) 
+    {
+        MultiArray<T,2>        in_tmp;
+        const MultiArray<T,2>* pin;
+
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+        
+        boost::array<size_type, 2> dims;
+        dims[0] = pad_size[0]*2+pin->dims(0);
+        dims[1] = pad_size[1]*2+pin->dims(1);
+              
+        out.resize(dims);
+
+        copy_paste(*pin, out, Coord2D<>(pad_size[0], pad_size[1]));
+        
+        // Horizontal padding
+        for (size_type y = pad_size[1]; y != out.dims(1)-pad_size[1]; ++y) 
+        {
+            T left = (*pin)[0][y-pad_size[1]];
+            T right = (*pin)[pin->dims(0)-1][y-pad_size[1]];
+        
+            for (size_type x = 0; x != pad_size[0]; ++x) 
+            {
+                out[x][y] = left;
+                out[out.dims(0)-pad_size[0]+x][y] = right;
+            }
+        }
+
+        // Vertical Padding
+        for (size_type x = 0; x != out.dims(0); x++)
+        {
+            T top = out[x][pad_size[1]];
+            T bottom = out[x][out.dims(1)-pad_size[1]-1];
+        
+            for (size_type y = 0; y != pad_size[1]; ++y) 
+            {
+                out[x][y] = top;
+                out[x][out.dims(1)-pad_size[1]+y] = bottom;
+            }
+        }
+
+        return out;
+    }
+
+    template <typename T>
+    MultiArray<T, 2>& mirror_padding(const MultiArray<T, 2>& in,
+                                     const boost::array<size_type, 2>& pad_size,
+                                     MultiArray<T, 2>& out) 
+    {
+        MultiArray<T,2>        in_tmp;
+        const MultiArray<T,2>* pin;
+
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+
+        boost::array<size_type, 2> dims;
+        dims[0] = pad_size[0]*2+pin->dims(0);
+        dims[1] = pad_size[1]*2+pin->dims(1);
+              
+        out.resize(dims);
+        
+        copy_paste(*pin, out, Coord2D<>(pad_size[0], pad_size[1]));
+        
+        // Horizontal padding
+        for (size_type y = pad_size[1]; y != out.dims(1)-pad_size[1]; ++y) 
+        {
+            for (size_type x = 0; x != pad_size[0]; ++x) 
+            {
+                out[x][y] = (*pin)[(pad_size[0]-x-1)][y-pad_size[1]];
+                out[out.dims(0)-pad_size[0]+x][y] = (*pin)[pin->dims(0)-1-x][y-pad_size[1]];
+            }
+        }
+        
+        // Vertical Padding
+        for (size_type x = 0; x != out.dims(0); x++) 
+        {
+            for (size_type y = 0; y != pad_size[1]; ++y) 
+            {
+                out[x][y] = out[x][pad_size[1]+pad_size[1]-y-1];
+                out[x][out.dims(1)-pad_size[1]+y] = out[x][out.dims(1)-1-pad_size[1]-y];
+            }
+        }     
+        
+        return out;
+    }
+
+    template <typename T>
+    MultiArray<T, 2>& mirror_padding_centered(const MultiArray<T, 2>& in,
+                                              const boost::array<size_type, 2>& pad_size,
+                                              MultiArray<T, 2>& out) 
+    {
+        MultiArray<T,2>        in_tmp;
+        const MultiArray<T,2>* pin;
+
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+
+        boost::array<size_type, 2> dims;
+        dims[0] = pad_size[0]*2+pin->dims(0);
+        dims[1] = pad_size[1]*2+pin->dims(1);
+              
+        out.resize(dims);
+        
+        copy_paste(*pin, out, Coord2D<>(pad_size[0], pad_size[1]));
+        
+        // Horizontal padding
+        for (size_type y = pad_size[1]; y != out.dims(1)-pad_size[1]; ++y) 
+        {
+            for (size_type x = 0; x != pad_size[0]; ++x) 
+            {
+                out[x][y] = (*pin)[(pad_size[0]-x)][y-pad_size[1]];
+                out[out.dims(0)-pad_size[0]+x][y] =  (*pin)[pin->dims(0)-2-x][y-pad_size[1]];
+            }
+        }
+        
+        // Vertical Padding
+        for (size_type x = 0; x != out.dims(0); x++) 
+        {
+            for (size_type y = 0; y != pad_size[1]; ++y) 
+            {
+                out[x][y] = out[x][pad_size[1]+pad_size[1]-y];
+                out[x][out.dims(1)-pad_size[1]+y] = out[x][out.dims(1)-2-pad_size[1]-y];
+            }
+        }     
+        
+        return out;
+    }
+
+    template <typename T, std::size_t D>
+    void padding (const MultiArray<T,D>& in, 
+                  const boost::array<size_type,D>& pad_size,
+                  T pad_value,
+                  MultiArray<T,D>& out)
+    {
+        MultiArray<T,D>        in_tmp;
+        const MultiArray<T,D>* pin;
+
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+
+
+        boost::array<size_type,D> dims;
+        Coord<int64,D> pad_start;
+
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            dims[ii] = 2*pad_size[ii] + pin->dims(ii);
+
+            pad_start[ii] = pad_size[ii];
+        }
+
+        out.resize(dims);
+        out = pad_value;
+
+        copy_paste(*pin, out, pad_start);
+
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> padding (const MultiArray<T,D>& in, 
+                             const boost::array<size_type,D>& pad_size,
+                             T pad_value)
+    {
+        MultiArray<T,D> out;
+
+        padding (in, pad_size, pad_value, out);
+
+        return out;
+    }
+
+    template <typename T, std::size_t D>
+    void padding(const MultiArray<T,D>& in, 
+                 size_type pad_size,
+                 T pad_value,
+                 MultiArray<T,D>& out)
+    {	
+
+        boost::array<size_type,D> pad_size_tmp;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            pad_size_tmp[ii] = pad_size;
+        }
+        padding(in, pad_size_tmp, pad_value, out);
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> padding (const MultiArray<T,D>& in, 
+                             size_type pad_size,
+                             T pad_value)
+    {
+        MultiArray<T,D> out;
+
+        padding (in, pad_size, pad_value, out);
+
+        return out;
+    }
+
+    template <typename T, std::size_t D>
+    void asymmetric_padding(const MultiArray<T,D>& in, 
+                            const boost::array < std::pair<uint64,uint64>, D > & pad_size,
+                            T pad_value,
+                            MultiArray<T,D>& out) 
+    {
+        MultiArray<T,D>        in_tmp;
+        const MultiArray<T,D>* pin;
+
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+
+        boost::array<size_type, D> dims;
+        Coord<int64,D> pad_start;
+
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            dims[ii] = pad_size[ii].first + pad_size[ii].second + pin->dims(ii);
+
+            pad_start[ii] = pad_size[ii].first;
+        }
+
+        out.resize(dims);
+        out = pad_value;
+   
+        copy_paste(*pin, out, pad_start);
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> asymmetric_padding(const MultiArray<T,D>& in, 
+                                       const boost::array < std::pair<uint64,uint64> , D > & pad_size,
+                                       T pad_value)
+    {
+        MultiArray<T,D> out;
+
+        asymmetric_padding (in, pad_size, pad_value, out);
+        
+        return out;
+    }
+
+    template <typename T, std::size_t D>
+    void asymmetric_padding(const MultiArray<T,D>& in, 
+                            const std::pair<uint64, uint64>& pad_size,
+                            uint64 dir,
+                            T pad_value,
+                            MultiArray<T, D>& out) 
+    {
+        MultiArray<T,D>        in_tmp;
+        const MultiArray<T,D>* pin;
+
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+
+        boost::array<size_type, D> dims;
+        Coord<int64,D> pad_start;
+
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            if (ii == dir)
+            {
+                dims[ii] = pad_size.first + pad_size.second + pin->dims(ii);
+
+                pad_start[ii] = pad_size.first;
+            }
+            else
+            {
+                dims[ii] = pin->dims(ii);
+                pad_start[ii] = 0;
+            }
+        }
+
+        out.resize(dims);
+        out = pad_value;
+   
+        copy_paste(*pin, out, pad_start);
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> asymmetric_padding(const MultiArray<T,D>& in, 
+                                       const std::pair<uint64,uint64>& pad_size,
+                                       uint64 dir,
+                                       T pad_value)
+    {
+        MultiArray<T,D> out;
+
+        asymmetric_padding (in, pad_size, dir, pad_value, out);
+        
+        return out;
+    }
+
+    template <typename T, std::size_t D>
+    void remove_padding (const MultiArray<T,D>& in, const boost::array<size_type,D>& pad_size, MultiArray<T,D>& out)
+    {
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+
+        MultiArray<T,D>        in_tmp;
+        const MultiArray<T,D>* pin;
+
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+	
+        boost::array<size_type,D> dims;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            dims[ii] = pin->dims(ii) - pad_size[ii]*2;
+        }
+
+        out.resize(dims);
+
+        BBox<int64,D> bb;
+        Coord<int64,D> cc;
+
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            cc[ii]      = pad_size[ii];
+            bb.side(ii) = out.dims(ii);
+        }
+        bb.origin() = cc;
+
+        Coord<int64,D> ori;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            ori[ii] = 0;
+        }
+        copy_paste_view(*pin, bb, out, ori);
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> remove_padding (const MultiArray<T,D>& in, const boost::array<size_type,D>& pad_size)
+    {
+        boost::array<size_type,D> dims;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            dims[ii] = in.dims(ii)-pad_size[ii]*2;
+        }
+	
+        MultiArray<T,D> out(dims);
+
+        BBox<int64,D> bb;
+        Coord<int64,D> cc;
+
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            cc[ii] = pad_size[ii];
+            bb.side(ii) = out.dims(ii);
+        }
+        bb.origin() = cc;
+
+        Coord<int64,D> ori;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            ori[ii] = 0;
+        }
+        copy_paste_view(in, bb, out, ori);
+
+        return out;
+    }
+
+    template <typename T, std::size_t D>
+    void remove_padding (const MultiArray<T,D>& in, size_type pad_size, MultiArray<T,D>& out)
+    {
+    	boost::array<size_type,D> dims;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            dims[ii] = pad_size;
+        }
+	
+    	remove_padding(in, dims, out);
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> remove_padding (MultiArray<T,D>& in, size_type pad_size)
+    {
+    	boost::array<size_type,D> dims;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            dims[ii] = pad_size;
+        }
+        return remove_padding(in,dims);
+    }
+
+    template <typename T, std::size_t D>
+    void zero_padding (const MultiArray<T,D>& in, 
+                       const boost::array<size_type,D>& pad_size,
+                       MultiArray<T,D>& out) 
+    {
+        padding(in, pad_size, static_cast<T>(0), out);
+    }
+
+    template <typename T, std::size_t D>
+    void zero_padding (const MultiArray<T,D>& in, size_type pad_size, MultiArray<T,D>& out)
+    {
+        padding(in, pad_size, static_cast<T>(0), out);
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> zero_padding (const MultiArray<T,D>& in, 
+                                  const boost::array<size_type,D>& pad_size) 
+    {
+        return padding(in, pad_size, static_cast<T>(0));
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> zero_padding (const MultiArray<T,D>& in, size_type pad_size)
+    {
+        return padding(in, pad_size, static_cast<T>(0));
+    }
+
+    template <typename T, std::size_t D>
+    void remove_asymmetric_padding (MultiArray<T,D>& in, const boost::array<std::pair<uint64,uint64>,D>& pad_size, MultiArray<T,D>& out)
+    {
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+
+        MultiArray<T,D>        in_tmp;
+        const MultiArray<T,D>* pin;
+
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+
+        boost::array<size_type, D> dims;
+        Coord<int64,D> pad_start;
+        BBox<int64,D> bb;
+
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            dims[ii] =  pin->dims(ii) - pad_size[ii].first - pad_size[ii].second;
+
+            pad_start[ii] = pad_size[ii].first;
+
+            bb.side(ii) = dims[ii];
+
+        }
+        bb.origin() = pad_start;
+
+        out.resize(dims);
+
+        Coord<int64,D> ori;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            ori[ii] = 0;
+        }
+
+        copy_paste_view(*pin, bb, out, ori);
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> remove_asymmetric_padding (MultiArray<T,D>& in, const boost::array<std::pair<uint64,uint64>,D>& pad_size)
+    {
+        MultiArray<T,D> out;
+        remove_asymmetric_padding (in, pad_size, out);
+        return out;
+    }
+
+    template <typename T, std::size_t D>
+    void remove_asymmetric_padding (MultiArray<T,D>& in, const std::pair<uint64,uint64>& pad_size, uint64 dir, MultiArray<T,D>& out)
+    {
+        // If in and out are the same image, a temporal copy of in is created
+        // to avoid destroying the input image
+        // If in != out, we work on the original images for efficiency reasons
+
+        MultiArray<T,D>        in_tmp;
+        const MultiArray<T,D>* pin;
+
+        if (&in == &out)
+        {
+            in_tmp = in;
+            pin    = &in_tmp;
+        }
+        else
+        {
+            pin    = &in;
+        }
+
+        boost::array<size_type, D> dims;
+        Coord<int64,D> pad_start;
+        BBox<int64,D> bb;
+
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            if (ii == dir)
+            {
+                dims[ii] =  pin->dims(ii) - pad_size.first - pad_size.second;
+                pad_start[ii] = pad_size.first;
+            }
+            else
+            {
+                dims[ii] = pin->dims(ii);
+                pad_start[ii] = 0;
+            }
+
+            bb.side(ii) = dims[ii];
+
+        }
+
+        bb.origin() = pad_start;
+
+        out.resize(dims);
+
+        Coord<int64,D> ori;
+        for (uint64 ii=0; ii < D; ++ii)
+        {
+            ori[ii] = 0;
+        }
+
+        copy_paste_view(*pin, bb, out, ori);
+    }
+
+    template <typename T, std::size_t D>
+    MultiArray<T,D> remove_asymmetric_padding (MultiArray<T,D>& in, const std::pair<uint64,uint64>& pad_size, uint64 dir)
+    {
+        MultiArray<T,D> out;
+        remove_asymmetric_padding (in, pad_size, dir, out);
+        return out;
+    }
+} // namespace imageplus
+
+#endif // IMAGEPLUS_CORE_PADDING_HPP

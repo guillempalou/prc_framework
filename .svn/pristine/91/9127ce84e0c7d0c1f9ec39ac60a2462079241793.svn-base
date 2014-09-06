@@ -1,0 +1,135 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file erosion.hpp
+//!
+//!  Interface for Erosion operations on MultiArray and ImageGray objects
+//!
+
+#ifndef IMAGEPLUS_MORPHOLOGY_EROSION_HPP
+#define IMAGEPLUS_MORPHOLOGY_EROSION_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/math/morphology/structuring_element.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        //!
+        //! \namespace imageplus::math::morphology
+        //!
+        //! \brief morphology related operators
+        //!
+        namespace morphology
+        {
+            //!
+            //! \brief Erosion operation
+            //!
+            //! \attention
+            //! The actual implementation of the operation is in method implementation(). Althoug this method is public \n
+            //! it should never be called directly. Method filter(), inherited from base class Filter should always be called,
+            //! with the object to be filtered as a parameter
+            //!
+            //! \code
+            //!    ImageGray<uint8> g1(100,100), g2(100,100);
+            //!    ...
+            //!    Erosion<2> dil(4,3);  // Connectivity 4 (cross) and 3x3 kernel
+            //!    g2 = dil.filter(g1);
+            //! \endcode
+            //!
+            //! \sa StructuringElement
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 18-1-2008
+            //!
+            template<std::size_t N>
+            class Erosion : public Filter< Erosion<N> >
+            {
+
+                public:
+
+                    //!
+                    //! \brief Default constructor:
+                    //!
+                    //! Erosion using a simple, squared 3x3, 8 connectivity structuring element: all sides are equal and have an 
+                    //! odd size. The origin is at the center of the SE. These SE are the most frequently used.
+                    //! In 2D there are two possible shapes for simple SE : a cross (4 connectivity) or a filled square (8 connectivity)
+                    //!
+                    Erosion( );
+
+
+                    //!
+                    //! \brief Constructor for simple structuring elements
+                    //!
+                    //! Erosion using a simple structuring element. Simple se are a special case: all sides are equal and have an 
+                    //! odd size. The origin is at the center of the SE. These SE are the most frequently used.
+                    //! In 2D there are two possible shapes for simple SE : a cross (4 connectivity) or a filled square (8 connectivity)
+                    //! When possible, use this constructor because the implementation is faster
+                    //!
+                    //! \param[in] connectivity : Connectivity (4 or 8 for Images, 6,18 or 26 for Volumes)
+                    //! \param[in] size         : Size of the kernel. The default is 3, for a 3x3 (2D) or 3x3x3 (3D) kernel
+                    //!
+                    //! \sa StructuringElement
+                    //!
+                    Erosion(uint64 connectivity, uint64 size=3) throw (ImagePlusError);
+
+                    //!
+                    //! \brief Constructor using an arbitrary structuring element
+                    //!
+                    //! Erosion using an arbitrary shape Structuring Element. This is the general case. Any shape is allowed,
+                    //! sides can be of different sizes, even or odd, and the origin can be situated in any place in the SE.
+                    //! Operations for arbitrary SE generally are less efficient.
+                    //!
+                    //! \param[in] se: Structuring element
+                    //!
+                    //! \sa StructuringElement
+                    //!
+                    Erosion(const StructuringElement<N>& se) throw (ImagePlusError);
+
+                    //!
+                    //! \brief Overloading of method implementation() for a MultiArray object
+                    //!
+                    //! WARNING!: Never use this method. Use filter() instead.
+                    //!
+                    //! \param[in] m: MultiArray object to be filtered
+                    //!
+                    //! \tparam T : Type of the image data
+                    //!
+                    //! \return Filtered object
+                    //!
+                    template<typename T, std::size_t D>
+                    MultiArray<T,D> implementation(const MultiArray<T,D>& m) const throw (ImagePlusError, ImagePlusNotImplemented);
+
+                    //!
+                    //! \brief Overloading of method implementation() for an ImaVol object
+                    //!
+                    //! WARNING!: Never use this method. Use filter() instead.
+                    //!
+                    //! \param[in] m: ImaVol object to be filtered
+                    //!
+                    //! \tparam T : Type of the imavol data
+                    //!
+                    //! \return Filtered object
+                    //!
+                    template<typename T, std::size_t CHANNELS>
+                    ImaVol<T,CHANNELS,N> implementation(const ImaVol<T,CHANNELS,N>& m) const throw (ImagePlusError);
+
+
+                private:
+
+                    //! Structuring Element
+                    StructuringElement<N> _se;
+
+            };
+
+        } /// namespace morphology
+    }
+} /// namespace imageplus
+
+#endif // IMAGEPLUS_MORPHOLOGY_EROSION_HPP

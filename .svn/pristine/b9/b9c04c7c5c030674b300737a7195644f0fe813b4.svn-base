@@ -1,0 +1,232 @@
+#ifndef IMAGEPLUS_MATH_NUMERIC_EMD_HPP_
+#define IMAGEPLUS_MATH_NUMERIC_EMD_HPP_
+
+#include <algorithm>
+#include <imageplus/core/imageplus_types.hpp>
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+    
+        // Structs used in the algorithm
+        //! Pair holding two integers
+        typedef std::pair<uint32,uint32> PUI;
+
+        //! struct holding the struct for the Closed Loop Search
+        typedef struct queueStruct 
+        {
+        	//! will contain the basic cell found searching by row
+        	PUI a; 
+        	//! will contain the basic cell found searching by column
+        	PUI b; // will contain the basic cell found searching by col
+        	//! // used basic cells at this moment
+        	std::map<PUI, int> used; 
+        	//! donor or recipient
+        	int turn; 
+        } queueStruct;
+
+        //!
+        //! \param[in] r: row in the matrix
+        //! \param[in] c: column in the matrix
+        //! \param[out] order: order of the difference (r-c)^order
+        //!
+        //! \return the cost between two positions on the cost matrix
+        //!
+        //! \author Guillem Palou <guillem.palou@upc.edu>
+        //! \date 15-7-2010
+        //!
+        inline 
+        float64 cost(uint32 r, uint32 c, uint32 order)
+        {
+        	return std::pow(fabs((double)r-(double)c),(double)order);
+        }
+        
+        //!
+        //! \brief Computes the EMD distance  between two vectors
+        //!
+        //! The algorithm is taken from the book Introduction to Mathematical Programming, F. S. Hillier and G. J. Lieberman
+        //! It returns the cost of transportation from a sink to a source 
+        //! It is very useful for histogram comparison
+        //! 
+        //!
+        //! \param[in] h: source vector
+        //! \param[in] g: sink vector
+        //! \param[in] order: cost order between positions in h and g. the cost is |i - k|^order
+        //!
+        //! \return The total cost of transporting h to g
+        //!
+        //! \author Guillem Palou <guillem.palou@upc.edu>
+        //! \date 30-06-2010
+        //! 
+        template<typename T>
+        float64 emd(T &h, T &g, uint32 order) 
+        {
+        	float64 EPS = 1.0e-7;
+
+        	uint32 R = g.size();
+        	uint32 C = h.size();
+
+        	// Test if we sum(h) == sum(g)
+
+        	float64 sh = 0, sg = 0;
+        	for (uint32 i = 0; i < R; i++) sg+=g[i];
+        	for (uint32 i = 0; i < C; i++) sh+=h[i];
+
+        	if (fabs(sh-sg) > 1e-5) return -1.0;
+
+        	MultiArray<float64,2> flow(R,C); // position (i,j) will be the amount of flow of h_j to g_i
+        	std::set<PUI> basic;
+        	std::vector<std::map<int,int> > basicCol(C); // used to find cycles more efficiently 
+        	std::vector<std::map<int,int> > basicRow(R); // used to find cycles more efficiently
+
+        	/* Initial feasible solution  - NorthWest method*/
+        	float64 sourceLeft = h[0];
+        	float64 sinkNeeded = g[0];
+        	int r=0,c=0;
+
+        	for (uint32 i = 0; i < R+C-1; i++) {
+        		basic.insert(PUI(r,c)); // insert the new basic variable
+        		basicCol[c][r]++; basicRow[r][c]++;
+        		//cout.precision(10);
+        		//cout << r << " " << c << " " << sourceLeft << " " << sinkNeeded << " " << (sourceLeft == sinkNeeded) << endl;
+        		if (EPS < sinkNeeded-sourceLeft) {flow[r][c] = sourceLeft; sinkNeeded -= sourceLeft; c++; if ((uint32) c < C) sourceLeft = h[c];} else
+        			if (EPS < sourceLeft-sinkNeeded) {flow[r][c] = sinkNeeded; sourceLeft -= sinkNeeded; r++; if ((uint32) r < R) sinkNeeded = g[r];} else {
+        				//cout << i << " -- " << R+C-1 << endl;
+        				if ((uint32)r < R-1) {
+        					flow[r][c] = sinkNeeded; sourceLeft -= sinkNeeded; r++; sinkNeeded = g[r];
+        				} else {
+        					flow[r][c] = sourceLeft; sinkNeeded -= sourceLeft;  c++; if ((uint32)c < C-1) sourceLeft = h[c];
+        				}
+        			}
+        	}
+
+
+        	bool optimal = false;
+        	/*Iterate while we don't have an optimal solution*/
+        	while (!optimal) {
+        		/*Determine the dual variables*/
+        		std::vector<float64> u(C,0); std::vector<bool> setu(C,false);
+        		std::vector<float64> v(R,0); std::vector<bool> setv(C,false);
+        		PUI position = *basic.begin();
+        		uint32 assgn = 1;
+        		v[position.first] = 0; setv[position.first] = true;// we set the first variable to zero (can be other criteria)
+        		while (assgn != R+C) {
+        			for (std::set<PUI>::iterator p = basic.begin(); p != basic.end() && assgn != R+C;p++) {
+        				//cout << "Basic " << p->first << " " << p->second << endl;
+        				if (setv[p->first] == true && setu[p->second] == false) {u[p->second] = cost(p->first,p->second,order) - v[p->first]; setu[p->second] = true; assgn++; } else
+        					if (setu[p->second] == true && setv[p->first] == false) {v[p->first] = cost(p->first,p->second,order) - u[p->second]; setv[p->first] = true; assgn++; }
+        			}
+        		}
+
+        		/*Check Optimality*/
+        		float64 mn = 0;
+        		uint32 minR = 0;
+        		uint32 minC = 0;
+        		for (uint32 i = 0; i < R; i++) {
+        			for (uint32 k = 0; k < C; k++) {
+        				float64 m = cost(i,k,order) - u[k] - v[i];
+        				if (m < mn) {mn = m; minR = i; minC = k;}
+        			}
+        		}
+
+        		if (mn == 0) break; // all the reduced costs are non-negative, thus we have an optimal
+        		// The new basic variable will be (minR,minC)
+
+        		/*Find a cycle and update*/
+        		std::map<PUI, int> cycle; // map that contains the iterators and its caracteristic (donot/recipient)
+        		mn = 1e20; PUI minCell; // minimum donor cell
+
+        		// queue for a depth first search
+        		std::vector<queueStruct> q;
+
+        		// construct the initial queue positions
+        		queueStruct s;
+        		s.turn = -1;
+        		for (std::map<int, int>::iterator rr = basicCol[minC].begin(); rr != basicCol[minC].end(); rr++) {
+        			if (rr->second == 0) continue;
+        			s.a = PUI(rr->first, minC);
+        			s.used[s.a] = s.turn; // the first basic cells are donor cells
+        			for (std::map<int, int>::iterator cc = basicRow[minR].begin(); cc != basicRow[minR].end(); cc++) {
+        				if (cc->second == 0) continue;
+        				s.b = PUI(minR, cc->first);
+        				s.used[s.b] = s.turn; // the first basic cells are donor cells
+        				q.push_back(s);
+        				//cout << "Inserting  (" << s.a.first << "," << s.a.second << ") with ( " << s.b.first << "," << s.b.second << ") " << endl;
+        				s.used[s.b] = 0;
+        			}
+        			s.used[s.a] = 0;
+        		}
+
+        		bool found = false;
+        		uint32 pos = 0;
+        		while (!found && !q.empty()) {
+        			s = q[pos]; // get the first candidate for a cycle
+        			if (basic.find(PUI(s.a.first, s.b.second)) != basic.end())  {// found a cycle!!
+        				cycle = s.used;
+        				cycle[PUI(s.a.first, s.b.second)] = s.turn*(-1);
+        				found = true;
+        			} else {
+        				// insert another step of the cycle (two basic cells)
+        				queueStruct ss;
+        				ss.used = s.used;
+        				ss.turn = s.turn*(-1);
+        				// scan the rows of the column-found cell
+        				for (std::map<int, int>::iterator rr = basicCol[s.b.second].begin(); rr != basicCol[s.b.second].end(); rr++) {
+        					if (rr->second == 0) continue;
+        					ss.a = PUI(rr->first, s.b.second);
+        					if (ss.used[ss.a] != 0) continue;
+        					ss.used[ss.a] = ss.turn;
+        					// scan the columns of the row-found cell
+        					for (std::map<int, int>::iterator cc = basicRow[s.a.first].begin(); cc != basicRow[s.a.first].end(); cc++) {
+        						if (cc->second == 0) continue;
+        						ss.b = PUI(s.a.first, cc->first);
+        						if (s.used[ss.b] != 0) continue;
+        						ss.used[ss.b] = ss.turn;
+        						q.push_back(ss);
+        						ss.used[ss.b] = 0;
+        					}
+        					ss.used[ss.a] = 0;
+        				}
+        			}
+        			pos++;
+        		}
+
+        		// Update
+        		std::map<PUI, int>::iterator cell;
+        		for(cell = cycle.begin(); cell != cycle.end(); cell++) {
+        			PUI p = cell->first;
+        			if (mn > flow[p.first][p.second] && cell->second == -1) {
+        				mn = flow[p.first][p.second];
+        				minCell = cell->first;
+        			}
+        		}
+
+        		for(cell = cycle.begin(); cell != cycle.end(); cell++) {
+        			PUI p = *basic.find(cell->first);
+        			flow[p.first][p.second] += cell->second*mn;
+        		}
+        		flow[minR][minC] += mn;
+
+        		basic.insert(PUI(minR,minC)); basic.erase(minCell);
+        		basicRow[minR][minC] = 1;
+        		basicCol[minC][minR] = 1;
+        		basicRow[minCell.first][minCell.second] = 0;
+        		basicCol[minCell.second][minCell.first] = 0;
+        	}
+
+        	// Calculate cost
+        	float64 total_cost = 0;
+        	for (std::set<PUI>::iterator b = basic.begin(); b != basic.end(); b++) {
+        		total_cost += cost(b->first,b->second,order)*flow[b->first][b->second];
+        	}
+        	return total_cost;
+        }
+
+        }
+    }
+}
+
+#endif /* EMD_HPP_ */

@@ -1,0 +1,504 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//! \file WriteSequenceYUV.cpp
+//! 
+
+#include <imageplus/io/write_sequence_yuv.hpp>
+#include <writeyuv.hpp>
+#include <imageplus/core.hpp>
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+WriteSequenceYUV::WriteSequenceYUV() 
+    : _filename(""), _comment(""), _framecount(0), _startframe(0), _endframe(0), _fps(0.0), _format(UNKNOWN_SEQ_FORMAT), _yuvframesize(0), _channels(0), _eos(false)
+    {
+    
+    }
+
+WriteSequenceYUV::WriteSequenceYUV(const std::string& filename,uint64 sizex, uint64 sizey, uint64 totalframes, float64 fps, SeqFormat format, const std::string& comment)
+{
+    this->open(filename, sizex, sizey, totalframes, fps, format, comment);
+    _comment = comment;
+}
+
+WriteSequenceYUV::~WriteSequenceYUV()
+{
+    //Comment the following line to restore the behaviour of this class to its previous version (no random frame access).
+    _fp.close();
+}
+
+WriteSequenceYUV::WriteSequenceYUV(const WriteSequenceYUV& original)
+{
+        _filename = original._filename; 
+        _framecount = original._framecount;
+        _sizex = original._sizex;
+        _sizey = original._sizey;
+        _startframe = original._startframe;
+        _endframe = original._endframe;
+        _fps = original._fps;
+        _yuvframesize = original._yuvframesize;
+        _format = original._format;
+        _channels = original._channels;
+        _eos = original._eos; 
+        
+        this->open_copy();
+        this->operator[](_framecount);
+        
+}
+
+WriteSequenceYUV& WriteSequenceYUV::operator=(const WriteSequenceYUV& original)
+{
+    //! TODO : The copy generated will point to the beginning of the output file.
+    //! Code to copy the pointer state of the file needs to be implemented.
+    
+    if(this != &original)
+    {
+        _filename = original._filename; 
+        _framecount = original._framecount;
+//        _fp = original._fp;
+        _sizex = original._sizex;
+        _sizey = original._sizey;
+        _startframe = original._startframe;
+        _endframe = original._endframe;
+        _fps = original._fps;
+        _yuvframesize = original._yuvframesize;
+        _format = original._format;
+        _channels = original._channels;
+        _eos = original._eos; 
+        
+    }
+    return *this;
+    
+}
+
+
+void WriteSequenceYUV::open(const std::string& filename, 
+                         uint64 sizex, 
+                         uint64 sizey, 
+                         uint64 totalframes, 
+                         float64 fps, 
+                         SeqFormat format, 
+                         const std::string& comment,
+                         uint64 frame_pointer) throw (ImagePlusError)
+
+{
+    //Private data
+    _filename = filename; 
+    _sizex = sizex; 
+    _sizey = sizey; 
+    _startframe = 0; 
+    _endframe = totalframes - 1;
+    _framecount = frame_pointer;
+    _fps = fps; 
+    _format = format;
+    _comment = comment;
+    _eos = false;
+    
+    std::string format_particle;
+    std::string extension;
+       
+    //Append the format code and extension to the filename.
+    //Check that the image format is in concordance with the extension given to the file. 
+    switch (format)
+    {
+        case YUV400P:
+            format_particle = _filename.substr(_filename.length() -7, 3);
+            extension = _filename.substr(_filename.length() - 4);
+            if(extension != ".yuv")
+            {
+                throw ImagePlusError("filename must follow the pattern *400.yuv for 4:0:0 YUV format sequences.");
+            }
+            //! TODO : change the "400" string to a more conveniently defined constant.
+            // Hint: redefine the enumeration SeqFormat to assign to YUV400P the integer 400.
+            if( format_particle != "400")
+            {
+                throw ImagePlusError("filename must follow the pattern *400.yuv for 4:0:0 YUV format sequences.");
+            }
+            break; 
+        case YUV420P:
+            format_particle = _filename.substr(_filename.length() -7, 3);
+            extension = _filename.substr(_filename.length() - 4);
+            if(extension != ".yuv")
+            {
+                throw ImagePlusError("filename must follow the pattern *420.yuv for 4:2:0 YUV format sequences.");
+            }
+            //! \todo : change the "420" string to a more conveniently defined constant.
+            // Hint: redefine the enumeration SeqFormat to assign to YUV420P the integer 420.
+            if( format_particle != "420")
+            {
+                throw ImagePlusError("filename must follow the pattern *420.yuv for 4:2:0 YUV format sequences.");
+            }
+            break; 
+        case YUV444P: 
+            format_particle = _filename.substr(_filename.length() -7, 3);
+            extension = _filename.substr(_filename.length() - 4);
+            if(extension != ".yuv")
+            {
+                throw ImagePlusError("filename must follow the pattern *444.yuv for 4:4:4 YUV format sequences.");
+            }
+            //! \todo : change the "444" string to a more conveniently defined constant.
+            // Hint: redefine the enumeration SeqFormat to assign to YUV444P the integer 444.
+            if( format_particle != "444")
+            {
+                throw ImagePlusError("filename must follow the pattern *444.yuv for 4:4:4 YUV format sequences.");
+            }
+            break;
+        case IMAGES_PRINTF:
+            break; 
+        case IMAGES_PRINTF_CH:
+            break;
+        case FFMPEG: 
+            break;
+        default: 
+            throw ImagePlusError("Unknown file format. Impossible to create the sequence file.");
+    }
+    
+
+//    std::string extension = _filename.substr(_filename.length() - 4);
+    
+    if ( extension == ".yuv" || extension == ".YUV")
+    {
+        // File format is YUV, generate the .dat file.
+        std::string datfile = _filename.substr( 0, _filename.length() -4 ).append(".dat");
+        write_dat_info(datfile,
+                      _sizex,
+                      _sizey,
+                      totalframes,
+                      _fps,
+                      _format,//Generate the .yuv file.
+                      _comment);
+       
+    }
+    else
+    {
+        // \todo : Cope with the other image formats.
+    }
+
+    //Uncomment the following line to restore the previous version of this class, and remove the underscore fo _fp to fp.
+//    //Initialize the sequence file content to zero length.
+//    std::fstream fp; 
+//    fp.open(_filename.c_str(), std::ios::out | std::ios::trunc);
+//    if(fp.is_open())
+//    {
+//        fp.close();
+//    }
+    //Open the stream to the file, and clear the content of the file if it's not empty. 
+    _fp.open(_filename.c_str(), std::ios::out | std::ios::trunc);
+    if(!_fp.is_open())
+    {
+        std::string error = "Impossible to open ";
+        error += _filename; 
+        error += " for writing.";
+        throw ImagePlusError(error);
+    }
+}
+
+void WriteSequenceYUV::open_copy() throw (ImagePlusError)
+
+{
+    //Private data
+//    _filename = filename; 
+//    _sizex = sizex; 
+//    _sizey = sizey; 
+//    _startframe = 0; 
+//    _endframe = totalframes - 1;
+//    _framecount = frame_pointer;
+//    _fps = fps; 
+//    _format = format;
+//    _comment = comment;
+//    _eos = false;
+    
+    std::string format_particle;
+    std::string extension;
+       
+    //Append the format code and extension to the filename.
+    //Check that the image format is in concordance with the extension given to the file. 
+    switch (_format)
+    {
+        case YUV400P:
+            format_particle = _filename.substr(_filename.length() -7, 3);
+            extension = _filename.substr(_filename.length() - 4);
+            if(extension != ".yuv")
+            {
+                throw ImagePlusError("filename must follow the pattern *400.yuv for 4:0:0 YUV format sequences.");
+            }
+            //! TODO : change the "400" string to a more conveniently defined constant.
+            // Hint: redefine the enumeration SeqFormat to assign to YUV400P the integer 400.
+            if( format_particle != "400")
+            {
+                throw ImagePlusError("filename must follow the pattern *400.yuv for 4:0:0 YUV format sequences.");
+            }
+            break; 
+        case YUV420P:
+            format_particle = _filename.substr(_filename.length() -7, 3);
+            extension = _filename.substr(_filename.length() - 4);
+            if(extension != ".yuv")
+            {
+                throw ImagePlusError("filename must follow the pattern *420.yuv for 4:2:0 YUV format sequences.");
+            }
+            //! \todo : change the "420" string to a more conveniently defined constant.
+            // Hint: redefine the enumeration SeqFormat to assign to YUV420P the integer 420.
+            if( format_particle != "420")
+            {
+                throw ImagePlusError("filename must follow the pattern *420.yuv for 4:2:0 YUV format sequences.");
+            }
+            break; 
+        case YUV444P: 
+            format_particle = _filename.substr(_filename.length() -7, 3);
+            extension = _filename.substr(_filename.length() - 4);
+            if(extension != ".yuv")
+            {
+                throw ImagePlusError("filename must follow the pattern *444.yuv for 4:4:4 YUV format sequences.");
+            }
+            //! \todo : change the "444" string to a more conveniently defined constant.
+            // Hint: redefine the enumeration SeqFormat to assign to YUV444P the integer 444.
+            if( format_particle != "444")
+            {
+                throw ImagePlusError("filename must follow the pattern *444.yuv for 4:4:4 YUV format sequences.");
+            }
+            break;
+        case IMAGES_PRINTF:
+            break; 
+        case IMAGES_PRINTF_CH:
+            break;
+        case FFMPEG: 
+            break;
+        default: 
+            throw ImagePlusError("Unknown file format. Impossible to create the sequence file.");
+    }
+    
+
+//    std::string extension = _filename.substr(_filename.length() - 4);
+    
+    if ( extension == ".yuv" || extension == ".YUV" )
+    {
+        // File format is YUV, generate the .dat file.
+        std::string datfile = _filename.substr( 0, _filename.length() -4 ).append(".dat");
+        write_dat_info(datfile,
+                      _sizex,
+                      _sizey,
+                      _endframe + 1,
+                      _fps,
+                      _format,//Generate the .yuv file.
+                      _comment);
+       
+    }
+    else
+    {
+        // \todo : Cope with the other image formats.
+    }
+
+    //Uncomment the following line to restore the previous version of this class, and remove the underscore fo _fp to fp.
+//    //Initialize the sequence file content to zero length.
+//    std::fstream fp; 
+//    fp.open(_filename.c_str(), std::ios::out | std::ios::trunc);
+//    if(fp.is_open())
+//    {
+//        fp.close();
+//    }
+    //Open the stream to the file, and clear the content of the file if it's not empty. 
+    _fp.open(_filename.c_str(), std::ios::out|std::ios::ate);
+    if(!_fp.is_open())
+    {
+        std::string error = "Impossible to open ";
+        error += _filename; 
+        error += " for writing.";
+        throw ImagePlusError(error);
+    }
+}
+
+WriteSequenceYUV& WriteSequenceYUV::operator<<(const ImageYUV420<uint8>& g) throw (ImagePlusError)
+{
+    switch(_format)
+    {
+        case YUV420P: 
+            //Check the framecount here has any sense?
+            check_frame(_framecount);
+            if(!_eos)
+            {
+                // Uncomment the following line to restore the previous behaviour (no random frame access to sequences file).
+                // write_frame_yuv420(g,_framecount,_filename);
+                write_frame_yuv420(g,_framecount,_fp);
+                //increase the index for the next frame. 
+                _framecount++;
+            }
+            break;
+        case YUV400P: 
+            //Check the framecount here has any sense?
+            check_frame(_framecount);
+            if(!_eos)
+            {
+                write_frame_yuv400(g(0),_framecount,_fp);
+                _framecount++;
+            }
+            break; 
+
+        default: 
+            throw ImagePlusError("WriteSequence does not do any conversion yet. Make sure you use the same image format you used to open the sequence.");
+            break; 
+     }
+    return *this; 
+}
+
+WriteSequenceYUV& WriteSequenceYUV::operator<<(const ImageYUV<uint8>& g) throw (ImagePlusError)
+{
+    switch(_format)
+    {            
+        case YUV444P: 
+            //Check the framecount here has any sense?
+            check_frame(_framecount);
+            if(!_eos)
+            {
+                write_frame_yuv444(g,_framecount,_fp);
+                _framecount++;
+            }
+            break; 
+        case YUV400P: 
+            //Check the framecount here has any sense?
+            check_frame(_framecount);
+            if(!_eos)
+            {
+                write_frame_yuv400(g(0),_framecount,_fp);
+                _framecount++;
+            }
+            break; 
+        default: 
+            throw ImagePlusError("WriteSequence does not do any conversion yet. Make sure you use the same image format you used to open the sequence.");
+            break; 
+    }
+    return *this; 
+}
+
+WriteSequenceYUV& WriteSequenceYUV::operator<<(const ImageGray<uint8>& g) throw (ImagePlusError)
+{
+    switch(_format)
+    {            
+        case YUV400P: 
+            //Check the framecount here has any sense?
+            check_frame(_framecount);
+            if(!_eos)
+            {
+                write_frame_yuv400(g(0),_framecount,_fp);
+                _framecount++;
+            }
+            break; 
+        default: 
+            throw ImagePlusError("WriteSequence does not do any conversion yet. Make sure you use the same image format you used to open the sequence.");
+            break; 
+    }
+    return *this; 
+}
+
+WriteSequenceYUV& WriteSequenceYUV::operator[]( uint64 frame )
+{
+
+    switch ( _format )
+    {
+        case FFMPEG:
+            // \todo : understand the behaviour of ffmpeg and uncomment this code if needed.
+//#ifdef USE_FFMPEG
+//            (*_ffmpeg)[frame];
+//#else
+//            throw ImagePlusError("ImagePlus library not compiled with FFmpeg support");
+//#endif
+            break;
+        default:
+        {
+            check_frame(frame);
+            break;
+        }
+    }
+    if(_eos)
+    {
+        if(frame > _endframe)
+        {
+            _framecount = _endframe;     //We set the frame pointer to the last position in the file.
+        }
+        else
+        {
+            _framecount = frame;
+            _eos = false;       //unset the _eof.
+        }
+    }
+    else     //normal behaviour: we haven't reached the eos yet.
+    {
+        _framecount = frame;
+    }
+    return *this;
+}
+
+void WriteSequenceYUV::check_frame(uint64 frame) throw (ImagePlusError)
+{
+    // This checks if frame to read is within limits,
+    // however, as some formats do not expose the number of frames
+    // this will only works with formats that do!
+    if (frame < _startframe)
+    {
+        throw ImagePlusError("Can not change frame pointer to frame < startframe");
+    }
+
+    if (_endframe != 0) {
+        if (frame > _endframe)
+        {
+            _eos = true; 
+            //throw ImagePlusError("Can not change frame pointer to frame > endframe");
+        }
+    }
+}
+
+std::string WriteSequenceYUV::filename() const
+{
+    return _filename;
+}
+
+uint64 WriteSequenceYUV::size_x() const
+{
+    return _sizex;
+}
+
+uint64 WriteSequenceYUV::size_y() const
+{
+    return _sizey;
+}
+
+float64 WriteSequenceYUV::fps() const
+{
+    return _fps;
+}
+
+uint64 WriteSequenceYUV::startframe() const
+{
+    return _startframe;
+}
+
+uint64 WriteSequenceYUV::endframe() const
+{
+    return _endframe;
+}
+
+SeqFormat WriteSequenceYUV::format() const
+{
+    return _format;
+}
+
+std::vector<std::string> WriteSequenceYUV::channels() const
+{
+    return _channels;
+}
+
+uint64 WriteSequenceYUV::frame_pointer() const
+{
+    return _framecount;
+}
+
+bool WriteSequenceYUV::eos() const
+{
+    return _eos; 
+}
+//end of file.

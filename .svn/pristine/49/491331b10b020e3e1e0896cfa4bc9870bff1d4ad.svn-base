@@ -1,0 +1,478 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file probability_density_function.test
+//!
+#include <imageplus/core.hpp>
+#include <imageplus/math/statistics/probability_density_function.hpp> 
+
+BOOST_AUTO_TEST_SUITE ( PDF_Suite );
+
+using namespace imageplus;
+using namespace math::statistics;
+
+BOOST_AUTO_TEST_CASE( PDF_constructors_test)
+{    
+	PDF<ImageGray<uint8> > my_pdf(0,4,5);
+	BOOST_CHECK_EQUAL(my_pdf.kernel().size(), (std::size_t)1);
+	BOOST_CHECK_EQUAL(my_pdf.kernel()[0]    , 1.);
+}
+
+
+
+BOOST_AUTO_TEST_CASE( PDF_gray_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;  my_im_part[1][0] = 10;  my_im_part[2][0] = 25;
+    my_im_part[0][1] = 25;  my_im_part[1][1] = 10;  my_im_part[2][1] = 25;
+    my_im_part[0][2] = 25;  my_im_part[1][2] = 10;  my_im_part[2][2] = 10;
+    
+    ImageGray<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(0)[0][0] = 3;
+    my_image(0)[0][1] = 2;
+    my_image(0)[2][2] = 4;
+    
+    typedef ImageGray<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(25, 10, 30, my_part);
+
+    const PDF<InputType>& desc = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[25]);
+    BOOST_CHECK_CLOSE(desc[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc[1], 3./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[2], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[3], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[4], 0.   , 1e-10);
+    BOOST_CHECK_EQUAL(desc.hist_sum(), (float64)5);
+    
+    const PDF<InputType>& desc2 = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[10]);
+    BOOST_CHECK_CLOSE(desc2[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[1], 3./4., 1e-10);
+    BOOST_CHECK_CLOSE(desc2[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[4], 1./4., 1e-10);
+    BOOST_CHECK_EQUAL(desc2.hist_sum(), (float64)4);
+    
+    const PDF<InputType>& desc3 = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[30]);
+    BOOST_CHECK_CLOSE(desc3[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc3[1], 6./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[2], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[3], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[4], 1./9., 1e-10);
+    BOOST_CHECK_EQUAL(desc3.hist_sum(), (float64)9);
+}
+
+//BOOST_AUTO_TEST_CASE( PDF_color_test)
+//{
+//    typedef ImageRGB<uint8> InputType;
+//
+//    InputType my_image(2,2);
+//    my_image(0)[0][0] =   3;  my_image(1)[0][0] =   3;  my_image(2)[0][0] =   3;
+//    my_image(0)[0][1] =   2;  my_image(1)[0][1] =   2;  my_image(2)[0][1] =   2;
+//    my_image(0)[1][0] = 100;  my_image(1)[1][0] = 100;  my_image(2)[1][0] = 100;
+//    my_image(0)[1][1] = 250;  my_image(1)[1][1] = 250;  my_image(2)[1][1] = 250;
+//
+//    const PDF<InputType>& desc = calc_descriptor(new PDF<InputType>(0,255,2), my_image);
+//std::cout << desc << std::endl;
+//
+////    BOOST_CHECK_CLOSE(desc[0], 0.   , 1e-10);
+////    BOOST_CHECK_CLOSE(desc[1], 3./5., 1e-10);
+////    BOOST_CHECK_CLOSE(desc[2], 1./5., 1e-10);
+////    BOOST_CHECK_CLOSE(desc[3], 1./5., 1e-10);
+////    BOOST_CHECK_CLOSE(desc[4], 0.   , 1e-10);
+////    BOOST_CHECK_EQUAL(desc.hist_sum(), (float64)5);
+//}
+
+
+BOOST_AUTO_TEST_CASE( PDF_windowed_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;  my_im_part[1][0] = 10;  my_im_part[2][0] = 25;
+    my_im_part[0][1] = 25;  my_im_part[1][1] = 10;  my_im_part[2][1] = 25;
+    my_im_part[0][2] = 25;  my_im_part[1][2] = 10;  my_im_part[2][2] = 10;
+    
+    ImageGray<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(0)[0][0] = 3;
+    my_image(0)[0][1] = 2;
+    my_image(0)[2][2] = 4;
+    
+    typedef ImageGray<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(25, 10, 30, my_part);
+    
+    filters::Kernel<1> window(1);
+    window[-1] = 0.25;
+    window[ 0] = 0.5;
+    window[ 1] = 0.25;
+
+    const PDF<InputType>& desc = calc_descriptor(new PDF<InputType>(0,4,5,window), my_image, my_part[25]);
+    BOOST_CHECK_CLOSE(desc[0], 3./20., 1e-10);
+    BOOST_CHECK_CLOSE(desc[1], 7./20., 1e-10);
+    BOOST_CHECK_CLOSE(desc[2], 3./10., 1e-10);
+    BOOST_CHECK_CLOSE(desc[3], 3./20., 1e-10);
+    BOOST_CHECK_CLOSE(desc[4], 1./20., 1e-10);
+    BOOST_CHECK_EQUAL(desc.hist_sum(), (float64)5);
+    
+    const PDF<InputType>& desc2 = calc_descriptor(new PDF<InputType>(0,4,5,window), my_image, my_part[10]);
+    BOOST_CHECK_CLOSE(desc2[0], 3./15., 1e-10);
+    BOOST_CHECK_CLOSE(desc2[1], 6./15., 1e-10);
+    BOOST_CHECK_CLOSE(desc2[2], 3./15., 1e-10);
+    BOOST_CHECK_CLOSE(desc2[3], 1./15., 1e-10);
+    BOOST_CHECK_CLOSE(desc2[4], 2./15., 1e-10);
+    BOOST_CHECK_EQUAL(desc2.hist_sum(), (float64)3.75);
+    
+    const PDF<InputType>& desc3 = calc_descriptor(new PDF<InputType>(0,4,5,window), my_image, my_part[30]);
+    BOOST_CHECK_CLOSE(desc3[0], 6./35., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[1],13./35., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[2], 9./35., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[3], 4./35., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[4], 3./35., 1e-10);
+    BOOST_CHECK_EQUAL(desc3.hist_sum(), (float64)8.75);
+}
+
+BOOST_AUTO_TEST_CASE( PDF_test_recursive_non_computed)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;  my_im_part[1][0] = 10;  my_im_part[2][0] = 25;
+    my_im_part[0][1] = 25;  my_im_part[1][1] = 10;  my_im_part[2][1] = 25;
+    my_im_part[0][2] = 25;  my_im_part[1][2] = 10;  my_im_part[2][2] = 10;
+    
+    ImageGray<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(0)[0][0] = 3;
+    my_image(0)[0][1] = 2;
+    my_image(0)[2][2] = 4;
+    
+    typedef ImageGray<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(25, 10, 30, my_part);
+
+    const PDF<InputType>& desc3 = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[30]);
+    
+    BOOST_CHECK_CLOSE(desc3[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc3[1], 6./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[2], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[3], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[4], 1./9., 1e-10);
+    BOOST_CHECK_EQUAL(desc3.hist_sum(), (float64)9);
+    
+    const PDF<InputType>& desc = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[25]);
+    BOOST_CHECK_CLOSE(desc[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc[1], 3./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[2], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[3], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[4], 0.   , 1e-10);
+    BOOST_CHECK_EQUAL(desc.hist_sum(), (float64)5);
+
+    
+    const PDF<InputType>& desc2 = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[10]);
+    BOOST_CHECK_CLOSE(desc2[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[1], 3./4., 1e-10);
+    BOOST_CHECK_CLOSE(desc2[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[4], 1./4., 1e-10);
+    BOOST_CHECK_EQUAL(desc2.hist_sum(), (float64)4);
+
+}
+
+BOOST_AUTO_TEST_CASE( PDF_test_copy_constructor)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;  my_im_part[1][0] = 10;  my_im_part[2][0] = 25;
+    my_im_part[0][1] = 25;  my_im_part[1][1] = 10;  my_im_part[2][1] = 25;
+    my_im_part[0][2] = 25;  my_im_part[1][2] = 10;  my_im_part[2][2] = 10;
+
+    ImageGray<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(0)[0][0] = 3;
+    my_image(0)[0][1] = 2;
+    my_image(0)[2][2] = 4;
+
+    typedef ImageGray<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+
+    merge_regions(25, 10, 30, my_part);
+
+    PDF<InputType> desc = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[25]);
+    
+    BOOST_CHECK_CLOSE(desc[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc[1], 3./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[2], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[3], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(desc[4], 0.   , 1e-10);
+    BOOST_CHECK_EQUAL(desc.hist_sum(), (float64)5);
+
+    PDF<InputType> desc2 = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[10]);
+    
+    BOOST_CHECK_CLOSE(desc2[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[1], 3./4., 1e-10);
+    BOOST_CHECK_CLOSE(desc2[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc2[4], 1./4., 1e-10);
+    BOOST_CHECK_EQUAL(desc2.hist_sum(), (float64)4);
+    
+    PDF<InputType> desc3 = calc_descriptor(new PDF<InputType>(0,4,5), my_image, my_part[30]);
+    
+    BOOST_CHECK_CLOSE(desc3[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(desc3[1], 6./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[2], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[3], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(desc3[4], 1./9., 1e-10);
+    BOOST_CHECK_EQUAL(desc3.hist_sum(), (float64)9);
+}
+
+
+BOOST_AUTO_TEST_CASE( ChannelPDF_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;  my_im_part[1][0] = 10;  my_im_part[2][0] = 25;
+    my_im_part[0][1] = 25;  my_im_part[1][1] = 10;  my_im_part[2][1] = 25;
+    my_im_part[0][2] = 25;  my_im_part[1][2] = 10;  my_im_part[2][2] = 10;
+    
+    ImageRGB<uint8> my_image(3,3);
+    my_image(RED_CHANNEL) = 1;
+    my_image(GREEN_CHANNEL) = 2;
+    my_image(BLUE_CHANNEL) = 3;
+    my_image(RED_CHANNEL)[0][0] = 4;
+    my_image(GREEN_CHANNEL)[0][1] = 5;
+    my_image(BLUE_CHANNEL)[2][2] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(25, 10, 30, my_part);
+
+    const ChannelPDF<InputType>& pdf = calc_descriptor(new ChannelPDF<InputType>(0,6,7), my_image, my_part[25]);
+
+    BOOST_CHECK_CLOSE(pdf[RED_CHANNEL][0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[RED_CHANNEL][1], 4./5., 1e-10);
+    BOOST_CHECK_CLOSE(pdf[RED_CHANNEL][2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[RED_CHANNEL][3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[RED_CHANNEL][4], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(pdf[RED_CHANNEL][5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[RED_CHANNEL][6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf[GREEN_CHANNEL][0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[GREEN_CHANNEL][1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[GREEN_CHANNEL][2], 4./5., 1e-10);
+    BOOST_CHECK_CLOSE(pdf[GREEN_CHANNEL][3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[GREEN_CHANNEL][4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[GREEN_CHANNEL][5], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(pdf[GREEN_CHANNEL][6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf[BLUE_CHANNEL][0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[BLUE_CHANNEL][1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[BLUE_CHANNEL][2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[BLUE_CHANNEL][3], 1.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[BLUE_CHANNEL][4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[BLUE_CHANNEL][5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf[BLUE_CHANNEL][6], 0.   , 1e-10);
+    
+    BOOST_CHECK_EQUAL(pdf.hist_sum(RED_CHANNEL), (float64)5);
+    BOOST_CHECK_EQUAL(pdf.hist_sum(GREEN_CHANNEL), (float64)5);
+    BOOST_CHECK_EQUAL(pdf.hist_sum(BLUE_CHANNEL), (float64)5);
+    
+    
+    const ChannelPDF<InputType>& pdf2 = calc_descriptor(new ChannelPDF<InputType>(0,6,7), my_image, my_part[10]);
+
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[1], 1.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[2], 1.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[3], 3./4., 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[6], 1./4., 1e-10);
+    
+    BOOST_CHECK_EQUAL(pdf2.hist_sum(RED_CHANNEL), (float64)4);
+    BOOST_CHECK_EQUAL(pdf2.hist_sum(GREEN_CHANNEL), (float64)4);
+    BOOST_CHECK_EQUAL(pdf2.hist_sum(BLUE_CHANNEL), (float64)4);
+
+    
+    const ChannelPDF<InputType>& pdf3 = calc_descriptor(new ChannelPDF<InputType>(0,6,7), my_image, my_part[30]);
+    
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[1], 8./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[4], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[2], 8./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[5], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[3], 8./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[6], 1./9., 1e-10);
+    
+    BOOST_CHECK_EQUAL(pdf3.hist_sum(RED_CHANNEL), (float64)9);
+    BOOST_CHECK_EQUAL(pdf3.hist_sum(GREEN_CHANNEL), (float64)9);
+    BOOST_CHECK_EQUAL(pdf3.hist_sum(BLUE_CHANNEL), (float64)9);
+
+}
+
+
+
+BOOST_AUTO_TEST_CASE( ChannelPDF_no_computed_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;  my_im_part[1][0] = 10;  my_im_part[2][0] = 25;
+    my_im_part[0][1] = 25;  my_im_part[1][1] = 10;  my_im_part[2][1] = 25;
+    my_im_part[0][2] = 25;  my_im_part[1][2] = 10;  my_im_part[2][2] = 10;
+    
+    ImageRGB<uint8> my_image(3,3);
+    my_image(RED_CHANNEL) = 1;
+    my_image(GREEN_CHANNEL) = 2;
+    my_image(BLUE_CHANNEL) = 3;
+    my_image(RED_CHANNEL)[0][0] = 4;
+    my_image(GREEN_CHANNEL)[0][1] = 5;
+    my_image(BLUE_CHANNEL)[2][2] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(25, 10, 30, my_part);
+    
+    const ChannelPDF<InputType>& pdf3 = calc_descriptor(new ChannelPDF<InputType>(0,6,7), my_image, my_part[30]);
+    
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[1], 8./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[4], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(RED_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[2], 8./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[5], 1./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(GREEN_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[3], 8./9., 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf3.at(BLUE_CHANNEL)[6], 1./9., 1e-10);
+    
+    BOOST_CHECK_EQUAL(pdf3.hist_sum(RED_CHANNEL), (float64)9);
+    BOOST_CHECK_EQUAL(pdf3.hist_sum(GREEN_CHANNEL), (float64)9);
+    BOOST_CHECK_EQUAL(pdf3.hist_sum(BLUE_CHANNEL), (float64)9);
+    
+    
+
+    const ChannelPDF<InputType>& pdf = calc_descriptor(new ChannelPDF<InputType>(0,6,7), my_image, my_part[25]);
+
+    BOOST_CHECK_CLOSE(pdf.at(RED_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(RED_CHANNEL)[1], 4./5., 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(RED_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(RED_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(RED_CHANNEL)[4], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(RED_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(RED_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf.at(GREEN_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(GREEN_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(GREEN_CHANNEL)[2], 4./5., 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(GREEN_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(GREEN_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(GREEN_CHANNEL)[5], 1./5., 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(GREEN_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf.at(BLUE_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(BLUE_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(BLUE_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(BLUE_CHANNEL)[3], 1.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(BLUE_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(BLUE_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf.at(BLUE_CHANNEL)[6], 0.   , 1e-10);
+    
+    BOOST_CHECK_EQUAL(pdf.hist_sum(RED_CHANNEL), (float64)5);
+    BOOST_CHECK_EQUAL(pdf.hist_sum(GREEN_CHANNEL), (float64)5);
+    BOOST_CHECK_EQUAL(pdf.hist_sum(BLUE_CHANNEL), (float64)5);
+    
+    
+    const ChannelPDF<InputType>& pdf2 = calc_descriptor(new ChannelPDF<InputType>(0,6,7), my_image, my_part[10]);
+
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[1], 1.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(RED_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[2], 1.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[3], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(GREEN_CHANNEL)[6], 0.   , 1e-10);
+
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[0], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[1], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[2], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[3], 3./4., 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[4], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[5], 0.   , 1e-10);
+    BOOST_CHECK_CLOSE(pdf2.at(BLUE_CHANNEL)[6], 1./4., 1e-10);
+    
+    BOOST_CHECK_EQUAL(pdf2.hist_sum(RED_CHANNEL), (float64)4);
+    BOOST_CHECK_EQUAL(pdf2.hist_sum(GREEN_CHANNEL), (float64)4);
+    BOOST_CHECK_EQUAL(pdf2.hist_sum(BLUE_CHANNEL), (float64)4);
+    
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+

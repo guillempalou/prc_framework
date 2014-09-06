@@ -1,0 +1,178 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file minimum_spanning_tree.test
+//!
+//!  Tests for the math operations on Graphs
+//!
+
+#include <imageplus/math/graphs/graph.hpp>
+#include <imageplus/math/graphs/graph_io.hpp>
+#include <imageplus/math/graphs/algorithms/minimum_spanning_tree.hpp>
+
+BOOST_AUTO_TEST_SUITE ( test_minimum_spanning_tree );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::graphs;
+
+BOOST_AUTO_TEST_CASE( kruskal_test )
+{
+	typedef BoostGraph<kGraphUndirected> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	ReadGraph<Graph> rg;
+
+	rg.read(std::string(TEST_DATA_PATH_R) + "/math/graphs/test.graph", g, true);
+
+	KruskalMST<Graph> kruskal;
+
+	kruskal.calculate(g);
+
+	std::vector<Edge> tree = kruskal.spanning_tree();
+
+	std::set<std::pair<uint64,uint64> > s;
+
+	s.insert(std::pair<uint64,uint64>(14,47));
+	s.insert(std::pair<uint64,uint64>(4,29));
+	s.insert(std::pair<uint64,uint64>(22,36));
+	s.insert(std::pair<uint64,uint64>(35,43));
+	s.insert(std::pair<uint64,uint64>(33,13));
+	s.insert(std::pair<uint64,uint64>(7,24));
+	s.insert(std::pair<uint64,uint64>(18,40));
+	s.insert(std::pair<uint64,uint64>(44,2));
+	s.insert(std::pair<uint64,uint64>(20,46));
+	s.insert(std::pair<uint64,uint64>(6,23));
+	s.insert(std::pair<uint64,uint64>(19,24));
+	s.insert(std::pair<uint64,uint64>(40,4));
+	s.insert(std::pair<uint64,uint64>(23,18));
+	s.insert(std::pair<uint64,uint64>(16,32));
+	s.insert(std::pair<uint64,uint64>(40,49));
+	s.insert(std::pair<uint64,uint64>(4,17));
+	s.insert(std::pair<uint64,uint64>(4,13));
+	s.insert(std::pair<uint64,uint64>(28,25));
+	s.insert(std::pair<uint64,uint64>(20,24));
+	s.insert(std::pair<uint64,uint64>(25,38));
+	s.insert(std::pair<uint64,uint64>(42,18));
+	s.insert(std::pair<uint64,uint64>(0,43));
+	s.insert(std::pair<uint64,uint64>(32,30));
+	s.insert(std::pair<uint64,uint64>(34,28));
+	s.insert(std::pair<uint64,uint64>(47,3));
+	s.insert(std::pair<uint64,uint64>(36,7));
+	s.insert(std::pair<uint64,uint64>(43,41));
+	s.insert(std::pair<uint64,uint64>(13,38));
+	s.insert(std::pair<uint64,uint64>(8,3));
+	s.insert(std::pair<uint64,uint64>(1,11));
+	s.insert(std::pair<uint64,uint64>(15,43));
+	s.insert(std::pair<uint64,uint64>(36,44));
+	s.insert(std::pair<uint64,uint64>(45,26));
+	s.insert(std::pair<uint64,uint64>(42,48));
+	s.insert(std::pair<uint64,uint64>(39,45));
+	s.insert(std::pair<uint64,uint64>(25,2));
+	s.insert(std::pair<uint64,uint64>(6,1));
+	s.insert(std::pair<uint64,uint64>(27,17));
+	s.insert(std::pair<uint64,uint64>(0,34));
+	s.insert(std::pair<uint64,uint64>(21,19));
+	s.insert(std::pair<uint64,uint64>(23,26));
+	s.insert(std::pair<uint64,uint64>(8,48));
+	s.insert(std::pair<uint64,uint64>(30,33));
+	s.insert(std::pair<uint64,uint64>(5,19));
+	s.insert(std::pair<uint64,uint64>(9,23));
+	s.insert(std::pair<uint64,uint64>(37,12));
+	s.insert(std::pair<uint64,uint64>(36,10));
+	s.insert(std::pair<uint64,uint64>(21,12));
+	s.insert(std::pair<uint64,uint64>(31,19));
+
+	for (std::vector<Edge>::iterator it = tree.begin(); it != tree.end(); ++it) {
+		std::pair<uint64,uint64> p(g.source(*it),g.target(*it));
+		BOOST_CHECK(s.find(p) != s.end());
+	}
+}
+
+BOOST_AUTO_TEST_CASE( prim_test )
+{
+	/*typedef BoostGraph<kGraphUndirected> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	ReadGraph<Graph> rg;
+
+	rg.read(std::string(TEST_DATA_PATH_R) + "/math/graphs/test.graph", g, true);
+
+	PrimMST<Graph> prim;
+
+	Node a = *g.nodes_begin();
+	prim.calculate(g, a);
+
+	std::vector<Node> parent = prim.parents();
+
+	std::set<std::pair<uint64,uint64> > s;
+
+	s.insert(std::pair<uint64,uint64>(14,47));
+	s.insert(std::pair<uint64,uint64>(4,29));
+	s.insert(std::pair<uint64,uint64>(22,36));
+	s.insert(std::pair<uint64,uint64>(35,43));
+	s.insert(std::pair<uint64,uint64>(33,13));
+	s.insert(std::pair<uint64,uint64>(7,24));
+	s.insert(std::pair<uint64,uint64>(18,40));
+	s.insert(std::pair<uint64,uint64>(44,2));
+	s.insert(std::pair<uint64,uint64>(20,46));
+	s.insert(std::pair<uint64,uint64>(6,23));
+	s.insert(std::pair<uint64,uint64>(19,24));
+	s.insert(std::pair<uint64,uint64>(40,4));
+	s.insert(std::pair<uint64,uint64>(23,18));
+	s.insert(std::pair<uint64,uint64>(16,32));
+	s.insert(std::pair<uint64,uint64>(40,49));
+	s.insert(std::pair<uint64,uint64>(4,17));
+	s.insert(std::pair<uint64,uint64>(4,13));
+	s.insert(std::pair<uint64,uint64>(28,25));
+	s.insert(std::pair<uint64,uint64>(20,24));
+	s.insert(std::pair<uint64,uint64>(25,38));
+	s.insert(std::pair<uint64,uint64>(42,18));
+	s.insert(std::pair<uint64,uint64>(0,43));
+	s.insert(std::pair<uint64,uint64>(32,30));
+	s.insert(std::pair<uint64,uint64>(34,28));
+	s.insert(std::pair<uint64,uint64>(47,3));
+	s.insert(std::pair<uint64,uint64>(36,7));
+	s.insert(std::pair<uint64,uint64>(43,41));
+	s.insert(std::pair<uint64,uint64>(13,38));
+	s.insert(std::pair<uint64,uint64>(8,3));
+	s.insert(std::pair<uint64,uint64>(1,11));
+	s.insert(std::pair<uint64,uint64>(15,43));
+	s.insert(std::pair<uint64,uint64>(36,44));
+	s.insert(std::pair<uint64,uint64>(45,26));
+	s.insert(std::pair<uint64,uint64>(42,48));
+	s.insert(std::pair<uint64,uint64>(39,45));
+	s.insert(std::pair<uint64,uint64>(25,2));
+	s.insert(std::pair<uint64,uint64>(6,1));
+	s.insert(std::pair<uint64,uint64>(27,17));
+	s.insert(std::pair<uint64,uint64>(0,34));
+	s.insert(std::pair<uint64,uint64>(21,19));
+	s.insert(std::pair<uint64,uint64>(23,26));
+	s.insert(std::pair<uint64,uint64>(8,48));
+	s.insert(std::pair<uint64,uint64>(30,33));
+	s.insert(std::pair<uint64,uint64>(5,19));
+	s.insert(std::pair<uint64,uint64>(9,23));
+	s.insert(std::pair<uint64,uint64>(37,12));
+	s.insert(std::pair<uint64,uint64>(36,10));
+	s.insert(std::pair<uint64,uint64>(21,12));
+	s.insert(std::pair<uint64,uint64>(31,19));
+
+	uint64 i = 0;
+	for (std::vector<Node>::iterator it = parent.begin(); it != parent.end(); ++it, i++) {
+		std::pair<uint64,uint64> p1(*it,parent[i]);
+		std::pair<uint64,uint64> p2(parent[i],*it);
+		BOOST_CHECK(!((s.find(p1) == s.end()) && (s.find(p2) == s.end())));
+	}*/
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+

@@ -1,0 +1,61 @@
+/*
+ * flow_variation.hpp
+ *
+ *  Created on: Dec 5, 2012
+ *      Author: guillem
+ */
+
+#ifndef FLOW_VARIATION_HPP_
+#define FLOW_VARIATION_HPP_
+
+#include <imageplus/core/image_signal.hpp>
+
+namespace imageplus {
+
+	namespace optical_flow {
+
+	template<class OpticalFlowType>
+	ImageSignal<float64,1> flow_variation_error(OpticalFlowType& flow) {
+
+		uint64 sx = flow.size_x();
+		uint64 sy = flow.size_y();
+		ImageSignal<float64,1> variation(flow.sizes());
+
+		for (typename OpticalFlowType::iterator v = flow.begin(); v != flow.end(); ++v) {
+
+			ImageSignal<float64,1>::coord_type pos = v.pos();
+
+			if (pos(0) == 0 || pos(0) == (int64)sx-1 || pos(1) == 0 || pos(1) == (int64)sy-1) {
+				variation(pos)(0) = 0;
+				continue;
+			}
+
+			//check flow gradient
+			// estimate derivative in X with central differences
+			float64 ux = 0.5*(flow(pos(0)+1,pos(1))(0) -  flow(pos(0)-1,pos(1))(0));
+			// estimate derivative in Y with central differences
+			float64 uy = 0.5*(flow(pos(0),pos(1)+1)(0) -  flow(pos(0),pos(1)-1)(0));
+			// estimate derivative in X with central differences
+			float64 vx = 0.5*(flow(pos(0)+1,pos(1))(1) -  flow(pos(0)-1,pos(1))(1));
+			// estimate derivative in Y with central differences
+			float64 vy = 0.5*(flow(pos(0),pos(1)+1)(1) -  flow(pos(0),pos(1)-1)(1));
+
+			typename OpticalFlowType::value_type du(ux,uy);
+			typename OpticalFlowType::value_type dv(vx,vy);
+
+			float64 v = (du.squaredNorm() + dv.squaredNorm())/(0.01*flow(pos).squaredNorm() + 0.002);
+
+			v = 1-std::exp(-v);
+
+			variation(pos)(0) = v;
+		}
+
+		return variation;
+	}
+
+
+	}
+}
+
+
+#endif /* FLOW_VARIATION_HPP_ */

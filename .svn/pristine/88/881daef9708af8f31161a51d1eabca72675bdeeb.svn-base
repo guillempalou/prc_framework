@@ -1,0 +1,106 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file gaussian.cpp
+//!
+//!  Implementation for Gaussian response generator
+//!
+
+#include <imageplus/filters/gaussian.hpp>
+
+using namespace imageplus;
+using namespace imageplus::filters;
+
+MultiArray<float64,2> imageplus::filters::gaussian_mask( const float64 sigma, const int64 size )
+{
+    int64 _size=size;
+    if( _size < 3 )
+    {
+        _size=3;
+    }
+    int64 max=_size-1;
+    int64 center=(_size-1)/2;
+    MultiArray<float64,2> gmask( _size, _size );
+
+    float64 factor=-1.0/(2.0*sigma*sigma);
+
+    for( int64 x=0; x < center; ++x )
+    {
+        float64 u2=(x-center)*(x-center);
+        for( int64 y=0; y < x; ++y )
+        {
+            float64 val=exp( factor*(u2+(y-center)*(y-center)) );
+            gmask[x][y]=val;
+            gmask[y][x]=val;
+            gmask[max-x][y]=val;
+            gmask[max-y][x]=val;
+            gmask[max-y][max-x]=val;
+            gmask[max-x][max-y]=val;
+            gmask[x][max-y]=val;
+            gmask[y][max-x]=val;
+        }
+        //Main diagonals:
+        float64 val=exp( factor*(u2+u2) );
+        gmask[x][x]=val;
+        gmask[max-x][max-x]=val;
+        gmask[max-x][x]=val;
+        gmask[x][max-x]=val;
+        //Central lines:
+        val=exp( factor*u2 );
+        gmask[x][center]=val;
+        gmask[max-x][center]=val;
+        gmask[center][max-x]=val;
+        gmask[center][x]=val;
+    }
+    gmask[center][center]=1.0;
+
+    return gmask;
+}
+
+
+
+
+MultiArray<float64,1> imageplus::filters::gaussian_mask_1d( const float64 sigma, const int64 size )
+{
+    int64 _size=size;
+    if( _size < 3 )
+    {
+        _size=3;
+    }
+    int64 max=_size-1;
+    int64 center=(_size-1)/2;
+    MultiArray<float64,1> gmask( _size );
+
+    float64 factor=-1.0/(2.0*sigma*sigma);
+    float64 factor2 = 1.0/(sigma*std::sqrt(2.0*3.14159265358979323846));
+
+    for( int64 x=0; x < center; ++x )
+    {
+        float64 u2=(x-center)*(x-center);
+        float64 val=factor2*exp( factor*u2 );
+        gmask[x]=val;
+        gmask[max-x]=val;
+    }
+    gmask[center]=factor2;
+
+    return gmask;
+}
+
+
+MultiArray<float64,2> imageplus::filters::gaussian_mask( const float64 sigma )
+{
+    int64 size=2*static_cast<int64>(3.0*sigma)+1;
+    return gaussian_mask( sigma, size );
+}
+
+
+
+
+MultiArray<float64,1> imageplus::filters::gaussian_mask_1d( const float64 sigma )
+{
+    int64 size=2*static_cast<int64>(3.0*sigma)+1;
+    return gaussian_mask_1d( sigma, size );
+}

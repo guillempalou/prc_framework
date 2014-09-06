@@ -1,0 +1,80 @@
+#ifndef IMAGEPLUS_DESCRIPTORS_GEOMETRY_CENTERED_SQUARED_WINDOW_HPP
+#define IMAGEPLUS_DESCRIPTORS_GEOMETRY_CENTERED_SQUARED_WINDOW_HPP
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/coord2d.hpp>
+#include <sstream>
+#include <string>
+
+namespace imageplus
+{
+	namespace descriptors
+	{
+		//! The CeneteredSquaredWindow is a descriptor that returns a Neighborhood os a squared window centered at a certain pixel
+		//!
+		//! \author Guillem Palou <guillem.palou@upc.edu>
+		//!
+		//! \date 18-07-2010 
+		class CenteredSquaredWindow : 	public DescriptorBase,
+										public Neighborhood2D
+		{
+			//! Coordinates Type
+			typedef Neighborhood2D::CoordType CoordType;
+
+		public:
+
+			/*! \brief Constructor
+			 * \param[in] half_size : half size of the window
+			 * \param[in] has_center : is the window centered at a pixel or half at pixels?
+			 * The size of te window will be 2*half_size +1 if it has a center pixel or 2*half_size if it doesn't
+			 *
+			 */
+			CenteredSquaredWindow(uint32 half_size=0, bool has_center=true)
+			            : DescriptorBase("", false)
+			{
+				std::ostringstream os;
+				os << "CenteredSquaredWindow_" << half_size << "_" << has_center;
+				this->_id = os.str();
+				_has_center = has_center;
+				_half_size = half_size;
+			};
+
+			//!
+			//! \param[in] first      : Iterator to the beginning of the region
+			//! \param[in] last       : Iterator to the end of the region
+			//! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+			//!
+			//! \returns the computed neighborhood
+			//!
+			template< class IteratorModel >
+			const Neighborhood2D& calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+			{
+				//std::cout << "Calculating window " << _half_size << " " << sizeof(*this) << std::endl;
+				if (_has_center)
+					(*this).resize((2*_half_size+1)*(2*_half_size+1));
+				else
+					(*this).resize((2*_half_size+1)*(2*_half_size+1)-1);
+
+				uint32 p= 0;
+				for (int i = -(int)_half_size; i <= (int)_half_size; i++) {
+					for (int k = -(int)_half_size; k <= (int)_half_size; k++) {
+						if (_has_center == false && i == 0 && k == 0) continue;
+						(*this)[p++] = CoordType(i,k);
+					}
+				}
+				return *this;
+			}
+
+
+		private:
+			//! half size of the window
+			uint32 		_half_size;
+			//! if true he window is odd size, even if false
+			bool		_has_center;
+		};
+    }
+}
+
+
+#endif /* CENTEREDSQUAREDWINDOW_HPP_ */

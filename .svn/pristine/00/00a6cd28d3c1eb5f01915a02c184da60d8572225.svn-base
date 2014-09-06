@@ -1,0 +1,64 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//! \file writesequence.cpp
+//!
+//! Implementation for WriteSequence class
+//!
+
+#include <fstream>
+#include <boost/format.hpp>
+
+#include <imageplus/io/writeimage.hpp>
+#include <imageplus/io/writesequence.hpp>
+
+#include <writeyuv.hpp>
+#include <io_auxiliar.hpp>
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+WriteSequence::WriteSequence()
+        : _filename(""), 
+          _framecount(0), 
+          _startframe(0),
+          _format(UNKNOWN_SEQ_FORMAT), 
+          _skip(0)
+{
+}
+
+WriteSequence::WriteSequence( const std::string& filenames, uint64 startframe, uint64 skip)
+{
+    this->open(filenames, startframe, skip);
+}
+
+
+void WriteSequence::open( const std::string& filenames, uint64 startframe, uint64 skip)
+{
+    // Private data
+    _filename = filenames;
+    _framecount = startframe;
+    _startframe = startframe;
+    _format = IMAGES_PRINTF;
+    _skip = skip;
+}
+
+
+WriteSequence::~WriteSequence()
+{
+    // if sequence still open we can do something here. Nothing to do yet
+}
+
+uint64 WriteSequence::startframe() const
+{
+    return _startframe;
+}
+
+SeqFormat WriteSequence::format() const
+{
+    return _format;
+}

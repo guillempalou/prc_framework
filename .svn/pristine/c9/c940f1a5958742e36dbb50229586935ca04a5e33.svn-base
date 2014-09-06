@@ -1,0 +1,24 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+/*!
+ * \example core_examples.cpp
+ * 
+ * A collection of all the core examples.
+ */
+/*! \cond SKIP_DOC */
+#include "timestamp_example.hpp"
+
+#include <iostream>
+
+int main (int argc, char* argv[])
+{
+    std::cout << "Core examples" << std::endl;
+    
+    timestamp_example();
+    
+    return 0;
+}
+
+/*! \endcond */

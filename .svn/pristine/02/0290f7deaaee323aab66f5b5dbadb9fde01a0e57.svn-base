@@ -1,0 +1,258 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+
+#ifndef IMAGEPLUS_SEMANTIC_READWRITEMODEL_HPP
+#define IMAGEPLUS_SEMANTIC_READWRITEMODEL_HPP
+
+
+#include <string>
+
+#include <boost/filesystem.hpp>
+#include <boost/foreach.hpp>
+#include <boost/format.hpp>
+#include <boost/lexical_cast.hpp>
+
+#include <imageplus/core.hpp>
+#include <imageplus/semantic/model.hpp>
+#include <imageplus/semantic/modelpart.hpp>
+
+#include <imageplus/io/pugixml/pugixml.hpp>
+#include <imageplus/io/pugixml/foreach.hpp>
+
+
+namespace imageplus
+{
+	namespace semantic
+	{
+		//!
+		//! \brief Class for reading and writing Model instances from/to disk
+		//! files in XML format.
+		//!
+		//! Usage with operators:
+		//! \code
+		//! Model<SVM> my_model1, my_model2;
+		//! //...
+		//! semantic::ReadWriteModel rwModel("foo.xml");
+		//!
+		//! rwModel >> my_model1; // Read from disk
+		//! rwModel << my_model2; // Write to disk
+		//! \endcode
+		//!
+		//! Usage with function calls:
+		//! \code
+		//! Model<SVM> my_model1, my_model2;
+		//! //...
+		//! semantic::ReadWriteModel rwModel("foo.xml");
+		//!
+		//! rwModel.read(my_model1);  // Read from disk
+		//! rwModel.write(my_model2); // Write to disk
+		//! \endcode
+		//!
+		//! \author Pau Haro Negre
+		//!
+		//! \date 26-4-2011
+		//!
+		class ReadWriteModel
+		{
+		public:
+
+			//! \brief Default constructor
+			ReadWriteModel()
+			: _filename("") {}
+
+			//! \brief Constructor from file name.
+			//!
+			//! \param[in] filename Name of the file to store/read the Model.
+			//! 
+			//! \throw ImagePlusError When the XML library is not used and the extension is XML
+			explicit ReadWriteModel(const std::string& filename) throw (ImagePlusError);
+
+			//! \brief Destructor
+			~ReadWriteModel() {}
+
+            //! \brief Set the file name of the Model file.
+            //!
+            //! \param[in] filename Name of the file to store/read the Model.
+            //!
+            //! \throw ImagePlusError When the file extension is not correct, or the XML library is not used and the extension is XML
+            void open(const std::string& filename) throw (ImagePlusError);
+
+			//! \brief Read a model
+			//!
+			//! \param[out] model Model read from disk
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+			//!
+			//! \todo Generalize for any Classifier and visual descriptor
+            template<class Classifier>
+			void read(Model<Classifier>& model) const throw (ImagePlusError)
+			{
+				pugi::xml_document doc;
+				pugi::xml_parse_result result = doc.load_file(_filename.c_str());
+
+				if (! result)
+				{
+					std::stringstream error;
+					error << "XML [" << _filename << "] parsed with errors." << std::endl;
+					error << "XML Error description: " << result.description() << std::endl;
+					error << "XML Error offset: " << result.offset << std::endl;
+					throw ImagePlusError(error.str());
+				}
+
+				if (! doc.child("Mpeg7"))
+					throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+
+				// Model file loaded => save model file URI
+				model.set_file_uri(_filename);
+
+				// model node
+				pugi::xml_node model_node = doc.child("Mpeg7").child("Description").child("Model");
+
+				// semantic class id
+				try {
+					std::string id_text = model_node.attribute("id").value();
+					id_text.erase(0, 5); // "Class1" => "1"
+					model._semantic_class = boost::lexical_cast<uint32>(id_text); // "1" => (int) 1
+				} catch (boost::bad_lexical_cast const &) {
+					throw ImagePlusError("An error occurred while reading the XML: found a semantic class with an unparseable id.");
+				}
+
+				// Read model part 1 (simplified version) XXX
+				// TODO: read all parts in the model
+				ModelPart<Classifier> model_part;
+				pugi::xml_node part1_node = model_node.find_child_by_attribute("ProbabilityModelClass", "id", "Part1"); // XXX (simplified)
+
+				// classifier type node
+				pugi::xml_node ct_node = part1_node.child("ClusterModel").child("Model").child("ClusterModel");
+				// ct_node.attribute("id") should be "svm" (simplified version) XXX
+
+				// descriptor node
+				std::string vd_name = "ColorStructureType"; // XXX (simplified version)
+				pugi::xml_node desc_node = ct_node.child("ClusterModel");
+				// desc_node.attribute("id") should be "ColorStructureType" (simplified version) XXX
+
+				// classifier model file name
+				std::string model_file = desc_node.child("ClusterModelRef").attribute("href").value();
+
+				// load classifier to this model part from file
+				Classifier classifier;
+				classifier.open(model_file);
+				model_part.add_vd_classifier("ColorStructure", classifier);
+
+				// add model part to the model
+				model.add_part(model_part);
+			}
+
+            //! \brief Operator to read a model
+            //!
+			//! \param[out] model Model read from disk
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+            template<class Classifier>
+            void operator>>(Model<Classifier>& model) const throw (ImagePlusError)
+            {
+            	read(model);
+            }
+
+			//! \brief Write a model
+			//!
+			//! \param[in] model Model to be written
+            //!
+            //! \return True if the Model was correctly written to the file, otherwise False
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+			//!
+			//! \todo Generalize for any Classifier and visual descriptor
+            template<class Classifier>
+			bool write(Model<Classifier>& model) const throw (ImagePlusError)
+			{
+            	// update model file uri
+				model.set_file_uri(_filename);
+
+				pugi::xml_document doc;
+
+				// Mpeg7
+				pugi::xml_node mpeg7_node = doc.append_child("Mpeg7");
+				mpeg7_node.append_attribute("xmlns") = "urn:mpeg:mpeg7:schema:2001";
+				mpeg7_node.append_attribute("xmlns:xsi") = "http://www.w3.org/2001/XMLSchema-instance";
+
+				// `-> Description
+				pugi::xml_node desc_node = mpeg7_node.append_child("Description");
+				desc_node.append_attribute("xsi:type") = "urn:ModelDescriptionType";
+				desc_node.append_attribute("xmlns:urn") = "urn:mpeg:mpeg7:schema:2001";
+
+				//  `-> Model
+				pugi::xml_node model_node = desc_node.append_child("Model");
+				model_node.append_attribute("function") = "described";
+				model_node.append_attribute("xsi:type") = "ProbabilityClassificationModelType";
+				std::string class_id = "Class" + boost::lexical_cast<std::string>(model._semantic_class);
+				model_node.append_attribute("id") = class_id.c_str();
+
+				//   `-> ProbabilityModelClass[id=Part1] (simplified: only part1) XXX
+				pugi::xml_node part1_node = model_node.append_child("ProbabilityModelClass");
+				part1_node.append_attribute("id") = "Part1"; // XXX (simplified)
+
+				//    `-> ClusterModel[id=region]
+				pugi::xml_node region_node = part1_node.append_child("ClusterModel");
+				region_node.append_attribute("id") = "region";
+
+				//     `-> Model
+				pugi::xml_node cl_model_node = region_node.append_child("Model");
+				cl_model_node.append_attribute("function") = "described";
+				cl_model_node.append_attribute("xsi:type") = "ClusterClassificationModelType";
+				cl_model_node.append_attribute("numLabels") = 2;
+				cl_model_node.append_attribute("numVds") = 1;
+
+				//      `-> ClusterModel[id=svm] (simplified: only svm) XXX
+				pugi::xml_node classifier_node = cl_model_node.append_child("ClusterModel");
+				classifier_node.append_attribute("id") = "svm"; // XXX (simplified)
+
+				//       `-> ClusterModel[id=ColorStructureType] (simplified: only ColorStructureType)
+				pugi::xml_node vd_node = classifier_node.append_child("ClusterModel");
+				vd_node.append_attribute("id") = "ColorStructureType"; // XXX (simplified)
+
+				//        `-> ClusterModelRef
+				pugi::xml_node model_ref_node = vd_node.append_child("ClusterModelRef");
+				model_ref_node.append_attribute("dim") = 256;
+				boost::filesystem::path model_file_path = _filename;
+				boost::filesystem::path model_ref_path = model_file_path.parent_path();
+				model_ref_path /= str(boost::format("%04d") % model._semantic_class) + "-part1-region-VD1.svm"; // XXX (simplified)
+				model_ref_node.append_attribute("href") = model_ref_path.string().c_str();
+
+				// write classifier model for each model part to disk
+				BOOST_FOREACH(ModelPart<Classifier> mp, model._model_parts)
+				{
+					Classifier classifier = mp.get_vd_classifier("ColorStructure"); // XXX (simplified)
+					classifier.save(model_ref_path.string());
+				}
+
+				// save document to file
+				return doc.save_file(_filename.c_str(), "  ", pugi::format_default, pugi::encoding_utf8);
+			}
+
+            //! \brief Operator to write a model
+			//!
+			//! \param[in] model Model to be written
+            //!
+            //! \return True if the Model was correctly written to the file, otherwise False
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+            template<class Classifier>
+			bool operator<<(Model<Classifier>& model) const throw (ImagePlusError)
+			{
+				return write(model);
+			}
+
+		private:
+			//! Stores the file name of the model to read or write
+			std::string _filename;
+
+		};
+	}
+}
+
+#endif //IMAGEPLUS_SEMANTIC_READWRITEMODEL_HPP

@@ -1,0 +1,102 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file trainer.hpp
+//!
+//!  Trainer
+//!
+
+
+#ifndef IMAGEPLUS_SEMANTIC_TRAINER_HPP
+#define IMAGEPLUS_SEMANTIC_TRAINER_HPP
+
+
+#include <string>
+
+#include <imageplus/machine_learning/svm/svm_adaptors.hpp>
+
+#include <imageplus/semantic/annotation.hpp>
+#include <imageplus/semantic/annotatedsemanticclass.hpp>
+#include <imageplus/semantic/modelpart.hpp>
+#include <imageplus/semantic/observation.hpp>
+#include <imageplus/semantic/trainset.hpp>
+
+
+namespace imageplus {
+	namespace semantic {
+		//!
+		//! \brief Class for training models from given annotations.
+		//!
+		//! \author Pau Haro Negre
+		//!
+		//! \date 29-3-2011
+		//!
+		class Trainer
+		{
+		public:
+
+			//! Type of trainer input labels
+			typedef std::vector<float64> LabelsType;
+
+			//! Type of trainer input data
+	        typedef std::vector <Observation::FeatureVector> InputDataType;
+
+			//! Default constructor.
+			Trainer() {};
+
+            //! \brief Constructor from annotation file name.
+            //!
+            //! \param[in] annotation_filename Name of the Annotation file to load.
+            //! \param[in] output_dir		   Directory to save the trained models.
+			//!
+			//! \throw ImagePlusError When the output directory does not exist.
+            explicit Trainer(const std::string& annotation_filename, const std::string& output_dir) throw (ImagePlusError);
+
+			//! Destructor.
+			~Trainer() {};
+
+			//! Train the models using the given annotation and output them to the given directory.
+			void train();
+
+		private:
+            //! Stores the file name of the annotation to use
+            std::string _annotation_filename;
+
+            //! Stores the annotation
+            Annotation _annotation;
+
+            //! Stores the directory where the results of the training should be saved
+            std::string _output_dir;
+
+			//! Create a train set from the instances of given semantic class annotation for each visual descriptor
+			//!
+			//! \param[out] train_set		  The new train set
+			//! \param[in] asc				  Annotation of the semantic class for which the train set will be built
+			//! \param[in] visual_descriptors Visual descriptors that will be trained
+			void _build_trainset(TrainSet& train_set, const AnnotatedSemanticClass& asc, const std::list<std::string>& visual_descriptors);
+
+
+			//! Train models for each visual descriptor of the train_set data and store it in the model_part
+			//!
+			//! \param[out] model_part		  Model part where to store the trained models
+			//! \param[in] train_set		  Train set of the semantic class, for each visual descriptor
+			//! \param[in] visual_descriptors Visual descriptors that will be trained
+			void _train_model_part(ModelPart<machine_learning::svm::SVM>& model_part, const TrainSet& train_set, const std::list<std::string>& visual_descriptors);
+
+            //! Get the feature vector of the visual descriptor from the given descriptors XML file
+            //!
+            //! \param[in] filename Visual descriptors XML file
+            //! \param[in] vd_name	Name of the visual descriptor for which the feature vector has to be obtained
+            //!
+            //! \return Feature vector of the visual descriptor
+			//!
+			//! \throw ImagePlusError When some error related to XML occurs
+            Observation::FeatureVector _read_descriptor(const std::string& filename, const std::string& vd_name) const throw (ImagePlusError);
+		};
+	}
+}
+
+#endif //IMAGEPLUS_SEMANTIC_TRAINER_HPP

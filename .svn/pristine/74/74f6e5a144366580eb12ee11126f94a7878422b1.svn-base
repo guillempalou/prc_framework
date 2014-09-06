@@ -1,0 +1,224 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file line.cpp
+//!
+//! \author Jordi Salvador <jordi@gps.tsc.upc.edu>
+//!
+
+#include <imageplus/math/geometry/line.hpp>
+#include <imageplus/math.hpp>
+
+using namespace imageplus;
+using namespace imageplus::math::geometry;
+
+template<typename T>
+void bresenham_line(T x0, T y0, T x1, T y1, Line2D<T> & line)
+{
+    bool steep = std::abs(y1-y0) > std::abs(x1-x0);
+    if( steep )
+    {
+        T temp = x0;
+        x0 = y0;
+        y0 = temp;
+        
+        temp = x1;
+        x1 = y1;
+        y1 = temp;
+    }
+    if( x0 > x1 )
+    {
+        T temp = x0;
+        x0 = x1;
+        x1 = temp;
+        
+        temp = y0;
+        y0 = y1;
+        y1 = temp;
+    }
+    T deltaX = x1-x0;
+    T deltaY = std::abs(y1-y0);
+    T error = deltaX >> 1;
+    T yStep = -1;
+    if( y0 < y1 )
+    {
+        yStep = 1;
+    }
+    T y = y0;
+    for( T x = x0; x <= x1; x++ )
+    {
+        if( steep )
+        {
+            line.push_back(Coord<T,2>(y,x));
+        }
+        else 
+        {
+            line.push_back(Coord<T,2>(x,y));
+        }
+        error -= deltaY;
+        if( error < 0 )
+        {
+            y += yStep;
+            error += deltaX;
+        }
+    }
+}
+
+template<typename T>
+void bresenham_line(T x0, T y0, T z0, T x1, T y1, T z1, Line3D<T> & line)
+{
+
+    T l = std::abs(x1-x0);
+    T m = std::abs(y1-y0);
+    T n = std::abs(z1-z0);
+    
+    register T x=x0, y=y0, z=z0;
+    
+    T x_inc, y_inc, z_inc;
+    
+    if (x1 < x0)
+    	x_inc = -1; 
+    else
+        x_inc = 1;
+   
+    
+    
+    if (y1< y0)
+    	y_inc = -1 ;
+    else
+        y_inc = 1;
+
+    
+    if (z1 < z0)
+    	z_inc = -1 ;
+    else
+        z_inc = 1;
+
+    
+    T dx2 = l >> 1 ; 
+    T dy2 = m >> 1 ;
+    T dz2 = n >> 1 ;
+    
+    T err_1, err_2;
+    
+    register int32 i;
+    
+    if ((l >= m) & (l >= n)) 
+    {   
+    	err_1 = dy2 - l;
+        err_2 = dz2 - l;
+        for (i=0; i < l; ++i) 
+        {
+            line.push_back(Coord<T,3>(x, y, z)); //;Matrice(x,y,z)=Matrice(x,y,z)+1;
+            if (err_1 > 0) 
+            {  
+            	y= y + y_inc;
+                err_1 = err_1 - dx2;
+            }
+            if (err_2 > 0) 
+            {
+            	z = z+ z_inc;
+                err_2 = err_2 - dx2;
+            }
+            err_1 = err_1 + dy2;
+            err_2 = err_2 + dz2;
+            x = x+ x_inc;
+        }
+    }   
+    else if ((m >= l) & (m >= n)) 
+    {
+    	err_1 = dx2 - m;
+        err_2 = dz2 - m;
+        for (i=0; i< m; ++i) 
+        {   
+        	line.push_back(Coord<T,3>(x, y, z));
+        	//Matrice(x,y,z)=Matrice(x,y,z)+1;
+            if (err_1 > 0) 
+            {    x = x + x_inc;
+                err_1 = err_1 - dy2;
+            }
+            if (err_2 > 0) 
+            {   z = z + z_inc;
+                err_2 = err_2 - dy2;
+            }
+            err_1 = err_1 + dx2;
+            err_2 = err_2 + dz2;
+            y = y + y_inc;
+        }
+    }
+    else 
+    {
+        err_1 = dy2 - n;
+        err_2 = dx2 - n;
+        for (i=0; i < n; ++i) 
+        {   
+        	
+        	line.push_back(Coord<T,3>(x, y, z));
+        	        	//Matrice(x,y,z)=Matrice(x,y,z)+1;
+            if (err_1 > 0) 
+            {     y = y + y_inc;
+                err_1 = err_1 - dz2;
+            }
+            
+            if (err_2 > 0) 
+            {    x = x + x_inc;
+                err_2 = err_2 - dz2;
+            }
+            
+            err_1 = err_1 + dy2;
+            err_2 = err_2 + dx2;
+            z = z + z_inc;
+        
+        }
+    
+    }
+    line.push_back(Coord<T,3>(x, y, z));
+            	//Matrice(x,y,z)=Matrice(x,y,z)+1;
+}
+
+template<typename T>
+imageplus::math::geometry::Line2D<T>::Line2D(const Coord<T,2>& x1, const Coord<T,2>& x2)
+        : GeometricShape<T,2>(), _x1(x1), _x2(x2)
+{
+    bresenham_line( _x1[0], _x1[1], _x2[0], _x2[1], *this );
+}
+        
+template<typename T>
+imageplus::math::geometry::Line3D<T>::Line3D(const Coord<T,3>& x1, const Coord<T,3>& x2)
+        : GeometricShape<T,3>(), _x1(x1), _x2(x2)
+{
+    bresenham_line( _x1[0], _x1[1], _x1[2], _x2[0], _x2[1], _x2[2], *this );
+}
+                   
+        
+template void bresenham_line( int8  x1, int8  y1, int8  x2, int8  y2, Line2D<int8>  & line );
+template void bresenham_line( int16 x1, int16 y1, int16 x2, int16 y2, Line2D<int16> & line );
+template void bresenham_line( int32 x1, int32 y1, int32 x2, int32 y2, Line2D<int32> & line );
+template void bresenham_line( int64 x1, int64 y1, int64 x2, int64 y2, Line2D<int64> & line );
+
+template void bresenham_line( int8  x1, int8  y1, int8  z1, int8  x2, int8  y2,  int8  z2, Line3D<int8>  & line );
+template void bresenham_line( int16 x1, int16 y1, int16 z1, int16 x2, int16 y2,  int16 z2, Line3D<int16> & line );
+template void bresenham_line( int32 x1, int32 y1, int32 z1, int32 x2, int32 y2,  int32 z2, Line3D<int32> & line );
+template void bresenham_line( int64 x1, int64 y1, int64 z1, int64 x2, int64 y2,  int64 z2, Line3D<int64> & line );
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace geometry
+        {
+            template class Line2D<int8>;
+            template class Line2D<int16>;
+            template class Line2D<int32>;
+            template class Line2D<int64>;
+            
+            template class Line3D<int8>;
+            template class Line3D<int16>;
+            template class Line3D<int32>;
+            template class Line3D<int64>;
+        }
+    }
+}

@@ -1,0 +1,165 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file readbitstream.cpp
+//!
+//!  Implementation of classes for writing bitstreams to disk
+//!
+#include <imageplus/io/readbitstream.hpp>
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+ReadBitStream::ReadBitStream( const std::string& filename )
+{
+	_bits_left  = 0;
+	_buffer = 0;
+	open(filename);
+}
+
+
+ReadBitStream::ReadBitStream( )
+{
+	_bits_left  = 0;
+	_buffer = 0;
+}
+
+void ReadBitStream::open( const std::string& filename )
+{
+    _filename = filename;
+
+    if ( _fp.is_open() )
+        throw ImagePlusError("BitStream already open, close it first");
+
+    _bits_left = 0;
+    _buffer = 0;
+
+    // Open file to read
+    _fp.open(_filename.c_str(), std::ios::in | std::ios::binary);
+    if (!_fp.is_open())
+    {
+        throw ImagePlusFileNotFound(_filename);
+    }
+}
+
+void ReadBitStream::close( )
+{
+    _fp.close( );
+}
+
+void ReadBitStream::seekg( uint64 position )
+{
+    uint8  offset_bits  = (uint8)(position % 8);
+    uint64 offset_bytes = position >> 3;
+    
+    if (!_fp.is_open())
+    {
+        throw ImagePlusError("Call 'open' before trying to move the pointer from a file.");
+    }
+    
+    _fp.seekg(offset_bytes);
+    _bits_left  = 0;
+    _buffer = 0;
+    
+    if (offset_bits)
+    {
+        read(offset_bits);
+    }
+}
+
+
+uint64 ReadBitStream::tellg( )
+{
+    if (!_fp.is_open())
+    {
+        throw ImagePlusError("Call 'open' before trying to get the position of the pointer in a file.");
+    }
+    
+    if (_fp.tellg() < 0 )
+        throw ImagePlusError("ifstream::tellg() returns -1");
+
+    return (uint64)(_fp.tellg()*8 - _bits_left);
+}
+
+uint64 ReadBitStream::remaining_size( )
+{
+    if (!_fp.is_open())
+    {
+        throw ImagePlusError("Call 'open' before trying to get size of file.");
+    }
+    
+    uint64 curr_pos = tellg();
+    _fp.seekg(0,std::ios::end);
+    uint64 end_pos  = tellg();
+    seekg(curr_pos);
+
+    return (end_pos - curr_pos);
+}
+
+uint64 ReadBitStream::read( uint8 n_bits_to_read )
+{
+    if (!_fp.is_open())
+    {
+        throw ImagePlusError("Call 'open' before trying to read from a file.");
+    }
+    
+    ASSERT(n_bits_to_read<=64, "You asked to read more than 64 bits.");
+    ASSERT(n_bits_to_read>0, "You asked to read 0 bits.");
+        
+    if(n_bits_to_read > 64)
+    {
+        n_bits_to_read = 64;
+    }
+    
+    uint64 to_return = 0;
+    
+    if (n_bits_to_read)
+    {
+        const uint8 mask = 255;
+            
+        uint8 still_to_read = n_bits_to_read;
+                
+        while(still_to_read>_bits_left)
+        {
+            to_return = to_return + ((uint64)_buffer<<(still_to_read-_bits_left));
+            _fp.read((char*)&_buffer, 1);
+            still_to_read = still_to_read - _bits_left;
+            _bits_left = 8;
+        }
+        
+        _bits_left = _bits_left-still_to_read;
+        to_return = to_return + ((uint64)_buffer>>_bits_left);
+        _buffer = _buffer&(mask>>(8-_bits_left));
+    }
+    else
+    {
+        to_return=0;
+    }
+    
+    return to_return;
+}
+
+
+uint64 ReadBitStream::read_ahead( uint8 n_bits_to_read )
+{
+
+    if (!_fp.is_open())
+    {
+        throw ImagePlusError("Call 'open' before trying to read from a file.");
+    }
+    
+    uint64 curr_pos  = tellg();
+    uint64 to_return = read(n_bits_to_read);
+    seekg(curr_pos);
+    
+    return to_return;
+}
+
+
+ReadBitStream::~ReadBitStream()
+{
+}
+

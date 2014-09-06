@@ -1,0 +1,122 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file derivative.cpp
+//!
+//!  \brief Implementation of derivative routines
+//!
+#include <imageplus/math/numeric/derivative.hpp>
+
+#include <imageplus/math/numeric/lu_decomposition.hpp>
+
+using namespace imageplus::math::numeric;
+using namespace std;
+using namespace imageplus;
+
+MultiArray<float64,1> imageplus::math::numeric::derivative(MultiArray<float64,1> x, void (*function)(float64, float64*))
+{
+    uint64 j, n=x.dims(0); //(number of points of the function);
+    float64 h,temp,f_temp, f;
+    //MultiArray<float64,1> f(n);
+    MultiArray<float64,1> df(n);
+
+    for (j=0;j<n;j++)
+    {
+        (*function)(x[j],&f_temp);
+        temp=x[j];
+        h=BIGEPS*fabs(temp);
+        if (h == 0.0) h=BIGEPS;
+        x[j]=temp+h;                          //Trick to reduce finite precision error.
+        h=x[j]-temp;
+        (*function)(x[j],&f);//f.data()+j);
+
+        //try f=function(x)
+        x[j]=temp;
+        //for (i=0;i<n;i++)
+        df[j]=(f-f_temp)/h; //Forward difference formula (changed i per j)
+    }
+    return df;
+}
+
+MultiArray<float64,2> imageplus::math::numeric::fd_jacobian(MultiArray<float64,1> x, MultiArray<float64,1> fvec, void (*function)(MultiArray<float64,1> , MultiArray<float64,1>*))
+{
+    int64 i,j; //n is the dimension of the space);
+    int64 n2=x.dims(0), n1=fvec.dims(0);
+    float64 h,temp;
+    MultiArray<float64,1> f(fvec);
+
+    MultiArray<float64,2> df(n2,n1);
+
+    for (j=0;j<n2;j++)
+    {
+        temp=x[j];
+        h=BIGEPS*fabs(temp);
+        if (h == 0.0) h=BIGEPS;
+        x[j]=temp+h;                          //Trick to reduce finite precision error.
+        h=x[j]-temp;
+        
+        TRACE("Evaluated epsilonx " << x[j])
+        
+        //try f=function(x)
+        (*function)(x,&f);
+        x[j]=temp;
+
+        for (i=0;i<n1;i++)
+        {
+            df[j][i]=(f[i]-fvec[i])/h;
+            TRACE(" Derivative " << i << " over " << j << " = " << f[i] << "-" << fvec[i] << "/" << h)
+        }
+    }
+    return df;
+}
+
+MultiArray<float64,1> imageplus::math::numeric::newton_rhapson(uint64 ntrial, MultiArray<float64,1> x, float64 tolx, float64 tolf, void (*function)(MultiArray<float64,1> ,MultiArray<float64,1>*, MultiArray<float64,2>*)) throw(ImagePlusError) 
+{ 
+    uint64 k,i; 
+    float64 errx,errf; //d_aux; 
+    uint64 n=x.dims(0);
+    MultiArray<float64,2> fjac(n,n);
+    MultiArray<float64,1> fvec(x);//, pn(x);
+    MultiArray<float64,1> sol((size_type)x.dims(0)), pn((size_type)x.dims(0));
+    MultiArray<int64,1> index(n);
+  
+    for (k=0;k<ntrial;k++) 
+    {
+        (*function)(x,&fvec,&fjac);     //User defined function supplies function values at x in fvec and Jacobian matrix in fjac.
+        errf=0.0;                
+
+        for (i=0;i<n;i++)  
+            errf += fabs(fvec[i]);      //Check function convergence
+
+        if (errf <= tolf)   
+            return x; 
+
+        for (i=0;i<n;i++)
+            pn[i] = -fvec[i];           //Right hand-side of linear equations
+
+        //ludcmp(fjac,n,indx,&d_aux);   //Solve linear equations using LU decomposition
+        //lubksb(fjac,n,indx,pn); 
+        sol=lu_solve(fjac,pn);
+ 
+        errx=0.0;                     //Check root convergence & update solution
+        for (i=0;i<n;i++) 
+        { 
+            errx += fabs(sol[i]); 
+            x[i] += sol[i];      
+        } 
+        if (errx <= tolx)
+        {
+            return x;
+        }
+      
+    }
+    // TODO: define exception...
+    #ifndef NDEBUG
+        throw ImagePlusError("Newton-Rhapson Method: Maximum Iterations Achieved");
+    #endif
+    return x;
+}
+

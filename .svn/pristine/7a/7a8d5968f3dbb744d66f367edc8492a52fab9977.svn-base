@@ -1,0 +1,289 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//! \file write_sequence_yuv.hpp
+//! 
+#ifndef IMAGEPLUS_IO_WRITE_YUV_HPP_
+#define IMAGEPLUS_IO_WRITE_YUV_HPP_
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/io_types.hpp>
+#include <fstream>
+
+namespace imageplus
+{
+    namespace io
+    {
+        //!
+        //! \brief Class to write images to disk as sequences. 
+        //!
+        //! \author Gerard Guerrero Llobera <algerard@gps.tsc.upc.edu>
+        //!
+        //! \date 10-07-2008
+        //!
+        //! At the moment: 
+        //! WriteSequence opens a binary output stream to store the received images.
+        //! When creating the object, we must specify the format and the lenght of the sequence to be stored, 
+        //! because writesequence << operator checks if the provided frame's index falls within the frame range before 
+        //! writing the provided frame to the file. This behaviour forces the programmer to know what will be written
+        //! and provides a more controlled execution.
+        //!
+        //! This class only has support for YUV 4:2:0 images. Feel free to contribute code to support other formats.
+        //!
+        //! TODO : Write a bottomless WriteSequence, which will let write without specifying the end of the file. No control 
+        //! on the upper bound of the frame pointer will be implemented.
+        class WriteSequenceYUV
+        {
+            public: 
+                //!
+                //! \brief Default constructor. 
+                //!
+                WriteSequenceYUV();
+                
+                //!
+                //! \brief Specify the sequence information and filename.
+                //!
+                //! \param[in] filename : string with the filename that will store the sequence. The filename has to follow the format
+                //! *xxx.yuv, where xxx is the yuv format for samples to be used: 420, 422, 444.
+                //! \param[in] sizex : X size of the frames that form the sequence. 
+                //! \param[in] sizey : Y size of the frames that form the sequence.
+                //! \param[in] totalframes : Total number of frames expected to be in the sequence. 
+                //! \param[in] fps : frames per second of the sequence. 0.0 if unknown. 
+                //! \param[in] format : format of the yuv samples in the image.
+                //! \param[in] comment : comment to be added to the .dat file.
+                //!
+                //! This constructor creates two files: filename.yuv and filename.dat. 
+                //! - filename.yuv is initalized with totalframes frames formed by an Image with Y channel = 0 and U,V channels = 128.
+                //! - filename.dat is initialized with the information provided to the constructor.
+                //! Since now, this class only supports 4:2:0 YUV format sequences.
+                
+                WriteSequenceYUV(const std::string& filename, 
+                              uint64 sizex, 
+                              uint64 sizey, 
+                              uint64 totalframes, 
+                              float64 fps, 
+                              SeqFormat format, 
+                              const std::string& comment);
+                
+                //!
+                //! \brief Destructor.
+                //!
+                ~WriteSequenceYUV();
+                
+                //!
+                //! \brief Copy constructor.
+                //!
+                //! WARNING: The original element used to make the copy is destroyed at the end of the process to 
+                //! avoid pointer access conflicts between file streams.
+                //! \param[in] original : WriteSequence object to copy.
+                WriteSequenceYUV(const WriteSequenceYUV& original);
+                
+                //!
+                //! \brief Assignment operator.
+                //!
+                //! \param[in] original : the WriteSequence objecto to copy from
+                //!
+                //! \return original, to concatenate
+                //!
+                WriteSequenceYUV& operator=(const WriteSequenceYUV& original);
+                
+                //!
+                //! \brief Opens single file for writing a sequence. 
+                //!
+                //! \param[in] filename : string with the plane filename - without format code nor extension - of the sequence in disk.
+                //! \param[in] sizex : X size of the frames that form the sequence. 
+                //! \param[in] sizey : Y size of the frames that form the sequence.
+                //! \param[in] totalframes : Total number of frames expected to be in the sequence. 
+                //! \param[in] fps : frames per second of the sequence. 0.0 if unknown. 
+                //! \param[in] format : format of the yuv samples in the image.
+                //! \param[in] comment : comment to be added to the .dat file.
+                //! \param[in] frame_pointer : Write Pointer location to be set.
+                //!
+                //! The format specified will select the format code and the extension appended to the filename.
+                //! The formats supported are all the formats specified in the SeqFormat enumeration, although 
+                //! the parameters needed are .yuv format oriented. 
+                //!
+                //! \todo : modify/overload the function to cope with the other formats available. 
+                
+                void open(const std::string& filename, 
+                          uint64 sizex,
+                          uint64 sizey,
+                          uint64 totalframes,
+                          float64 fps,
+                          SeqFormat format,
+                          const std::string& comment,
+                          uint64 frame_pointer =0) throw (ImagePlusError);
+                
+                //!
+                //! \brief Opens single file for writing a sequence. 
+                //!
+                //! The format specified will select the format code and the extension appended to the filename.
+                //! The formats supported are all the formats specified in the SeqFormat enumeration, although 
+                //! the parameters needed are .yuv format oriented. 
+                //!
+                //! \todo : modify/overload the function to cope with the other formats available. 
+                
+                void open_copy() throw (ImagePlusError);
+                               
+                //!
+                //! \brief Writes next yuv420 image in the sequence. 
+                //!
+                //! \param[in] image : yuv420 format image to be written to the sequence.
+                //!
+                //! \return this, just to concatenate
+                //!
+                WriteSequenceYUV& operator<<(const ImageYUV420<uint8>& image) throw (ImagePlusError);
+                
+                //!
+                //! \brief Writes next yuv444 image in the sequence. 
+                //!
+                //! \param[in] image : yuv444 format image to be written to the sequence.
+                //!
+                //! \return this, just to concatenate
+                //!
+                WriteSequenceYUV& operator<<(const ImageYUV<uint8>& image) throw (ImagePlusError);
+
+                //!
+                //! \brief Writes next yuv400/gray image in the sequence. 
+                //!
+                //! \param[in] image : yuv400/gray format image to be written to the sequence.
+                //!
+                //! \return this, just to concatenate
+                //!
+                WriteSequenceYUV& operator<<(const ImageGray<uint8>& image) throw (ImagePlusError);
+
+                //!
+                //! \brief Sets specific frame to be written next time the operator << is called.
+                //!
+                //! \param[in] frame : Frame number to write. 
+                //!
+                //! \return this, just to concatenate operations
+                //!
+                WriteSequenceYUV& operator[](uint64 frame);
+                
+                //!
+                //! \brief Access X size of sequence frames
+                //!
+                //! \return sizeX of the frames in the sequence (0 when no information of frame size is found)
+                //!
+                uint64 size_x() const;
+
+                //!
+                //! \brief Access Y size of sequence frames
+                //!
+                //! \return sizeY of the frames in the sequence (0 when no information of frame size is found)
+                //!
+                uint64 size_y() const;
+
+                //!
+                //! \brief Access frames per second
+                //!
+                //! \return frames per second of the sequence (0.0 when no information of fps is found)
+                //!
+                float64 fps() const;
+
+                //!
+                //! \brief Access start frame number in the sequence
+                //!
+                //! \return start frame number of sequence
+                //!
+                uint64 startframe() const;
+
+                //!
+                //! \brief Access end frame number in the sequence
+                //!
+                //! \return end frame number of sequence
+                //!
+                uint64 endframe() const;
+                
+                //!
+                //! \brief Access format of sequence
+                //!
+                //! \return SeqFormat enumerate with the format information of the sequence
+                //!
+                SeqFormat format() const;
+
+                //!
+                //! \brief Access channels vector
+                //!
+                //! \return Vector of strings containg the channels to write.
+                //!
+                std::vector<std::string> channels() const;
+
+                //!
+                //! \brief Access frame pointer
+                //!
+                //! \return the frame number of the next frame to be written.
+                //!
+                uint64 frame_pointer() const;   
+                
+                //!
+                //! \brief Consult end of sequence state.
+                //!
+                //! \return True if _frame_count has surpassed _endframe, false if not. 
+                bool eos() const; 
+                
+                //!
+                //! \brief Get the path to the sequence file.
+                //!
+                //! \return A string containing the file path used to open the sequence file.
+                std::string filename() const; 
+                
+            private:
+
+                //! Stores filename of the sequence on disk
+                std::string _filename;
+                
+                //! Stores the comment present on the .dat file
+                std::string _comment;
+                
+                //! Output stream to the sequence file.
+                // Comment the following line to restore the behaviour of this class to its previous version (no random frame access). 
+                std::fstream _fp; 
+
+                //! Variable to keep track of the frame to be written next
+                uint64 _framecount;
+
+                //! Store the size X of the sequence in pixels
+                uint64 _sizex;
+
+                //! Store the size Y of the sequence in pixels
+                uint64 _sizey;
+
+                //! Stores the start frame of the sequence
+                uint64 _startframe;
+
+                //! Stores the end frame of the sequence
+                uint64 _endframe;
+
+                //! Frames per second of the sequence. 0.0 if unknown
+                float64 _fps;
+
+                //! Enumerate with the output format of the sequence
+                SeqFormat _format;
+
+                //! Store frame size (needed when jumping between frames in yuv format)
+                uint64 _yuvframesize;
+
+                //! Store the channels to write in a vector of strings
+                std::vector<std::string> _channels;      
+                
+                //! Signal if the sequence has reached the programmed end of file.
+                bool _eos; 
+                
+                //!
+                //! \brief Checks frame is within limits, ortherwise throws exception
+                //!
+                //! \param[in] frame: frame to check
+                //!
+                void check_frame(uint64 frame) throw (ImagePlusError);                
+        };  //class WriteSequence.
+        
+    }   //namespace io
+}   //namespace imageplus
+
+#endif /*IMAGEPLUS_IO_WRITESEQUENCE_HPP_*/

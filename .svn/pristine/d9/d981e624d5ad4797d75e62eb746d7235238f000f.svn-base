@@ -1,0 +1,423 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file structuring_element.hpp
+//!
+//!  Class to define structuring elements
+//!
+
+#ifndef IMAGEPLUS_MORPHOLOGY_STRUCTURING_ELEMENT_HPP
+#define IMAGEPLUS_MORPHOLOGY_STRUCTURING_ELEMENT_HPP
+
+#include <imageplus/core.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace morphology
+        {
+
+
+            //!
+            //! \brief Class for flat structuring elements (SE) in morphological operations
+            //!
+            //! This class allows constructing flat structuring elements. \n
+            //! The structuring element consists of a pattern specified as the coordinates
+            //! of a number of discrete points relative to some origin. Normally cartesian
+            //! coordinates are used and so a convenient way of representing the element is 
+            //! as a small image (2D case) or volume (3D case) on a rectangular grid.
+            //! \image html se.png
+            //! Although a rectangular grid is used to represent the structuring element, not 
+            //! every point in that grid is part of the structuring element (i.e. active) in general. 
+            //! Hence the elements shown in the figure may contain some blanks (inactive positions). 
+            //! When a morphological operation is carried out, the origin of the structuring 
+            //! element is typically translated to each pixel position in the image in turn, and 
+            //! then the points within the translated structuring element are compared with the 
+            //! underlying image pixel values. The details of this comparison, and the effect
+            //! of the outcome depend on which morphological operator is being used. \n\n
+            //! Simple Structuring Elements:\n
+            //! Simple structuring elements are a special case: all sides are equal and have an 
+            //! odd size. The origin is at the center of the SE. These SE are the most frequently used.
+            //! Most morphological operations have fast implementations for simple SE.\n 
+            //! In 2D there are two possible shapes for simple SE : a cross (4 connectivity) or a filled square (8 connectivity)
+            //! In 3D there are two possible shapes for simple SE : a 3D cross (6 connectivity) or a filled cube (26 connectivity)\n
+            //! Arbitrary shape Structuring Elements:\n
+            //! The general case. Any shape is allowed, sides can be of different sizes, even or odd, and the origin
+            //! can be situated in any place in the SE.
+            //! Operations for arbitrary SE generally are less efficient.
+            //!
+            //! \tparam N : Dimensionality of the SE. 2 for images and 3 for volumes.
+            //!
+            //! \sa Erosion
+            //!
+            //! \code
+            //! StructuringElement<2> se1(3,4);  // 2D simple structuring element, size 3x3, connectivity 4 (cross)
+            //! \endcode
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 10-3-2010
+            //!
+
+            template<std::size_t N>
+            class StructuringElement
+            {
+                public:
+
+                    //!
+                    //! \brief Default Constructor
+                    //!
+                    //! Creates a simple 3x3 (2D) or 3x3x3 (3D) SE. 
+                    //! In 2D is a square where all elements are active (8 connectivity) and in 3D is a cube 
+                    //! with all elements active (26 connectivity). 
+                    //! The origin is located at the center in both cases.
+                    //!
+                    StructuringElement () throw (ImagePlusError) 
+                            : _simple(true), _iterations(1)
+                    {
+                        int64 size = 3;
+
+                        switch (N)
+                        {
+                            case 2:
+                                _connectivity = 8;
+                                _displacements.reserve(size*size);
+                                _origin = Coord<int64,N>(size/2, size/2);
+                                _values = MultiArray<bool,N>(size, size);
+                                _values = true;
+
+                                for (int64 j=0; j < size; ++j)
+                                for (int64 i=0; i < size; ++i)
+                                {
+                                    _displacements.push_back(Coord<int64,N>(i - size/2, j - size/2));
+                                }
+                                
+                                break;
+
+                            case 3:
+                                _connectivity=26;
+                                _displacements.reserve(size*size*size);
+                                _origin = Coord<int64,N>(size/2, size/2, size/2);
+                                _values = MultiArray<bool,N>(size, size, size);                            
+                                _values = true;
+
+                                for (int64 k=0; k < size; ++k)
+                                for (int64 j=0; j < size; ++j)
+                                for (int64 i=0; i < size; ++i)
+                                {
+                                    _displacements.push_back(Coord<int64,N>(i - size/2, j - size/2, k - size/2));
+                                }
+                            
+                                break;
+
+                            default:
+                                throw ImagePlusError ("SE dimensionality must be 2 (rectangle) or 3 (volume)");
+                        }
+                    };
+
+
+                    //!
+                    //! \brief Constructor for simple structuring elements 
+                    //!
+                    //! Creates a simple SE where all the sides are equal and the origin is located at the center.
+                    //! In 2D is a square (8 connectivity) and in 3D is a cube (26 connectivity). 
+                    //! The origin is located at the center in both cases. 
+                    //!
+                    //! \param[in] size:         Size of the sides of the SE. Must be odd and >= 3
+                    //! \param[in] connectivity: Number of neighbors accessible from a given position (4 / 8 for 2D, 6 / 26 for 3D)
+                    //!
+                    StructuringElement (uint64 size, uint64 connectivity) throw (ImagePlusError) 
+                            : _simple(true), _connectivity(connectivity)
+                    {
+                        if (size % 2 == 0)
+                        {
+                            throw ImagePlusError ("SE size must be odd");
+                        }
+
+                        const uint64 kernel_size = 3;
+                        const uint64 mid         = kernel_size/2;
+
+
+                        // Number of iterations of a simple 3x3 SE to obtain an equivalent SE of size 'size'
+                        _iterations = (size + size / 2 ) / kernel_size;
+
+
+                        //
+                        // Allocate _values and _displacements
+                        //
+                        std::vector<uint64> val_dims(N,0);
+                        uint64 num_elements = 1;
+                        for (uint64 j = 0; j < N; ++j)
+                        {
+                            val_dims[j]   = kernel_size;
+                            num_elements *= kernel_size;
+                        }
+
+                        _values = MultiArray<bool,N>(val_dims);
+                        _displacements.reserve(num_elements);
+
+                        switch (N)
+                        {
+                            case 2:
+                            {
+                                // Origin located in the center of the se
+                                _origin = Coord<int64,N>(kernel_size/2, kernel_size/2);
+
+                                switch (_connectivity)
+                                {
+                                    case 4:
+                                    {
+                                        _values = false;
+
+                                        bool* pdata = _values.data();
+                                        for (uint64 i = 0; i < kernel_size; ++i)
+                                        for (uint64 j = 0; j < kernel_size; ++j)
+                                        {
+                                            if (i == mid || j == mid)
+                                            {
+                                                *pdata = true;
+                                            }
+                                            pdata++;
+                                        }
+                                        break;
+                                    }
+                                    case 8:
+                                    {
+                                        _values = true;
+                                        break;
+                                    }
+                                    default:
+                                        throw ImagePlusError ("Connectivity must be 4 or 8");
+                                }
+
+                                // Fill the array of coordinates (relative to the origin) for the valid elements
+                                bool* pdata = _values.data();
+                                for (int64 i = 0; i < (int64)kernel_size; ++i)
+                                for (int64 j = 0; j < (int64)kernel_size; ++j)
+                                {
+                                    if (*pdata == true)
+                                    {
+                                        _displacements.push_back(Coord<int64,N>(j - _origin[0], i - _origin[1]));
+                                    }
+                                    pdata++;
+                                }
+                            
+                                break;
+                            }
+                            case 3:
+                            {
+                                // Origin located in the center of the se
+                                _origin = Coord<int64,N>(kernel_size/2, kernel_size/2, kernel_size/2);
+
+                                switch (_connectivity)
+                                {
+                                    case 6:
+                                    {   _values = false;
+                                    
+                                    
+                                        bool* pdata = _values.data();
+                                        for (uint64 i = 0; i < kernel_size; ++i)
+                                        for (uint64 j = 0; j < kernel_size; ++j)
+                                        for (uint64 k = 0; k < kernel_size; ++k)
+                                        {
+                                            if (i == mid || j == mid || k == mid)
+                                            {
+                                                *pdata = true;
+                                            }
+                                            pdata++;
+                                        }
+                                        
+                                        break;
+                                    }
+                                    case 18:
+                                    {
+                                        // If you need this case, go an implement it yourself!
+                                        throw ImagePlusNotImplemented ("Not implemented");
+                                        break;
+                                    }
+                                    case 26:
+                                    {
+                                        _values = true;
+                                        break;
+                                    }
+                                    default:
+                                        throw ImagePlusError ("Connectivity must be 6, 18 or 26");
+                                }
+
+                                // Fill the array of coordinates (relative to the origin) for the valid elements
+                                bool* pdata = _values.data();
+                                for (int64 i = 0; i < (int64)kernel_size; ++i)
+                                for (int64 j = 0; j < (int64)kernel_size; ++j)
+                                for (int64 k = 0; k < (int64)kernel_size; ++k)
+                                {
+                                    if (*pdata == true)
+                                    {
+                                        _displacements.push_back(Coord<int64,N>(k - _origin[0], j - _origin[1], i - _origin[2]));
+                                    }
+                                    pdata++;
+                                }
+
+                                break;
+                            }
+
+                            default:
+                                throw ImagePlusError ("StructuringElement: SE dimensionality must be 2 (rectangle) or 3 (volume)");
+                        }
+                    
+                    };
+
+
+                    //!
+                    //! \brief Constructor for non-simple Structuring Elements 
+                    //!
+                    //! \param[in] se           : Multiarray<bool,2> representing the structuring element
+                    //! \param[in] origin       : Coordinate of the origin of the SE in the multiarray 'se'
+                    //!
+                    //! \note Connectivity parameter is meaningless and not used in this case 
+                    //!
+                    StructuringElement (const MultiArray<bool,N>& se, const Coord<int64,N>& origin) 
+                            : _origin(origin), _values(se), _simple(false), _connectivity(0), _iterations(1)
+                    {
+
+                        // Reserve memory
+                        _displacements.reserve(se.num_elements());
+
+                        switch (N)
+                        {
+                            case 2:
+                            {
+                                // Fill the array of coordinates (relative to the origin) for the valid elements
+                                bool* pval = _values.data();
+                                for (uint64 j=0; j < _values.dims(1); ++j)
+                                for (uint64 i=0; i < _values.dims(0); ++i)
+                                {
+                                    if (*pval == true)
+                                    {
+                                        _displacements.push_back(Coord<int64,N>(i - _origin[0], j - _origin[1]));
+                                    }
+                                    pval++;
+                                }
+                                break;
+
+                            }
+                            case 3:
+                            {
+                                // Fill the array of coordinates (relative to the origin) for the valid elements
+                                bool* pval = _values.data();
+                                for (uint64 k=0; k < _values.dims(2); ++k)
+                                for (uint64 j=0; j < _values.dims(1); ++j)
+                                for (uint64 i=0; i < _values.dims(0); ++i)
+                                {
+                                    if (*pval == true)
+                                    {
+                                        _displacements.push_back(Coord<int64,N>(i - _origin[0], j - _origin[1], k - _origin[2]));
+                                    }
+                                    pval++;
+                                }
+                                break;
+                            }
+                            default:
+                                throw ImagePlusError ("StructuringElement: SE dimensionality must be 2 (rectangle) or 3 (volume)");
+                        }
+                    };
+
+
+                    //!
+                    //! \brief Number of times the SE will be iterated.
+                    //!
+                    //! This is only used for simple SE (see definition of 'simple' in the description of the class)
+                    //! For non-simple SEs, this value is always one.
+                    //!
+                    //! \return the number of times the SE will be iterated
+                    //!
+                    uint64 iterations() const
+                    {
+                        return _iterations;
+                    };
+
+                    //!
+                    //! \brief Connectivity of the SE
+                    //!
+                    //! \return Connectivity of the SE
+                    //!
+                    uint64 connectivity() const
+                    {
+                        return _connectivity;
+                    };
+
+
+                    //!
+                    //! \brief Whether the SE is simple of not
+                    //!
+                    //! \return True if the SE is simple, false otherwise (see definition of 'simple' in the description of the class)
+                    //!
+                    bool simple() const
+                    {
+                        return _simple;
+                    };
+
+
+                    //!
+                    //! \brief Read only acessor for the number of 'active' elements in the structuring element
+                    //!
+                    //! \return Number of 'active' elements in the structuring element
+                    //!
+                    uint64 num_active_elements() const
+                    {
+                        return _displacements.size();
+                    };
+
+                    //!
+                    //! \brief Read only acessor for the coordinate of active element 'k' of the se.
+                    //!
+                    //! \param[in] k: Index of the element (only active elements are considered)
+                    //!
+                    //! \return Coordinate (relative to center) of structuring element 'k'                     
+                    //!
+                    Coord<int64,N> element_coord(uint64 k) const
+                    {
+                        return _displacements[k];
+                    };
+
+
+                    //!
+                    //! \brief Read only acessor for the coordinate of the origin of the se
+                    //!
+                    //! \return Coordinate of the origin of structuring element
+                    //!
+                    Coord<int64,N> origin() const
+                    {
+                        return _origin;
+                    };
+
+
+                private:
+                    //! Coordinate of the origin of the SE in the multiarray 'se'
+                    Coord<int64,N>                _origin;
+
+                    //! Coordinates of the structuring element relative to the center of the se.
+                    std::vector< Coord<int64,N> > _displacements; 
+
+                    //! Values of the structuring element. Only used for non-simple structuring elements
+                    MultiArray<bool,N>               _values;
+
+                    //! The SE is squared or cubic with the origin at the center
+                    bool _simple;
+
+                    //! Connectivity of the structuring element
+                    uint64 _connectivity;
+
+                    //! Number of times the element is to be applied. This is only used in the case of simple kernels.
+                    uint64 _iterations;
+            };
+
+        }
+    }
+}
+
+#endif // IMAGEPLUS_MORPHOLOGY_STRUCTURING_ELEMENT_HPP

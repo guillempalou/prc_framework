@@ -1,0 +1,1488 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+#ifdef USE_XML
+//
+// - NAME of your tool
+//   - This is mandatory
+//   - Avoid the character '-', use always '_' 
+// - GROUP where your tool belong (tools/GROUP directory)
+//   - This is optional
+//   - Comment the second definition to not group your tool
+//
+#define IMAGEPLUS_TOOL_CONFIG_NAME  ranker
+#define IMAGEPLUS_TOOL_CONFIG_GROUP descriptors
+
+//
+// Include tool_config.hpp header 
+//
+// Note that it is mandatory to FIRST define the name (and group)
+// of your tool, and LATER on include this header.
+//
+#include <imageplus/toolbox/tool_config.hpp>
+#include <boost/filesystem.hpp>
+
+
+
+//
+// ImagePlus headers
+//
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <imageplus/descriptors/color/color_layout.hpp>
+#include <imageplus/descriptors/color/color_structure.hpp>
+#include <imageplus/descriptors/color/dominant_color.hpp>
+#include <imageplus/descriptors/texture/edge_histogram.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+
+//
+// Namespaces
+//
+using namespace std;
+using namespace imageplus;
+using namespace io;
+using namespace descriptors;
+using namespace XERCES_CPP_NAMESPACE;
+
+//! Comparison method to be used in the std::multimap because the similarity measures
+//! must be sorted in descending order.
+struct classcomp {
+    
+    //! Function that compare two key values to be sorted in descending order.
+    //! \param[in] a: first key value to be compared
+    //! \param[in] b: second key value to be compared
+    //!
+    //! \return true if a is to be placed at an earlier position than b.
+  bool operator() (const float64& a, const float64& b) const
+  {return a>b;}
+};
+
+
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+    
+    "An example of how to develop your RANKER.\n";
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+    "This tool allows the user to carry out a search on a database given an example, which is called Query by Example. " +
+    "The user selects which image want to be search for similar ones by giving the filename of the XML containing its " +
+    "visual descriptors, which has been previously created by using the bpt_population tool. The search is carried out by " +
+    "using similarity functions between the descriptors of the query image and each target image from the search space. " +
+    "This tool will return the most similar images to the query with a similarity greater than the MinScore. " +
+    "At the moment, this tool is not working at the region level\n";
+
+
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+// Your Arguments
+string query;
+string database;
+string results;
+
+    // Your Options:
+uint32 VDEdgeHistogram;
+uint32 VDColorStructure;
+uint32 VDColorLayout;
+uint32 VDDominantColor;
+
+float64 EdgeHistogramWeight;
+float64 ColorStructureWeight;
+float64 ColorLayoutWeight;
+float64 DominantColorWeight;
+
+float64 MinScore;
+uint64 FusionCriteria;
+uint64 MaxResults;
+    
+    
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+
+VDEdgeHistogram = 0;
+VDColorStructure = 0;
+VDColorLayout = 0;
+VDDominantColor = 0;
+
+EdgeHistogramWeight = 1;
+ColorStructureWeight = 1;
+ColorLayoutWeight = 1;
+DominantColorWeight = 1;
+
+MinScore = 0.7;
+FusionCriteria = 2;
+MaxResults = 0;
+    
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description 
+    // and an optional abreviature
+    //
+IMAGEPLUS_TOOL_CONFIG_OPTION(VDEdgeHistogram, "Whether EdgeHistogram is considered." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(VDColorStructure, "Whether ColorStructure is considered.");
+IMAGEPLUS_TOOL_CONFIG_OPTION(VDColorLayout, "Whether ColorLayout is considered." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(VDDominantColor, "Whether DominantColor is considered." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(EdgeHistogramWeight, "Weight for EdgeHistogram descriptor." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(ColorStructureWeight, "Weight for ColorStructure descriptor." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(ColorLayoutWeight, "Weight for ColorLayout descriptor." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(DominantColorWeight, "Weight for DominantColor descriptor." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(MinScore, "Minimum similarity to be considered in the results." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(FusionCriteria, "Fusion Criteria: 1 (Position) or 2 (WeightedDistance)." );
+IMAGEPLUS_TOOL_CONFIG_OPTION(MaxResults, "Maximum number of results. If 0, it is not considered." );
+
+
+    
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description 
+    // and an optional abreviature
+    //
+
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description. 
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments 
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+IMAGEPLUS_TOOL_CONFIG_ARGUMENT ( query  , "Query image filename");
+IMAGEPLUS_TOOL_CONFIG_ARGUMENT ( database  , "Searching Database");
+IMAGEPLUS_TOOL_CONFIG_ARGUMENT ( results  , "Directory to store the results");
+
+
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+    IMAGEPLUS_TOOL_CONFIG_READ( query    );
+    IMAGEPLUS_TOOL_CONFIG_READ( database );
+    IMAGEPLUS_TOOL_CONFIG_READ( results  );
+    
+    IMAGEPLUS_TOOL_CONFIG_READ( VDEdgeHistogram );
+    IMAGEPLUS_TOOL_CONFIG_READ( VDColorStructure );
+    IMAGEPLUS_TOOL_CONFIG_READ( VDColorLayout );
+    IMAGEPLUS_TOOL_CONFIG_READ( VDDominantColor );
+    IMAGEPLUS_TOOL_CONFIG_READ( EdgeHistogramWeight );
+    IMAGEPLUS_TOOL_CONFIG_READ( ColorStructureWeight );
+    IMAGEPLUS_TOOL_CONFIG_READ( ColorLayoutWeight );
+    IMAGEPLUS_TOOL_CONFIG_READ( DominantColorWeight );
+    IMAGEPLUS_TOOL_CONFIG_READ( MinScore );
+    IMAGEPLUS_TOOL_CONFIG_READ( FusionCriteria );
+    IMAGEPLUS_TOOL_CONFIG_READ( MaxResults );
+
+    
+//
+// This is the "main" function of your tool.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the exemple with "--help" to see your configuration.
+//
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{   
+#ifdef USE_XML
+		FILE* fp;
+		std::vector<string> entries;
+		float64 max_dist_cs = 1.66624;
+		float64 max_dist_cl = 55.7552;
+		float64 max_dist_dc = 2.08978;
+		float64 max_dist_teh = 14.2218;
+		std::vector<float64> dist_cs;
+		std::vector<float64> dist_cl;
+		std::vector<float64> dist_dc;
+		std::vector<float64> dist_teh;
+		
+        uint32 num_vds = cfg.VDColorStructure + cfg.VDDominantColor + cfg.VDColorLayout + cfg.VDEdgeHistogram;
+        
+        fp = fopen( cfg.database.c_str(), "r");
+        
+    	/* Count the number of entries */
+    	int numOfEntries = 0;
+    	char c;
+    	while ((c = getc(fp)) != EOF) {
+    		if (c == '\n')
+    			numOfEntries++;
+    	}
+    	
+    	if( numOfEntries == 0 )
+    	{
+    		throw ImagePlusError("No entries found in target database\n");
+    	}
+    	
+    	/* Set the pointer back to the beginning of the file */
+    	rewind(fp);
+    	
+    	/* Parse the URIs of the regions XML files */
+    	int i, ret = 0;
+    	char contentUri[256];
+    	entries.resize(numOfEntries);
+    	for ( i = 0; i < numOfEntries && ret != EOF; i++) {
+
+    		ret = fscanf( fp, "%s", contentUri );					
+    		if (ret != EOF)
+    		{
+    			entries[i] = contentUri;
+    		}
+    		else 
+    			printf("WARNING(DatabaseInit): Unexpected end of file after entry %d\n", i+1);
+    	}
+    	
+    	XERCES_CPP_NAMESPACE::DOMDocument* doc;
+    	XERCES_CPP_NAMESPACE::DOMBuilder        *parser;
+	    XERCES_CPP_NAMESPACE::DOMNode* curr_node = xml_init(cfg.query, doc, parser);
+	    
+        //Check that the name of the node is "Mpeg7"
+        if(strcmp(toNative(curr_node->getNodeName()).c_str(),"Mpeg7") != 0)
+            throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+        
+        // Check that there is a sequence of sons named:
+        // "Description/MultimediaContent/Image/CreationInformation/Creation/CreationTool"
+        // and returns a pointer to it
+        curr_node = xml_get_check_son(curr_node, "Description");
+        curr_node = xml_get_check_son(curr_node, "MultimediaContent");
+        curr_node = xml_get_check_son(curr_node, "Image");
+        curr_node = xml_get_check_son(curr_node, "SpatialDecomposition");
+        DOMNamedNodeMap *node_attr = curr_node->getAttributes();
+        DOMNode* node_size = node_attr->getNamedItem(fromNative("size").c_str());
+        string num_region = toNative(node_size->getNodeValue());
+        string auxiliar("Region");
+        num_region = auxiliar + num_region;
+        
+        
+        curr_node = xml_get_check_son_by_field(curr_node, "StillRegion", "id", num_region.c_str());
+//        curr_node = xml_get_check_son(curr_node, "Collection");
+        
+        std::vector<std::vector<int> > positions;
+        std::vector<float64> weights;
+        int vds_used = 0;
+        positions.resize(numOfEntries);
+        for(i=0; i<numOfEntries; i++)
+        {
+        	positions[i].resize(num_vds);
+        }
+        
+    	if(cfg.VDColorStructure) //ColorStructureType
+    	{
+    		std::vector<uint32> histo_query;
+            DOMNode* curr_node2 = xml_get_check_son_by_field(curr_node, "VisualDescriptor", "xsi:type", "ColorStructureType");
+            if (curr_node2==0x0)
+            {
+            	throw ImagePlusError("ColorStructureType not found");
+            }
+            else
+            {
+            	uint32 numvalues_query;
+            	DOMNamedNodeMap *node_attr = curr_node2->getAttributes();
+                DOMNode* curr_node3 = node_attr->getNamedItem(fromNative("numValues").c_str());
+                sscanf(toNative(curr_node3->getNodeValue()).c_str(), "%u", &numvalues_query);
+                histo_query.resize(numvalues_query);
+                curr_node3 = xml_get_check_son(curr_node2, "Values");
+                string text = xml_get_text_son(curr_node3, curr_node3);
+                const char* text2 = text.c_str();
+                uint32 j = 0;
+                int pos = 0;
+                for( j = 0; j < numvalues_query; j++)
+                {
+                	string value;
+                	value.push_back(text2[pos]);
+                	pos++;
+                	while(text2[pos]!=' ')
+                	{
+                		value.push_back(text2[pos]);
+                		pos++;
+                	}
+                	pos++;
+                	
+                	uint32 val;
+                	sscanf(value.c_str(), "%u", &val);
+                	histo_query[j]=val;
+                	
+                }
+            }
+        	
+        	for( i = 0; i < numOfEntries; i++)
+        	{
+                // Complete the path
+                boost::filesystem::path target( entries[i] );
+                target = boost::filesystem::system_complete(target);
+                
+                XERCES_CPP_NAMESPACE::DOMDocument* doc2;
+                XERCES_CPP_NAMESPACE::DOMBuilder        *parser2;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node4 = xml_init(target.string(), doc2, parser2);
+        	    
+                //Check that the name of the node is "Mpeg7"
+                if(strcmp(toNative(curr_node4->getNodeName()).c_str(),"Mpeg7") != 0)
+                    throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+                
+                // Check that there is a sequence of sons named:
+                // "Description/MultimediaContent/Image/CreationInformation/Creation/CreationTool"
+                // and returns a pointer to it
+                curr_node4 = xml_get_check_son(curr_node4, "Description");
+                curr_node4 = xml_get_check_son(curr_node4, "MultimediaContent");
+                curr_node4 = xml_get_check_son(curr_node4, "Image");
+                curr_node4 = xml_get_check_son(curr_node4, "SpatialDecomposition");
+                DOMNamedNodeMap *node_attr_2 = curr_node4->getAttributes();
+                DOMNode* curr_node_reg = node_attr_2->getNamedItem(fromNative("size").c_str());
+                string num_region = toNative(curr_node_reg->getNodeValue());
+                string auxiliar("Region");
+                num_region = auxiliar + num_region;
+                curr_node4 = xml_get_check_son_by_field(curr_node4, "StillRegion", "id", num_region.c_str());
+//                curr_node4 = xml_get_check_son(curr_node4, "Collection");
+                
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node5 = xml_get_check_son_by_field(curr_node4, "VisualDescriptor", "xsi:type", "ColorStructureType");
+                if (curr_node5==0x0)
+                {
+                	throw ImagePlusError("ColorStructureType not found");
+                }
+                else
+                {
+                	uint32 numvalues;
+                    std::vector<uint32> histo_target;
+                	DOMNamedNodeMap *node_attr = curr_node5->getAttributes();
+                    DOMNode* curr_node6 = node_attr->getNamedItem(fromNative("numValues").c_str());
+                    sscanf(toNative(curr_node6->getNodeValue()).c_str(), "%u", &numvalues);
+                    histo_target.resize(numvalues);
+                    curr_node6 = xml_get_check_son(curr_node5, "Values");
+                    string text = xml_get_text_son(curr_node6, curr_node6);
+                    const char* text2 = text.c_str();
+                    uint32 j = 0;
+                    int pos = 0;
+                    for( j = 0; j < numvalues; j++)
+                    {
+                    	string value;
+                    	value.push_back(text2[pos]);
+                    	pos++;
+                    	while(text2[pos]!=' ')
+                    	{
+                    		value.push_back(text2[pos]);
+                    		pos++;
+                    	}
+                    	pos++;
+                    	
+                    	uint32 val;
+                    	sscanf(value.c_str(), "%u", &val);
+                    	histo_target[j]=val;
+                    	
+                    }
+                    float64 dist = dist_cs_jeffrey(histo_query,histo_target);
+                    if(dist >= max_dist_cs)
+                    {
+                        dist = 0;
+                    }
+                    else
+                    {
+                        dist = 1-dist/max_dist_cs;
+                    }
+                    dist_cs.push_back(dist);
+                }
+                
+                parser2->release();
+                XMLPlatformUtils::Terminate();
+        	}
+    	}
+    	if(cfg.VDDominantColor) //DominantColorType
+    	{
+    		std::vector<boost::array< uint32,3> > centroids;
+        	std::vector<boost::array<uint32,3> > color_variance;
+        	std::vector<uint32> percentages;
+        	uint32 spatial_coherency;
+    		
+    		DOMNode* curr_node2 = xml_get_check_son_by_field(curr_node, "VisualDescriptor", "xsi:type", "DominantColorType");
+            if (curr_node2==0x0)
+            {
+            	throw ImagePlusError("DominantColorType not found");
+            }
+            else
+            {
+            	DOMNode* curr_node3 = xml_get_check_son(curr_node2, "SpatialCoherency");
+            	string text = xml_get_text_son(curr_node3, curr_node3);
+            	sscanf(text.c_str(), "%u", &spatial_coherency);
+            	
+            	DOMNodeList *child_list;
+            	int64 num_children;
+                // Gets the list of children
+                child_list = curr_node2->getChildNodes();
+                
+                // Gets the number of children
+                num_children = child_list->getLength();
+                DOMNode *son;
+                for(int64 ii=0; ii<num_children; ii++ )
+                {  
+                	son = child_list->item(ii);
+                    if(son->getNodeType() == DOMNode::ELEMENT_NODE)
+                    {
+                        if(strcmp(toNative(son->getNodeName()).c_str(), "Value") == 0)
+                        {
+                        	uint32 percentage;
+                        	DOMNode* curr_node_aux = xml_get_check_son(son, "Percentage");
+                        	text = xml_get_text_son(curr_node_aux, curr_node_aux);
+                        	sscanf(text.c_str(),"%u",&percentage);
+                        	percentages.push_back(percentage);
+                        	
+                        	boost::array< uint32,3> curr_centroid;
+                        	curr_node_aux = xml_get_check_son(son, "Index");
+                        	text = xml_get_text_son(curr_node_aux, curr_node_aux);
+                        	uint32 j = 0;
+                        	int pos = 0;
+                        	for(j=0; j < 2; j++)
+                        	{
+                        		string value;
+                        		value.push_back(text[pos]);
+                        		pos++;
+                            	while(text[pos]!=' ')
+                            	{
+                            		value.push_back(text[pos]);
+                            		pos++;
+                            	}
+                            	pos++;
+                            	sscanf(value.c_str(), "%u", &curr_centroid[j]);
+                        	}
+                        	string value_aux;
+                        	string::iterator it;
+                        	for(it=text.begin()+pos;it!=text.end();++it)
+                        	{
+                        		value_aux.push_back(*it);
+                        	}
+                        	sscanf(value_aux.c_str(), "%u", &curr_centroid[2]);
+                        	centroids.push_back(curr_centroid);
+                        	
+                        	boost::array< uint32,3> curr_color_variance;
+                        	curr_node_aux = xml_get_check_son(son, "ColorVariance");
+                        	text = xml_get_text_son(curr_node_aux, curr_node_aux);
+                        	pos = 0;
+                        	for(j=0; j < 2; j++)
+                        	{
+                        		string value;
+                        		value.push_back(text[pos]);
+                        		pos++;
+                            	while(text[pos]!=' ')
+                            	{
+                            		value.push_back(text[pos]);
+                            		pos++;
+                            	}
+                            	pos++;
+                            	sscanf(value.c_str(), "%u", &curr_color_variance[j]);
+                        	}
+                        	value_aux.resize(0);
+                        	for(it=text.begin()+pos;it!=text.end();++it)
+                        	{
+                        		value_aux.push_back(*it);
+                        	}
+                        	sscanf(value_aux.c_str(), "%u", &curr_color_variance[2]);
+                        	color_variance.push_back(curr_color_variance);
+
+                        }
+                    }
+                }
+            }
+            
+        	for( i = 0; i < numOfEntries; i++)
+        	{
+                // Complete the path
+                boost::filesystem::path target( entries[i] );
+                target = boost::filesystem::system_complete(target);
+                
+                XERCES_CPP_NAMESPACE::DOMDocument* doc2;
+                XERCES_CPP_NAMESPACE::DOMBuilder        *parser2;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node4 = xml_init(target.string(), doc2, parser2);
+        	    
+                //Check that the name of the node is "Mpeg7"
+                if(strcmp(toNative(curr_node4->getNodeName()).c_str(),"Mpeg7") != 0)
+                    throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+                
+                // Check that there is a sequence of sons named:
+                // "Description/MultimediaContent/Image/CreationInformation/Creation/CreationTool"
+                // and returns a pointer to it
+                curr_node4 = xml_get_check_son(curr_node4, "Description");
+                curr_node4 = xml_get_check_son(curr_node4, "MultimediaContent");
+                curr_node4 = xml_get_check_son(curr_node4, "Image");
+                curr_node4 = xml_get_check_son(curr_node4, "SpatialDecomposition");
+                XERCES_CPP_NAMESPACE::DOMNamedNodeMap *node_attr = curr_node4->getAttributes();
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node_reg = node_attr->getNamedItem(fromNative("size").c_str());
+                num_region = toNative(curr_node_reg->getNodeValue());
+                string auxiliar("Region");
+                num_region = auxiliar + num_region;
+                curr_node4 = xml_get_check_son_by_field(curr_node4, "StillRegion", "id", num_region.c_str());
+//                curr_node4 = xml_get_check_son(curr_node4, "Collection");
+                
+                DOMNode* curr_node5 = xml_get_check_son_by_field(curr_node4, "VisualDescriptor", "xsi:type", "DominantColorType");
+                if (curr_node5==0x0)
+                {
+                	throw ImagePlusError("DominantColorType not found");
+                }
+                else
+                {
+                	std::vector<boost::array< uint32,3> > centroids_target;
+                	std::vector<boost::array<uint32,3> > color_variance_target;
+                	std::vector<uint32> percentages_target;
+                	uint32 spatial_coherency_target;
+                	
+                	DOMNode* curr_node6 = xml_get_check_son(curr_node5, "SpatialCoherency");
+                	string text = xml_get_text_son(curr_node6, curr_node6);
+                	sscanf(text.c_str(), "%u", &spatial_coherency_target);
+                	
+                	DOMNodeList *child_list;
+                	int64 num_children;
+                    // Gets the list of children
+                    child_list = curr_node5->getChildNodes();
+                    
+                    // Gets the number of children
+                    num_children = child_list->getLength();
+                    DOMNode *son;
+                    for(int64 ii=0; ii<num_children; ii++ )
+                    {  
+                    	son = child_list->item(ii);
+                        if(son->getNodeType() == DOMNode::ELEMENT_NODE)
+                        {
+                            if(strcmp(toNative(son->getNodeName()).c_str(), "Value") == 0)
+                            {
+                            	uint32 percentage;
+                            	DOMNode* curr_node_aux = xml_get_check_son(son, "Percentage");
+                            	text = xml_get_text_son(curr_node_aux, curr_node_aux);
+                            	sscanf(text.c_str(),"%u",&percentage);
+                            	percentages_target.push_back(percentage);
+                            	
+                            	boost::array< uint32,3> curr_centroid;
+                            	curr_node_aux = xml_get_check_son(son, "Index");
+                            	text = xml_get_text_son(curr_node_aux, curr_node_aux);
+                            	uint32 j = 0;
+                            	int pos = 0;
+                            	for(j=0; j < 2; j++)
+                            	{
+                            		string value;
+                            		value.push_back(text[pos]);
+                            		pos++;
+                                	while(text[pos]!=' ')
+                                	{
+                                		value.push_back(text[pos]);
+                                		pos++;
+                                	}
+                                	pos++;
+                                	sscanf(value.c_str(), "%u", &curr_centroid[j]);
+                            	}
+                            	string value_aux;
+                            	string::iterator it;
+                            	for(it=text.begin()+pos;it!=text.end();++it)
+                            	{
+                            		value_aux.push_back(*it);
+                            	}
+                            	sscanf(value_aux.c_str(), "%u", &curr_centroid[2]);
+                            	centroids_target.push_back(curr_centroid);
+                            	
+                            	
+                            	boost::array< uint32,3> curr_color_variance;
+                            	curr_node_aux = xml_get_check_son(son, "ColorVariance");
+                            	text = xml_get_text_son(curr_node_aux, curr_node_aux);
+                            	pos = 0;
+                            	for(j=0; j < 2; j++)
+                            	{
+                            		string value;
+                            		value.push_back(text[pos]);
+                            		pos++;
+                                	while(text[pos]!=' ')
+                                	{
+                                		value.push_back(text[pos]);
+                                		pos++;
+                                	}
+                                	pos++;
+                                	sscanf(value.c_str(), "%u", &curr_color_variance[j]);
+                            	}
+                            	value_aux.resize(0);
+                            	for(it=text.begin()+pos;it!=text.end();++it)
+                            	{
+                            		value_aux.push_back(*it);
+                            	}
+                            	sscanf(value_aux.c_str(), "%u", &curr_color_variance[2]);
+                            	color_variance_target.push_back(curr_color_variance);
+
+                            }
+                        }
+                    }
+                	
+//                    float64 dist = dist_dcd_percentage(0.5,centroids,centroids_target,percentages,percentages_target);
+                    float64 dist = dist_dcdcielab_percentage(0.5,centroids,centroids_target,percentages,percentages_target);
+                    if(dist >= max_dist_dc)
+                    {
+                        dist = 0;
+                    }
+                    else
+                    {
+                        dist = 1-dist/max_dist_dc;
+                    }
+                    dist_dc.push_back(dist);
+                }
+                parser2->release();
+                XMLPlatformUtils::Terminate();
+        	}
+    	}
+    	if(cfg.VDColorLayout) //ColorLayoutType
+    	{
+    		std::vector<uint32> y_coeff;
+        	std::vector<uint32> cb_coeff;
+        	std::vector<uint32> cr_coeff;
+    		DOMNode* curr_node2 = xml_get_check_son_by_field(curr_node, "VisualDescriptor", "xsi:type", "ColorLayoutType");
+            if (curr_node2==0x0)
+            {
+            	throw ImagePlusError("ColorLayoutType not found");
+            }
+            else
+            {
+            	uint32 num_y_coeff;
+            	uint32 num_c_coeff;
+            	
+            	DOMNamedNodeMap *node_attr = curr_node2->getAttributes();
+                DOMNode* curr_node3 = node_attr->getNamedItem(fromNative("numOfYCoeff").c_str());
+                sscanf(toNative(curr_node3->getNodeValue()).c_str(), "%u", &num_y_coeff);
+                curr_node3 = node_attr->getNamedItem(fromNative("numOfCCoeff").c_str());
+                sscanf(toNative(curr_node3->getNodeValue()).c_str(), "%u", &num_c_coeff);
+                
+                y_coeff.resize(num_y_coeff);
+                cb_coeff.resize(num_c_coeff);
+                cr_coeff.resize(num_c_coeff);
+                
+                curr_node3 = xml_get_check_son(curr_node2, "YCoeff");
+                DOMNode* curr_node4 = xml_get_check_son(curr_node3, "YDCCoeff");
+                string text = xml_get_text_son(curr_node4, curr_node4);
+                sscanf(text.c_str(), "%u", &y_coeff[0]);
+                
+                curr_node4 = xml_get_check_son(curr_node3, "YACCoeff");
+                text = xml_get_text_son(curr_node4, curr_node4);
+                uint32 j = 0;
+                int pos = 0;
+                for( j = 1; j < num_y_coeff; j++)
+                {
+                	string value;
+                	value.push_back(text[pos]);
+                	pos++;
+                	while(text[pos]!=' ')
+                	{
+                		value.push_back(text[pos]);
+                		pos++;
+                	}
+                	pos++;
+                	sscanf(value.c_str(), "%u", &y_coeff[j]);
+                	
+                }
+                
+                curr_node3 = xml_get_check_son(curr_node2, "CbCoeff");
+                curr_node4 = xml_get_check_son(curr_node3, "CbDCCoeff");
+                text = xml_get_text_son(curr_node4, curr_node4);
+                sscanf(text.c_str(), "%u", &cb_coeff[0]);
+                
+                curr_node4 = xml_get_check_son(curr_node3, "CbACCoeff");
+                text = xml_get_text_son(curr_node4, curr_node4);
+                pos = 0;
+                for( j = 1; j < num_c_coeff; j++)
+                {
+                	string value;
+                	value.push_back(text[pos]);
+                	pos++;
+                	while(text[pos]!=' ')
+                	{
+                		value.push_back(text[pos]);
+                		pos++;
+                	}
+                	pos++;
+                	sscanf(value.c_str(), "%u", &cb_coeff[j]);
+                	
+                }
+                
+                curr_node3 = xml_get_check_son(curr_node2, "CrCoeff");
+                curr_node4 = xml_get_check_son(curr_node3, "CrDCCoeff");
+                text = xml_get_text_son(curr_node4, curr_node4);
+                sscanf(text.c_str(), "%u", &cr_coeff[0]);
+                
+                curr_node4 = xml_get_check_son(curr_node3, "CrACCoeff");
+                text = xml_get_text_son(curr_node4, curr_node4);
+                pos = 0;
+                for( j = 1; j < num_c_coeff; j++)
+                {
+                	string value;
+                	value.push_back(text[pos]);
+                	pos++;
+                	while(text[pos]!=' ')
+                	{
+                		value.push_back(text[pos]);
+                		pos++;
+                	}
+                	pos++;
+                	sscanf(value.c_str(), "%u", &cr_coeff[j]);
+                	
+                }
+                
+            }
+        	for( i = 0; i < numOfEntries; i++)
+        	{
+                // Complete the path
+                boost::filesystem::path target( entries[i] );
+                target = boost::filesystem::system_complete(target);
+                
+                XERCES_CPP_NAMESPACE::DOMDocument* doc2;
+                XERCES_CPP_NAMESPACE::DOMBuilder        *parser2;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node5 = xml_init(target.string(), doc2, parser2);
+        	    
+                //Check that the name of the node is "Mpeg7"
+                if(strcmp(toNative(curr_node5->getNodeName()).c_str(),"Mpeg7") != 0)
+                    throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+                
+                // Check that there is a sequence of sons named:
+                // "Description/MultimediaContent/Image/CreationInformation/Creation/CreationTool"
+                // and returns a pointer to it
+                curr_node5 = xml_get_check_son(curr_node5, "Description");
+                curr_node5 = xml_get_check_son(curr_node5, "MultimediaContent");
+                curr_node5 = xml_get_check_son(curr_node5, "Image");
+                curr_node5 = xml_get_check_son(curr_node5, "SpatialDecomposition");
+                DOMNamedNodeMap *node_attr = curr_node5->getAttributes();
+                DOMNode* curr_node_reg = node_attr->getNamedItem(fromNative("size").c_str());
+                num_region = toNative(curr_node_reg->getNodeValue());
+                string auxiliar("Region");
+                num_region = auxiliar + num_region;
+                curr_node5 = xml_get_check_son_by_field(curr_node5, "StillRegion", "id", num_region.c_str());
+//                curr_node5 = xml_get_check_son(curr_node5, "Collection");
+                
+                DOMNode* curr_node6 = xml_get_check_son_by_field(curr_node5, "VisualDescriptor", "xsi:type", "ColorLayoutType");
+                if (curr_node6==0x0)
+                {
+                	throw ImagePlusError("ColorLayoutType not found");
+                }
+                else
+                {
+                	uint32 num_y_coeff_target;
+                	uint32 num_c_coeff_target;
+                	std::vector<uint32> y_coeff_target;
+                	std::vector<uint32> cb_coeff_target;
+                	std::vector<uint32> cr_coeff_target;
+                	
+                	DOMNamedNodeMap *node_attr = curr_node6->getAttributes();
+                    DOMNode* curr_node7 = node_attr->getNamedItem(fromNative("numOfYCoeff").c_str());
+                    sscanf(toNative(curr_node7->getNodeValue()).c_str(), "%u", &num_y_coeff_target);
+                    curr_node7 = node_attr->getNamedItem(fromNative("numOfCCoeff").c_str());
+                    sscanf(toNative(curr_node7->getNodeValue()).c_str(), "%u", &num_c_coeff_target);
+                    
+                    y_coeff_target.resize(num_y_coeff_target);
+                    cb_coeff_target.resize(num_c_coeff_target);
+                    cr_coeff_target.resize(num_c_coeff_target);
+                    
+                    curr_node7 = xml_get_check_son(curr_node6, "YCoeff");
+                    DOMNode* curr_node8 = xml_get_check_son(curr_node7, "YDCCoeff");
+                    string text = xml_get_text_son(curr_node8, curr_node8);
+                    sscanf(text.c_str(), "%u", &y_coeff_target[0]);
+                    
+                    curr_node8 = xml_get_check_son(curr_node7, "YACCoeff");
+                    text = xml_get_text_son(curr_node8, curr_node8);
+                    uint32 j = 0;
+                    int pos = 0;
+                    for( j = 1; j < num_y_coeff_target; j++)
+                    {
+                    	string value;
+                    	value.push_back(text[pos]);
+                    	pos++;
+                    	while(text[pos]!=' ')
+                    	{
+                    		value.push_back(text[pos]);
+                    		pos++;
+                    	}
+                    	pos++;
+                    	sscanf(value.c_str(), "%u", &y_coeff_target[j]);
+                    	
+                    }
+                    
+                    curr_node7 = xml_get_check_son(curr_node6, "CbCoeff");
+                    curr_node8 = xml_get_check_son(curr_node7, "CbDCCoeff");
+                    text = xml_get_text_son(curr_node8, curr_node8);
+                    sscanf(text.c_str(), "%u", &cb_coeff_target[0]);
+                    
+                    curr_node8 = xml_get_check_son(curr_node7, "CbACCoeff");
+                    text = xml_get_text_son(curr_node8, curr_node8);
+                    pos = 0;
+                    for( j = 1; j < num_c_coeff_target; j++)
+                    {
+                    	string value;
+                    	value.push_back(text[pos]);
+                    	pos++;
+                    	while(text[pos]!=' ')
+                    	{
+                    		value.push_back(text[pos]);
+                    		pos++;
+                    	}
+                    	pos++;
+                    	sscanf(value.c_str(), "%u", &cb_coeff_target[j]);
+                    	
+                    }
+                    
+                    curr_node7 = xml_get_check_son(curr_node6, "CrCoeff");
+                    curr_node8 = xml_get_check_son(curr_node7, "CrDCCoeff");
+                    text = xml_get_text_son(curr_node8, curr_node8);
+                    sscanf(text.c_str(), "%u", &cr_coeff_target[0]);
+                    
+                    curr_node8 = xml_get_check_son(curr_node7, "CrACCoeff");
+                    text = xml_get_text_son(curr_node8, curr_node8);
+                    pos = 0;
+                    for( j = 1; j < num_c_coeff_target; j++)
+                    {
+                    	string value;
+                    	value.push_back(text[pos]);
+                    	pos++;
+                    	while(text[pos]!=' ')
+                    	{
+                    		value.push_back(text[pos]);
+                    		pos++;
+                    	}
+                    	pos++;
+                    	sscanf(value.c_str(), "%u", &cr_coeff_target[j]);
+                    	
+                    }
+                    float64 dist = dist_color_layout(y_coeff, y_coeff_target, cb_coeff, cb_coeff_target, cr_coeff, cr_coeff_target);
+                    if(dist >= max_dist_cl)
+                    {
+                        dist = 0;
+                    }
+                    else
+                    {
+                        dist = 1-dist/max_dist_cl;
+                    }
+                    dist_cl.push_back(dist);
+                }
+                parser2->release();
+                XMLPlatformUtils::Terminate();
+        	}
+    	}
+    	if(cfg.VDEdgeHistogram) //TextureEdgeHistogramType
+    	{
+    		std::vector<uint32> histo_query;
+            DOMNode* curr_node2 = xml_get_check_son_by_field(curr_node, "VisualDescriptor", "xsi:type", "TextureEdgeHistogramType");
+            if (curr_node2==0x0)
+            {
+            	throw ImagePlusError("TextureEdgeHistogramType not found");
+            }
+            else
+            {
+                histo_query.resize(80);
+                DOMNode* curr_node3 = xml_get_check_son(curr_node2, "BinCounts");
+                string text = xml_get_text_son(curr_node3, curr_node3);
+                const char* text2 = text.c_str();
+                uint32 j = 0;
+                int pos = 0;
+                for( j = 0; j < 80; j++)
+                {
+                	string value;
+                	value.push_back(text2[pos]);
+                	pos++;
+                	while(text2[pos]!=' ')
+                	{
+                		value.push_back(text2[pos]);
+                		pos++;
+                	}
+                	pos++;
+                	
+                	uint32 val;
+                	sscanf(value.c_str(), "%u", &val);
+                	histo_query[j]=val;
+                	
+                }
+            }
+        	
+        	for( i = 0; i < numOfEntries; i++)
+        	{
+                // Complete the path
+                boost::filesystem::path target( entries[i] );
+                target = boost::filesystem::system_complete(target);
+                
+                XERCES_CPP_NAMESPACE::DOMDocument* doc2;
+                XERCES_CPP_NAMESPACE::DOMBuilder        *parser2;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node4 = xml_init(target.string(), doc2, parser2);
+        	    
+                //Check that the name of the node is "Mpeg7"
+                if(strcmp(toNative(curr_node4->getNodeName()).c_str(),"Mpeg7") != 0)
+                    throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+                
+                // Check that there is a sequence of sons named:
+                // "Description/MultimediaContent/Image/CreationInformation/Creation/CreationTool"
+                // and returns a pointer to it
+                curr_node4 = xml_get_check_son(curr_node4, "Description");
+                curr_node4 = xml_get_check_son(curr_node4, "MultimediaContent");
+                curr_node4 = xml_get_check_son(curr_node4, "Image");
+                curr_node4 = xml_get_check_son(curr_node4, "SpatialDecomposition");
+                DOMNamedNodeMap *node_attr = curr_node4->getAttributes();
+                DOMNode* curr_node_reg = node_attr->getNamedItem(fromNative("size").c_str());
+                num_region = toNative(curr_node_reg->getNodeValue());
+                string auxiliar("Region");
+                num_region = auxiliar + num_region;
+                curr_node4 = xml_get_check_son_by_field(curr_node4, "StillRegion", "id", num_region.c_str());
+//                curr_node4 = xml_get_check_son(curr_node4, "Collection");
+                
+                DOMNode* curr_node5 = xml_get_check_son_by_field(curr_node4, "VisualDescriptor", "xsi:type", "TextureEdgeHistogramType");
+                if (curr_node5==0x0)
+                {
+                	throw ImagePlusError("TextureEdgeHistogramType not found");
+                }
+                else
+                {
+                    std::vector<uint32> histo_target;
+                    histo_target.resize(80);
+                    DOMNode* curr_node6 = xml_get_check_son(curr_node5, "BinCounts");
+                    string text = xml_get_text_son(curr_node6, curr_node6);
+                    const char* text2 = text.c_str();
+                    uint32 j = 0;
+                    int pos = 0;
+                    for( j = 0; j < 80; j++)
+                    {
+                    	string value;
+                    	value.push_back(text2[pos]);
+                    	pos++;
+                    	while(text2[pos]!=' ')
+                    	{
+                    		value.push_back(text2[pos]);
+                    		pos++;
+                    	}
+                    	pos++;
+                    	
+                    	uint32 val;
+                    	sscanf(value.c_str(), "%u", &val);
+                    	histo_target[j]=val;
+                    	
+                    }
+                    float64 dist = dist_edge_histogram(histo_query,histo_target);
+                    if(dist >= max_dist_teh)
+                    {
+                        dist = 0;
+                    }
+                    else
+                    {
+                        dist = 1-dist/max_dist_teh;
+                    }
+                    dist_teh.push_back(dist);
+                }
+                parser2->release();
+                XMLPlatformUtils::Terminate();
+        	}
+    	}
+    	
+    	typedef multimap<float64,int,classcomp> multi_map_type;
+    	multi_map_type rank_global;
+    	multi_map_type rank_aux;
+    	if(cfg.FusionCriteria == 2) //Weighted distance
+    	{
+    	    std::vector<float64> global_dist;
+    	    global_dist.resize(numOfEntries);
+	        if(cfg.VDColorStructure)
+	        {
+	            for(int ii=0; ii<numOfEntries; ii++)
+	            {
+	                global_dist[ii] += cfg.ColorStructureWeight * dist_cs[ii]; 
+	            }
+	        }
+            if(cfg.VDDominantColor)
+            {
+                for(int ii=0; ii<numOfEntries; ii++)
+                {
+                    global_dist[ii] += cfg.DominantColorWeight * dist_dc[ii]; 
+                }
+            }
+            if(cfg.VDColorLayout)
+            {
+                for(int ii=0; ii<numOfEntries; ii++)
+                {
+                    global_dist[ii] += cfg.ColorLayoutWeight * dist_cl[ii]; 
+                }
+            }
+            if(cfg.VDEdgeHistogram)
+            {
+                for(int ii=0; ii<numOfEntries; ii++)
+                {
+                    global_dist[ii] += cfg.EdgeHistogramWeight * dist_teh[ii]; 
+                }
+            }
+            if(cfg.MaxResults == 0)
+            {
+                for(int ii=0; ii<numOfEntries; ii++)
+                {
+                    if(global_dist[ii]>= cfg.MinScore)
+                    {
+                        rank_global.insert(pair<float64,int>(global_dist[ii],ii));
+                    }
+                }
+            }
+            else
+            {
+                uint64 num_results = 0;
+                float64 min_score = cfg.MinScore;
+                for(int ii=0; ii<numOfEntries; ii++)
+                {
+                    if(num_results < cfg.MaxResults && global_dist[ii]>= cfg.MinScore)
+                    {
+                        rank_global.insert(pair<float64,int>(global_dist[ii],ii));
+                        num_results++;
+                        if(num_results == cfg.MaxResults)
+                        {
+                            min_score = rank_global.rbegin()->first;
+                        }
+                    }
+                    else if(num_results==cfg.MaxResults && global_dist[ii]> min_score)
+                    {
+                        rank_global.erase(--rank_global.rbegin().base());
+                        rank_global.insert(pair<float64,int>(global_dist[ii],ii));
+                        min_score = rank_global.rbegin()->first;
+                    }
+                }
+            }
+    	}
+    	else  //cfg.FusionCriteria == 1 (Position)
+    	{
+    	    if(cfg.VDColorStructure)
+    	    {
+                if(num_vds == 1)
+                {
+                    if(cfg.MaxResults==0)
+                    {
+                        for(int ii=0; ii<numOfEntries; ii++)
+                        {
+                            if (dist_cs[ii] >= cfg.MinScore)
+                            {
+                                rank_global.insert(pair<float64,int>(dist_cs[ii],ii));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        uint64 num_results = 0;
+                        float64 min_score = cfg.MinScore;
+                        for(int ii=0; ii<numOfEntries; ii++)
+                        {
+                            if(num_results < cfg.MaxResults && dist_cs[ii]>= cfg.MinScore)
+                            {
+                                rank_global.insert(pair<float64,int>(dist_cs[ii],ii));
+                                num_results++;
+                                if(num_results == cfg.MaxResults)
+                                {
+                                    min_score = rank_global.rbegin()->first;
+                                }
+                            }
+                            else if(num_results==cfg.MaxResults && dist_cs[ii]> min_score)
+                            {
+                                rank_global.erase(--rank_global.rbegin().base());
+                                rank_global.insert(pair<float64,int>(dist_cs[ii],ii));
+                                min_score = rank_global.rbegin()->first;
+                            }
+                        }
+                        
+                    }
+                }
+                else
+                {
+                    rank_aux.clear();
+                    for(int ii=0; ii<numOfEntries; ii++)
+                    {
+                        rank_aux.insert(pair<float64,int>(dist_cs[ii],ii));
+                    }
+                    multi_map_type::iterator it = rank_aux.begin();
+                    int i;
+                    for (i=0; it != rank_aux.end(); ++it, ++i)
+                    {
+                        positions[it->second][vds_used]=i;
+                    }
+                    weights.push_back(cfg.ColorStructureWeight);
+                    vds_used++;
+                }
+    	    }
+    	    
+    	    
+    	    if(cfg.VDDominantColor)
+    	    {
+                if(num_vds == 1)
+                {
+                    if(cfg.MaxResults==0)
+                    {
+                        for(int ii=0; ii<numOfEntries; ii++)
+                        {
+                            if (dist_dc[ii] >= cfg.MinScore)
+                            {
+                                rank_global.insert(pair<float64,int>(dist_dc[ii],ii));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        uint64 num_results = 0;
+                        float64 min_score = cfg.MinScore;
+                        for(int ii=0; ii<numOfEntries; ii++)
+                        {
+                            if(num_results < cfg.MaxResults && dist_dc[ii]>= cfg.MinScore)
+                            {
+                                rank_global.insert(pair<float64,int>(dist_dc[ii],ii));
+                                num_results++;
+                                if(num_results == cfg.MaxResults)
+                                {
+                                    min_score = rank_global.rbegin()->first;
+                                }
+                            }
+                            else if(num_results==cfg.MaxResults && dist_dc[ii]> min_score)
+                            {
+                                rank_global.erase(--rank_global.rbegin().base());
+                                rank_global.insert(pair<float64,int>(dist_dc[ii],ii));
+                                min_score = rank_global.rbegin()->first;
+                            }
+                        }
+                        
+                    }
+                }
+                else
+                {
+                    rank_aux.clear();
+                    for(int ii=0; ii<numOfEntries; ii++)
+                    {
+                        rank_aux.insert(pair<float64,int>(dist_dc[ii],ii));
+                    }
+                    multi_map_type::iterator it;
+                    int i;
+                    for (it = rank_aux.begin(), i=0; it != rank_aux.end(); ++it,i++ )
+                    {
+                        positions[it->second][vds_used]=i;
+                    }
+                    weights.push_back(cfg.DominantColorWeight);
+                    vds_used++;
+                }
+    	    }
+    	    
+    	    
+    	    if(cfg.VDColorLayout)
+    	    {
+                if(num_vds == 1)
+                {
+                    if(cfg.MaxResults==0)
+                    {
+                        for(int ii=0; ii<numOfEntries; ii++)
+                        {
+                            if (dist_cl[ii] >= cfg.MinScore)
+                            {
+                                rank_global.insert(pair<float64,int>(dist_cl[ii],ii));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        uint64 num_results = 0;
+                        float64 min_score = cfg.MinScore;
+                        for(int ii=0; ii<numOfEntries; ii++)
+                        {
+                            if(num_results < cfg.MaxResults && dist_cl[ii]>= cfg.MinScore)
+                            {
+                                rank_global.insert(pair<float64,int>(dist_cl[ii],ii));
+                                num_results++;
+                                if(num_results == cfg.MaxResults)
+                                {
+                                    min_score = rank_global.rbegin()->first;
+                                }
+                            }
+                            else if(num_results==cfg.MaxResults && dist_cl[ii]> min_score)
+                            {
+                                rank_global.erase(--rank_global.rbegin().base());
+                                rank_global.insert(pair<float64,int>(dist_cl[ii],ii));
+                                min_score = rank_global.rbegin()->first;
+                            }
+                        }
+                        
+                    }
+                }
+                else
+                {
+                    rank_aux.clear();
+                    for(int ii=0; ii<numOfEntries; ii++)
+                    {
+                        rank_aux.insert(pair<float64,int>(dist_cl[ii],ii));
+                    }
+                    multi_map_type::iterator it;
+                    int i;
+                    for ( it=rank_aux.begin(), i=0; it != rank_aux.end(); ++it,i++ )
+                    {
+                        positions[it->second][vds_used]=i;
+                    }
+                    weights.push_back(cfg.ColorLayoutWeight);
+                    vds_used++;
+                }
+    	    }
+    	    
+    	    
+    	    if(cfg.VDEdgeHistogram)
+    	    {
+                if(num_vds == 1)
+                {
+                    if(cfg.MaxResults==0)
+                    {
+                        for(int ii=0; ii<numOfEntries; ii++)
+                        {
+                            if (dist_teh[ii] >= cfg.MinScore)
+                            {
+                                rank_global.insert(pair<float64,int>(dist_teh[ii],ii));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        uint64 num_results = 0;
+                        float64 min_score = cfg.MinScore;
+                        for(int ii=0; ii<numOfEntries; ii++)
+                        {
+                            if(num_results < cfg.MaxResults && dist_teh[ii]>= cfg.MinScore)
+                            {
+                                rank_global.insert(pair<float64,int>(dist_teh[ii],ii));
+                                num_results++;
+                                if(num_results == cfg.MaxResults)
+                                {
+                                    min_score = rank_global.rbegin()->first;
+                                }
+                            }
+                            else if(num_results==cfg.MaxResults && dist_teh[ii]> min_score)
+                            {
+                                rank_global.erase(--rank_global.rbegin().base());
+                                rank_global.insert(pair<float64,int>(dist_teh[ii],ii));
+                                min_score = rank_global.rbegin()->first;
+                            }
+                        }
+                        
+                    }
+                }
+                else
+                {
+                    rank_aux.clear();
+                    for(int ii=0; ii<numOfEntries; ii++)
+                    {
+                        rank_aux.insert(pair<float64,int>(dist_teh[ii],ii));
+                    }
+                    multi_map_type::iterator it;
+                    int i;
+                    for ( it=rank_aux.begin(), i=0; it != rank_aux.end(); ++it,i++ )
+                    {
+                        positions[it->second][vds_used]=i;
+                    }
+                    weights.push_back(cfg.EdgeHistogramWeight);
+                    vds_used++;
+                }
+    	    }
+    	    
+    	    
+    	    if(num_vds > 1)
+    	    {
+    	        if(cfg.MaxResults == 0)
+    	        {
+                    for(int i=0; i<numOfEntries; i++)
+                     {
+                         float64 dist = 0;
+                         for(uint32 j=0;j<num_vds;j++)
+                         {
+                             dist = dist + weights[j]*positions[i][j];
+                         }
+                         dist = 1 - dist/numOfEntries;
+                         if(dist>= cfg.MinScore)
+                         {
+                             rank_global.insert(pair<float64,int>(dist,i));
+                         }
+                     }
+    	        }
+    	        else
+    	        {
+                    uint64 num_results = 0;
+                     float64 min_score = cfg.MinScore;
+                     for(int i=0; i<numOfEntries; i++)
+                     {
+                         float64 dist = 0;
+                         for(uint32 j=0;j<num_vds;j++)
+                         {
+                             dist = dist + weights[j]*positions[i][j];
+                         }
+                         dist = 1 - dist/numOfEntries;
+                         if(num_results < cfg.MaxResults && dist>= cfg.MinScore)
+                         {
+                             rank_global.insert(pair<float64,int>(dist,i));
+                             num_results++;
+                             if(num_results == cfg.MaxResults)
+                             {
+                                 min_score = rank_global.rbegin()->first;
+                             }
+                         }
+                         else if(num_results==cfg.MaxResults && dist > min_score)
+                         {
+                             rank_global.erase(--rank_global.rbegin().base());
+                             rank_global.insert(pair<float64,int>(dist,i));
+                             min_score = rank_global.rbegin()->first;
+                         }
+                     }
+    	        }
+    	    }
+    	    
+    	}
+    	
+        std::string append;
+        try
+        {
+            XMLPlatformUtils::Initialize();
+        }
+        catch(const XMLException& toCatch)
+        {
+            char *pMsg = XMLString::transcode(toCatch.getMessage());
+            XMLString::release(&pMsg);
+        }
+        
+        DOMImplementation *impl =  DOMImplementationRegistry::getDOMImplementation(fromNative("Core").c_str());
+        
+        if (impl != NULL)
+        {
+            try
+            {
+                XERCES_CPP_NAMESPACE::DOMDocument* doc = impl->createDocument(
+                                           0,                              // root element namespace URI.
+                                           fromNative("Mpeg7").c_str(),  // root element name
+                                           0);
+                
+                
+                XERCES_CPP_NAMESPACE::DOMElement* rootElem = doc->getDocumentElement();
+                rootElem->setAttribute(fromNative("xmlns").c_str(), fromNative("urn:mpeg:mpeg7:schema:2001").c_str());
+                rootElem->setAttribute(fromNative("xmlns:xsi").c_str(), fromNative("http://www.w3.org/2001/XMLSchema-instance").c_str());
+                
+                    XERCES_CPP_NAMESPACE::DOMElement*  descElem = doc->createElement(fromNative("Description").c_str());
+                    descElem->setAttribute(fromNative("xsi:type").c_str(), fromNative("urn:ContentEntityType").c_str());
+                    descElem->setAttribute(fromNative("xmlns:urn").c_str(), fromNative("urn:mpeg:mpeg7:schema:2001").c_str());
+                    rootElem->appendChild(descElem);
+                    
+                        XERCES_CPP_NAMESPACE::DOMElement*  multElem = doc->createElement(fromNative("MultimediaContent").c_str());
+                        multElem->setAttribute(fromNative("xsi:type").c_str(), fromNative("urn:MultimediaCollectionType").c_str());
+                        descElem->appendChild(multElem);
+                        
+                        XERCES_CPP_NAMESPACE::DOMElement* collElem = doc->createElement(fromNative("Collection").c_str());
+                        collElem->setAttribute(fromNative("xsi:type").c_str(), fromNative("urn:ContentCollectionType").c_str());
+                        multElem->appendChild(collElem);
+                        
+                        XERCES_CPP_NAMESPACE::DOMElement* infoElem = doc->createElement(fromNative("CreationInformation").c_str());
+                        collElem->appendChild(infoElem);
+                        
+                        XERCES_CPP_NAMESPACE::DOMElement* matElem = doc->createElement(fromNative("RelatedMaterial").c_str());
+                        matElem->setAttribute(fromNative("id").c_str(), fromNative("Query").c_str());
+                        infoElem->appendChild(matElem);
+                        
+                        XERCES_CPP_NAMESPACE::DOMElement* locElem = doc->createElement(fromNative("MediaLocator").c_str());
+                        matElem->appendChild(locElem);
+                        
+                        XERCES_CPP_NAMESPACE::DOMElement* uriElem = doc->createElement(fromNative("MediaUri").c_str());
+                        locElem->appendChild(uriElem);
+                        
+                        string append = "file:";
+                        append = append + cfg.query;
+                        XERCES_CPP_NAMESPACE::DOMText*  textElem = doc->createTextNode(fromNative(append.c_str()).c_str());
+                        uriElem->appendChild(textElem);
+                        
+                        XERCES_CPP_NAMESPACE::DOMElement* contcollElem = doc->createElement(fromNative("ContentCollection").c_str());
+                        collElem->appendChild(contcollElem);
+                        
+                        uint32 kk=0;
+                        multi_map_type::iterator it;
+                        for(it = rank_global.begin(); it!= rank_global.end(); kk++, ++it)
+                        {
+                            XERCES_CPP_NAMESPACE::DOMElement* contentElem = doc->createElement(fromNative("Content").c_str());
+                            contentElem->setAttribute(fromNative("xsi:type").c_str(), fromNative("urn:ImageType").c_str());
+                            contcollElem->appendChild(contentElem);
+                            
+                            XERCES_CPP_NAMESPACE::DOMElement* imElem = doc->createElement(fromNative("Image").c_str());
+                            contentElem->appendChild(imElem);
+                            
+                            locElem = doc->createElement(fromNative("MediaLocator").c_str());
+                            locElem->setAttribute(fromNative("xsi:type").c_str(), fromNative("urn:ImageLocatorType").c_str());
+                            imElem->appendChild(locElem);
+                            
+                            uriElem = doc->createElement(fromNative("MediaUri").c_str());
+                            locElem->appendChild(uriElem);
+                            
+                            append = "file:";
+                            append = append + entries[it->second];
+                            textElem = doc->createTextNode(fromNative(append.c_str()).c_str());
+                            uriElem->appendChild(textElem);
+                            
+                            DOMElement* idElem = doc->createElement(fromNative("StreamID").c_str());
+                            locElem->appendChild(idElem);
+                            textElem = doc->createTextNode(fromNative("8").c_str());
+                            idElem->appendChild(textElem);
+                            
+                            
+                            
+                            XERCES_CPP_NAMESPACE::DOMElement* relatElem = doc->createElement(fromNative("Relation").c_str());
+                            char ident[10];
+                            sprintf(ident,"%d",kk+1);
+                            relatElem->setAttribute(fromNative("id").c_str(), fromNative(ident).c_str());
+                            char distance[20];
+                            sprintf(distance,"%f",it->first);
+                            relatElem->setAttribute(fromNative("type").c_str(), fromNative("score").c_str());
+                            relatElem->setAttribute(fromNative("strength").c_str(), fromNative(distance).c_str());
+                            imElem->appendChild(relatElem);
+                        }
+                        
+                boost::filesystem::path input_filename(cfg.query);
+                input_filename = boost::filesystem::system_complete(input_filename);
+
+                // Set the output file name      
+                string base = boost::filesystem::basename(input_filename);
+                
+                std::size_t found=base.rfind("-vd");
+                if (found!=string::npos)  // The original name has "-bpt", so we erase it
+                {
+                    base.erase(found,found+3);
+                } 
+                string xml("-vd.xml");
+                base = base + xml;
+                xml_write(doc, cfg.results +"/"+ base);
+                
+            }
+            catch(BacktracedImagePlusException e)
+            {
+                std::cerr << e.what() << std::endl;
+                exit(1);
+            }
+            catch(std::exception e)
+            {
+                std::cerr << e.what() << std::endl;
+                exit(1);
+            }
+            catch (...)
+            {
+                throw ImagePlusError("An error occurred while writing the XML tree.");
+            }
+        }  
+        else
+        {
+            throw ImagePlusError("An error occurred while writing the XML tree.");
+        }
+        
+        XMLPlatformUtils::Terminate();
+#endif
+}
+
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_TOOL_CONFIG_END()
+
+#else
+
+#include <iostream>
+
+int main(int argc, char** argv)
+{
+    std::cout << "Please, to run this tool you should build it with the flag USE_XML." << std::endl;
+    std::cout << "Also note that you should add manually its dependences in the user.build file." << std::endl;
+}
+
+#endif /* USE_XML */
+

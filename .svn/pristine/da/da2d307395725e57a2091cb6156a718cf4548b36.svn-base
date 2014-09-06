@@ -1,0 +1,128 @@
+/*
+ * bpt_fundamental_matrix_cost.hpp
+ *
+ *  Created on: May 16, 2013
+ *      Author: gpalou
+ */
+
+#ifndef BPT_FUNDAMENTAL_MATRIX_COST_HPP_
+#define BPT_FUNDAMENTAL_MATRIX_COST_HPP_
+
+#include <imageplus/monocular_depth/structure_from_motion/fundamental_matrix.hpp>
+#include <imageplus/bpt/energy_minimization/optimal_pruner.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+	template <class BPT, class OpticalFlowModel>
+	class FundamentalMatrixCost : public RegionCostFunction<BPT,OpticalFlowModel> {
+
+		typedef RegionCostFunction<BPT,OpticalFlowModel> 	BaseClassType;
+		typedef typename OpticalFlowModel::ImageType		OpticalFlowFrameType;
+
+	public:
+
+		FundamentalMatrixCost(descriptors::DescriptorManager& manager, uint64 max_label, float64 lambda = 0.001) : BaseClassType(manager,max_label,lambda) {
+		}
+
+		void set_flows(OpticalFlowModel& forward) {
+			_forward = &forward;
+		}
+
+		void set_reliability(VideoSignal<float64,1>& reliability) {
+			_reliability = &reliability;
+		}
+
+		float64 region_cost(BPT& bpt, OpticalFlowModel& video, uint64 region_id) {
+
+			typedef typename BPT::RegionType	RegionType;
+			RegionType& reg = bpt(region_id);
+
+			float64 e = -1; //region_id;
+
+			math::Vector center(2);
+			center(0) = video.size_x()/2;
+			center(1) = video.size_y()/2;
+
+			int64 L = video.length();
+
+			if (_costs.find(region_id) == _costs.end()) {
+
+				for (int64 r = reg.frame_begin(); r <= reg.frame_end(); r++) {
+
+					if (r == L-1)
+						continue;
+
+					uint64 N = 0;
+					for (typename BPT::RegionType::iterator c = bpt(region_id).begin(); c != bpt(region_id).end(); ++c) {
+						int64 t = (*c)(2);
+						if (t != r) continue;
+						if ((*_reliability)(*c)(0) < 0.99) continue;
+
+						N++;
+					}
+					math::Matrix points1(N,2);
+					math::Matrix points2(N,2);
+					uint64 n=0;
+
+					//std::cout << "Region " << region_id << " frame " << r << " " << N  << std::endl;
+
+					if (N <= 8) {
+						//std::cout << "Region " << region_id << " frame " << r << std::endl;
+						//e = 1e20;
+						continue;
+					}
+
+					for (typename BPT::RegionType::iterator c = bpt(region_id).begin(); c != bpt(region_id).end(); ++c) {
+						int64 t = (*c)(2);
+						if (t != r) continue;
+						if ((*_reliability)(*c)(0) < 0.99) continue;
+
+						math::Vector pos = (*c).head(2).template cast<float64>();
+
+						//Fill the matrix with their points and their correspondences (x,x+uv)
+						points1.row(n) = (pos - center).transpose(); // - center;
+						points2.row(n) = (pos + (*_forward)(*c) - center).transpose();
+						n++;
+					}
+					//std::cout << "Region " << region_id << " frame " << r << " " << N << std::endl;
+					math::Matrix F = monocular_depth::estimate_fundamental_matrix(points1,points2, false, 0);
+
+					float64 ee = monocular_depth::fundamental_matrix_sampson_error(points1,points2,F);
+					//float64 ee = monocular_depth::fundamental_matrix_sampson_outliers(points1,points2,F,0.03);
+					//e = std::max(e,ee);
+					e += ee;
+
+					//std::cout << "error " << ee << std::endl;
+				}
+				if (e < 0) {
+					e = 1e200;
+				}
+
+				/*if (region_id != bpt.max_label())
+					std::cout << region_id << " " << reg.parent()->label() << " " << e << std::endl;
+				else
+					std::cout << region_id << " " << e << std::endl;*/
+				_costs[region_id] = e;
+			} else
+				e = _costs[region_id];
+
+			return e + BaseClassType::_lambda;
+		}
+
+	protected:
+
+
+	private:
+
+		std::map<uint64,float64> _costs;
+
+		OpticalFlowModel*		_forward;
+		VideoSignal<float64,1>*	_reliability;
+	};
+
+	}
+}
+
+#endif /* BPT_FUNDAMENTAL_MATRIX_COST_HPP_ */

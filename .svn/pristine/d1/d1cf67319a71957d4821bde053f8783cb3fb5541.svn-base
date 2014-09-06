@@ -1,0 +1,200 @@
+/*
+ * network_reliability.hpp
+ *
+ *  Created on: Nov 10, 2011
+ *      Author: guillem
+ */
+
+#ifndef NETWORK_RELIABILITY_HPP_
+#define NETWORK_RELIABILITY_HPP_
+
+#include <imageplus/math/graphs/graph.hpp>
+
+namespace imageplus {
+	namespace math {
+		namespace graphs {
+
+		//! Class to compute the reliability of a network between two pair of nodes
+		//! Edges should have 0 <= weight <= 1.
+		//! Complexity 2^P where P is the number of paths between the nodes
+		//! \param Graph : BoostGraph class
+	template<class Graph>
+	class ReliabilityPair {
+
+		//! Node type
+		typedef typename Graph::Node Node;
+
+		//! Edge type
+		typedef typename Graph::Edge Edge;
+
+		//! Path type
+		typedef std::list<Edge> 	Path;
+
+		//! Paths type
+		typedef std::vector<Path>	Paths;
+
+	public:
+
+
+		//! Calculates the reliability
+		//! \param[in] graph : graph
+		//! \param[in] a : source node
+		//! \param[in] b : target node
+		//! \return the reliability 0 <= p <= 1
+		float64 calculate(Graph& graph, Node a, Node b) {
+			/*Find all paths between A and B*/
+
+			_passed[a] = true;
+			all_paths(graph, a, b);
+
+			uint64 P = _paths.size();
+			float64 p = 0;
+
+			//std::cout << "From " << a << " to " << b << " there are " << P << " paths" << std::endl;
+
+			/*Calculate the inclusion-exclusion*/
+			uint64 Np = 1;
+			for (uint64 i = 0; i < P; i++) Np<<=1;
+			for (uint64 i = 1; i < Np; i++) {
+				int np = 0;
+
+				std::set<Edge> s;
+				for (uint64 k = 0; k < P; k++) {
+					if (((1<<k) & i) == 0) continue;
+					np++;
+					for (typename Path::iterator l = _paths[k].begin(); l != _paths[k].end(); l++) s.insert(*l);
+				}
+				float64 p1 = 1;
+				for (typename std::set<Edge>::iterator l = s.begin(); l != s.end(); l++) p1*=graph.edge_properties(*l).weight;
+				if (np % 2 == 0) p-=p1; else p+=p1;
+			}
+			return p;
+		}
+
+	private:
+		//! \cond SKIP_DOC
+		void all_paths(Graph& graph, Node node, Node final) {
+				if (node == final) {
+					_paths.push_back(_path);
+					return;
+				}
+				for (typename Graph::out_edge_iterator i = graph.out_edges_begin(node); i != graph.out_edges_end(node); ++i) {
+					Node t = graph.target(*i);
+
+					if (_passed[t] == false) {
+						_path.push_back(*i);
+						_passed[t] = true;
+						all_paths(graph, t, final);
+						_passed[t] = false;
+						_path.pop_back();
+					}
+				}
+			}
+		//! \endcond
+
+	private:
+
+		//! Path
+		Path 	_path;
+
+		//! Paths
+		Paths 	_paths;
+
+		//! Map containing the nodes that the algorithm has visited
+		std::map<Node, bool> _passed;
+
+	};
+
+	//! Class to compute the reliability of a network between all pairs of nodes
+	//! Edges should have 0 <= weight <= 1
+	//! \param Graph : BoostGraph class
+	template<class Graph>
+	class ReliabilityAllPairs {
+	public:
+
+		//! Calculate the reliability
+		//! \param[in] graph: graph
+		void calculate(Graph& graph) {
+			uint32 N = graph.num_nodes();
+
+			MultiArray<float64,2> exactT(N,N);
+
+			for (uint64 i = 0; i < N; i++) {
+				for (uint64 k = 0; k < N; k++) {
+					if (i == k) {exactT[i][i] = 0; continue; }
+					ReliabilityPair<Graph> reliability;
+					exactT[i][k] = reliability.calculate(graph, i, k);
+				}
+			}
+			_exact = exactT;
+		}
+
+		//! Reliability of all the pairs
+		//! \return Matrix with all the reliabilities
+		const MultiArray<float64,2>& reliability() {return _exact;}
+
+	private:
+		//! reliability matrix
+		MultiArray<float64,2> _exact;
+	};
+
+
+	//! Class to compute an upper bound on reliability of a network between all pairs of nodes
+	//! Edges should have 0 <= weight <= 1
+	//! \param Graph : BoostGraph class
+	template<class Graph>
+	class ReliabilityAllPairsUpperBound {
+
+		//! Node type
+		typedef typename Graph::Node Node;
+
+		//! Edge type
+		typedef typename Graph::Edge Edge;
+
+	public:
+
+		//! Calculate the reliability
+		//! \param[in] graph: graph
+		void calculate(Graph& g) {
+			uint32 N = g.num_nodes();
+
+			_reliability = MultiArray<float64,2>(N,N);
+
+			for (typename Graph::edge_iterator e = g.edges_begin(); e != g.edges_end(); ++e) {
+				Node a = g.source(*e);
+				Node b = g.target(*e);
+				_reliability[a][b] = 1 - (1-_reliability[a][b])*(1-g.edge_properties(*e).weight);
+			}
+
+			//Compute the PoP
+			for (uint32 j = 0; j < N; j++) {
+				for (uint32 i = 0; i < N; i++) {
+					for (uint32 k = 0; k < N; k++) {
+						_reliability[i][k] = 1- (1-_reliability[i][k])*(1-_reliability[i][j]*_reliability[j][k]);
+					}
+				}
+			}
+
+		}
+
+		//! Reliability of a pair of nodes. from a  to b
+		//! \return Reliability between node a and b
+		inline float64 reliability(uint32 a, uint32 b) {return _reliability[a][b];}
+
+		//! Reliability of all the pairs
+		//! \return Matrix with all the reliabilities
+		const MultiArray<float64,2>& reliability() {return _reliability;}
+
+	private:
+
+		//! Reliability matrix
+		MultiArray<float64,2> _reliability;
+	};
+
+		}
+	}
+}
+
+
+
+#endif /* NETWORK_RELIABILITY_HPP_ */

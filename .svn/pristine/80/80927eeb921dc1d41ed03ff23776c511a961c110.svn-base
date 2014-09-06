@@ -1,0 +1,139 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imageyiq.hpp
+//!
+//!  Interface for ImageYIQ class
+//!
+
+#ifndef IMAGEPLUS_CORE_IMAGEYIQ_HPP
+#define IMAGEPLUS_CORE_IMAGEYIQ_HPP
+
+#include <imageplus/core/image.hpp>
+
+
+namespace imageplus
+{
+    //!
+    //! \brief base class to yiq images
+    //!
+    //! The declaration should be:
+    //! \code
+    //!    ImageYIQ<uint8> a(4,4);
+    //! \endcode
+    //!
+    //! This creates a ImageYIQ of uint8 values with size 4x4.
+    //!
+    //! The access of a pixel is done as the ImaVol class:
+    //! \code
+    //!    a(Y_CHANNEL)[1][3] = 0 // Access to pixel (x=1,y=3) in the red channel
+    //! \endcode
+    //! or
+    //! \code
+    //!    a(I_CHANNEL)[1][3] = 0 // Access to pixel (x=1,y=3) in the green channel
+    //! \endcode
+    //!
+    //! See file multiarray.hpp to a more detail explanation on access
+    //!
+    //! \tparam T is the type of the data
+    //!
+    //! \author Antonella Battisti
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 05-04-2010
+    //!
+    template<typename T>
+    class ImageYIQ :public Image <T,3>
+    {
+        public:
+
+            //!
+            //! \brief Default constructor
+            //!
+            ImageYIQ();
+
+            //!
+            //! \brief Constructor for 2 dimensions
+            //!
+            //! \param[in] x : X size of the image
+            //! \param[in] y : Y size of the image
+            //!
+            ImageYIQ(uint64 x, uint64 y);
+
+            //!
+            //! \brief Copy constructor for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this imavol
+            //!
+            ImageYIQ(const ImaVol<T,3,2>& copy);
+
+            //!
+            //! \brief Copy constructor for Image
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this image
+            //!
+            ImageYIQ(const Image<T,3>& copy);
+
+            //!
+            //! \brief Copy constructor for ImageYIQ
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this image
+            //!
+            ImageYIQ(const ImageYIQ<T>& copy);
+
+            //!
+            //! \brief Constructor with a vector of dimentions
+            //!
+            //! \param[in] dims: Vector of vectors with the dimension of each channel
+            //!
+            explicit 
+            ImageYIQ(const std::vector< std::vector<uint64> >& dims);
+
+            //!
+            //! \brief Destructor
+            //!
+            virtual 
+            ~ImageYIQ();
+
+            //!
+            //! \brief Assignment operator for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this imavol
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            ImageYIQ& operator=( const ImaVol<T,3,2>& copy );
+
+            //!
+            //! \brief Assignment operator for Image
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this Image
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            ImageYIQ& operator=( const Image<T,3>& copy );
+
+            //!
+            //! \brief Assignment operator for ImageYIQ
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this ImageYIQ
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            ImageYIQ& operator=( const ImageYIQ<T>& copy );
+
+            //!
+            //! \brief Assigment operator for values (fills the entire image)
+            //!
+            //! \param[in] val : Value to fill all pixel
+            //!
+            //! \return Reference to value to a = b = 1; works
+            //!
+            const T& operator=( const T& val );
+    };
+}
+
+#endif // IMAGEPLUS_CORE_IMAGEYIQ_HPP

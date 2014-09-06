@@ -1,0 +1,67 @@
+/*
+ * mean_color_distance.hpp
+ *
+ *  Created on: Sep 3, 2012
+ *      Author: guillem
+ */
+
+#ifndef MEAN_COLOR_DISTANCE_HPP_
+#define MEAN_COLOR_DISTANCE_HPP_
+
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <imageplus/descriptors/color/color_mean.hpp>
+#include <imageplus/bpt/models/bpt_distance_model.hpp>
+
+namespace imageplus
+{
+    namespace bpt
+    {
+
+        //! Class from which any model must inherit to work properly
+        template<class SignalModel, class RegionModel, typename order_type=float64>
+        class MeanColorDistanceModel : public BaseDistanceModel<SignalModel, RegionModel, order_type>
+        {
+        	typedef descriptors::ColorMean<SignalModel>			ColorMeanDescriptor;
+        	typedef descriptors::Area							AreaDescriptor;
+
+        public:
+
+        	struct Parameters {
+
+        	};
+
+        	static const Parameters default_parameters() {
+        		return Parameters();
+        	}
+
+
+        	MeanColorDistanceModel(const Parameters& pars = default_parameters()) {
+
+        	}
+
+            //! This function computes the order of a given link (edge of the RAG)
+            //!
+            //! \param reg1 : Region of one extremum of the link
+            //! \param reg2 : Region of the other extremum of the link
+            //! \param image : Image being processed
+            //! \param bpt : Partition at the moment of the merging
+            //! \return The order of the link
+        	template<class BPT>
+            order_type region_distance(RegionModel& reg1, RegionModel& reg2, SignalModel& image, BPT& bpt, descriptors::DescriptorManager& manager) {
+
+            	const typename ColorMeanDescriptor::type& 				mean1 = manager.calc_descriptor<ColorMeanDescriptor>(image, reg1);
+            	const typename ColorMeanDescriptor::type& 				mean2 = manager.calc_descriptor<ColorMeanDescriptor>(image, reg2);
+
+            	const typename AreaDescriptor::type&					area1 = manager.calc_descriptor<AreaDescriptor>(image, reg1);
+            	const typename AreaDescriptor::type&					area2 = manager.calc_descriptor<AreaDescriptor>(image, reg2);
+
+            	return (area1+area2)*(mean1 - mean2).norm();
+            }
+
+        };
+
+    }
+}
+
+
+#endif /* MEAN_COLOR_DISTANCE_HPP_ */

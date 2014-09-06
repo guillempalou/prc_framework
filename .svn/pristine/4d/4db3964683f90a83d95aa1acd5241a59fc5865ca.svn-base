@@ -1,0 +1,959 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file interpolation.hpp
+ */
+
+#ifndef IMAGEPLUS_MATH_NUMERIC_INTERPOLATION_HPP
+#define IMAGEPLUS_MATH_NUMERIC_INTERPOLATION_HPP
+
+#include <imageplus/core.hpp>
+
+namespace imageplus
+{
+namespace math
+{
+namespace numeric
+{
+    /*!
+     * Methods used to perform interpolations
+     */
+    enum InterpolationType
+    {
+        NEAREST_NEIGHBOR, //!< uses the value of the nearest neighbor (kernel size should be
+                          //!  ignored in tis case)
+        MEAN,             //!< computes the mean of the neighbors
+        WEIGHTED_MEAN,    //!< computes the mean of the neighbors using its distance as a weight (normalized)
+        MEDIAN,           //!< computes the median of the neighbors
+        LINEAR,           /*!< computes a linear interpolation of the 2^D nearest neighbors
+                           *   (BILINEAR and TRILINEAR for 2D and 3D)
+                           */
+        BICUBIC
+    };
+
+    /*!
+     * Function to create a n-dimensional grid of Coord or Point
+     *
+     * To create the n-dimensional grid we use a vector to save already added
+     * CoordPoints and then expand them to each dimension.
+     *
+     * \tparam CoordPoint : Any type of Coord or Point (n-dimendional)
+     *
+     * \param[in] first : the first CoordPoint (top-left)
+     * \param[in] last  : the last CoordPoint (bottom-right)
+     * \param[in] incr  : the distance between the CoordPoints in the grid
+     *
+     * \warning This function assumes that the size of the grid, defined as (last-first)/incr, is integer.
+     *          This condition must be checked by the caller.
+     *
+     * \returns a vector with all the CoordPoint of the grid.
+     *
+     * \author 2011-07 - Albert Gil Moreno - Created to be used in Interpolator (for Coord)
+     *                                       and resize() function (for Point)
+     */
+    template< class CoordPoint >
+    std::vector<CoordPoint> grid ( const CoordPoint&  first,
+                                   const CoordPoint&  last,
+                                   const CoordPoint&  incr = CoordPoint(1) )
+    {
+        /*
+         * The output variable also used to save already added CoordPoints
+         */
+        std::vector<CoordPoint> out;
+
+        /*
+         * Computing the number of CoordPoints we need per dimension (size)
+         */
+        Coord<std::size_t, CoordPoint::dimensions> size = (last - first)/incr;
+
+
+        ASSERT( last == first + incr*size, "Increment " << incr << " not allowed to go from " << first << " to " << last );
+
+        /*
+         * Adding the first CoordPoint to the grid
+         */
+        out.push_back(first);
+
+        /*
+         * Expand for all dimensions
+         */
+        for(std::size_t dd=0; dd < first.size();++dd )
+        {
+            /*
+             * Getting the already added Coords (just the size is enough!)
+             */
+            std::size_t previous_coords = out.size();
+
+            for(std::size_t prev_idx=0; prev_idx < previous_coords; ++prev_idx)
+            {
+                CoordPoint coord = out[prev_idx]; // the CoordType to be expanded
+
+                for( std::size_t ii = 1; ii <= size[dd]; ++ii )
+                {
+                    coord[dd] += incr[dd]; // incrementing the coord in the current dimension
+                    out.push_back(coord);  // adding the coord to the grid
+                }
+            }
+        }
+
+        return out;
+    }
+
+    /*!
+     * A class to interpolate values of a discrete signal.
+     *
+     * While a Coord is the standard way to access to an ImaVol (Signal), this class is the standard way to
+     * interpolate values of a discrete Signal using Point.
+     *
+     * This class has been designed as a Functor, so to define an Interpolator we should specify an
+     * InterpolationType and the size of the window of the interpolation filter (kernel size), and
+     * then you can use the operator() passing the Point and Signal (ImaVol) desired.
+     *
+     * Note that the result of an interpolation is always a floating point value.
+     *
+     * \see InterpolationType, resize()
+     *
+     * \tparam D : The dimension of the Signal to interpolate
+     * 
+     * \author 2008-02 - Ramon Morros      - Previous work
+     * \author 2009-05 - Jordi Salvador    - Previous work
+     * \author 2011-07 - Albert Gil Moreno - Created to merge, solve bugs and generalize the already existing
+     *                                       functions to interpolate.
+     */
+    template<std::size_t D>
+    class Interpolator
+    {
+    public:
+
+        /*!
+         * Constructor (default)
+         *
+         * \param[in] type        : the InterpolationType to be used
+         * \param[in] kernel_size : size of the filter window (ignored in the NEAREST_NEIGBOR type)
+         */
+        Interpolator( InterpolationType               type        = WEIGHTED_MEAN,
+                      const boost::array<float64, D>& kernel_size = Point<D>(1.0) )
+        :   _type(type),
+            _kernel_size( kernel_size )
+        {}
+
+        /*!
+         * The filter/functor operator
+         *
+         * \tparam T : data type of the input signal (ImaVol)
+         * \tparam N : the number of channels of the input signal (ImaVol)
+         *
+         * \param[in] inpoint : the Point to interpolate into the signal
+         * \param[in] signal  : the Signal (ImaVol) to interpolate from
+         *
+         * \returns the interpolated value (float Color) of the signal in the given inpoint
+         */
+        template<typename T, std::size_t N>
+        typename ImaVol<float64,N,D>::Color operator()(const Point<D>& inpoint, const ImaVol<T,N,D>& signal) const
+        {
+            typedef typename ImaVol<float64,N,D>::Color ColorInterp;
+            ColorInterp out=0.0;
+
+            /*
+             * Clip the point to the signal range (avoiding out-of-range points)
+             * Note that this means that we are extrapolating points as if the were and the
+             * limits of the signal.
+             */
+            Point<D> point = clip(inpoint,signal);
+
+            switch(_type)
+            {
+            case NEAREST_NEIGHBOR:
+            {
+                Coord<int64,D> coord( point, ROUND ); // get the nearest coord
+
+                out = signal(coord);
+            }
+            break;
+
+            case LINEAR:
+            {
+                ASSERT(_kernel_size == Point<D>(1.0), "LINEAR has only sense with distances of 1.0");
+
+                /*
+                 * Get the kernel elements at the given point
+                 */
+                Kernel _kernel = kernel_window(point, signal, _kernel_size);
+
+                for(std::size_t ii = 0; ii< _kernel.size(); ++ii)
+                {
+                    /*
+                     * Compute the weight
+                     */
+                    float64 weight = 1.0;
+                    boost::array<float64,D> distance = abs(point - _kernel[ii]);
+                    boost::array<float64,D> weights = (1.0-distance);
+                    for(std::size_t ww=0; ww<weights.size(); ++ww) weight *= weights[ww];
+
+                    out += ColorInterp(signal( _kernel[ii] )) * weight;
+                }
+
+                /*
+                 * Faster implementation only for 2D disabled.
+                 *
+                 * NOTE: the slower implementation loses its time in the function _kernel.position
+                 *       because it make a std::vector.clear() and some push_back()...
+                 */
+
+//                Coord<int64, 2> coord = point;
+//                Point<2>        dist  = point - coord;
+//
+//                out = signal(coord                                    ).color() * (1.0-dist.x()) * (1.0-dist.y()) +
+//                      signal(Coord<int64,2>(coord+Coord<int64,2>(1,0))).color() * (    dist.x()) * (1.0-dist.y()) +
+//                      signal(Coord<int64,2>(coord+Coord<int64,2>(0,1))).color() * (1.0-dist.x()) * (    dist.y()) +
+//                      signal(Coord<int64,2>(coord+Coord<int64,2>(1,1))).color() * (    dist.x()) * (    dist.y());
+            }
+            break;
+
+            case WEIGHTED_MEAN:
+            {
+                /*
+                 * Get the kernel elements at the given point
+                 */
+                Kernel _kernel = kernel_window(point, signal, _kernel_size);
+
+                float64 norm=0.0;
+                for(std::size_t ii = 0; ii< _kernel.size(); ++ii)
+                {
+                    float64 weight = 1.0;
+                    boost::array<float64,D> distance = abs(point - _kernel[ii]);
+                    boost::array<float64,D> weights = (_kernel_size-distance);
+                    for(std::size_t ww=0; ww<weights.size(); ++ww) weight *= weights[ww];
+
+                    out += ColorInterp(signal( _kernel[ii] )) * weight;
+
+                    norm += weight;
+                }
+
+                /*
+                 * Normalize
+                 */
+                out /= norm;
+            }
+            break;
+
+            case MEAN:
+            {
+                /*
+                 * Get the kernel elements at the given point
+                 */
+                Kernel _kernel = kernel_window(point, signal, _kernel_size);
+
+                for(std::size_t ii = 0; ii< _kernel.size(); ++ii)
+                {
+                    out += ColorInterp(signal( _kernel[ii] ));
+                }
+                out /= float64(_kernel.size());
+            }
+            break;
+
+            case MEDIAN:
+            {
+                /*
+                 * Get the kernel elements at the given point
+                 */
+                Kernel _kernel = kernel_window(point, signal, _kernel_size);
+
+                if(N>1) throw ImagePlusNotImplemented("Median not defined for Colors with N>1");
+
+                std::vector<T> kernel_colors(_kernel.size());
+                for(std::size_t ii = 0; ii< _kernel.size(); ++ii)
+                {
+                    kernel_colors[ii] = signal( _kernel[ii] )[0];
+                }
+
+                sort(kernel_colors.begin(), kernel_colors.end());
+
+                int64 median = _kernel.size() / 2;
+
+                if (_kernel.size() % 2 == 0)
+                {
+                    out = (kernel_colors[median-1]+kernel_colors[median]) / 2.0;
+                }
+                else
+                {
+                    out = kernel_colors[median];
+                }
+            }
+            break;
+
+            case BICUBIC:
+            default:
+                throw ImagePlusNotImplemented("Interpolation mode not implemented or unknown.");
+            }
+
+            return out;
+        }
+
+        /*!
+         * The filter operator (overloaded for MultiArray for backward compatibility)
+         *
+         * \tparam T : data type of the input signal (MultiArray)
+         *
+         * \param[in] inpoint : the Point to interpolate into the signal
+         * \param[in] signal  : the Signal (MultiArray) to interpolate from
+         *
+         * \returns the interpolated value (float) of the signal in the given inpoint
+         *
+         * \warning Please use the version for ImaVol.
+         */
+        template<typename T>
+        float64 operator()(const Point<D>& inpoint, const MultiArray<T,D>& signal) const
+        {
+            typedef float64 ColorInterp;
+            ColorInterp out=0.0;
+
+            /*
+             * Clip the point to the signal range (avoiding out-of-range points)
+             * Note that this means that we are extrapolating points as if the were and the
+             * limits of the signal.
+             */
+            Point<D> point = clip(inpoint,signal);
+
+            switch(_type)
+            {
+            case NEAREST_NEIGHBOR:
+            {
+                Coord<int64,D> coord( point, ROUND ); // get the nearest coord
+
+                /*
+                 * Clip the coord to the signal domain
+                 */
+                for(std::size_t ii=0; ii<coord.size();++ii )
+                {
+                    int64 sizeii = int64(signal.size(ii))-1;
+
+                    if( coord[ii] < 0      ) coord[ii] = 0;
+                    if( coord[ii] > sizeii ) coord[ii] = sizeii;
+                }
+
+                out = signal(coord); //.color();
+            }
+            break;
+
+            case LINEAR:
+            {
+                ASSERT(_kernel_size == Point<D>(1.0), "LINEAR has only sense with distances of 1.0");
+
+                /*
+                 * Get the kernel elements at the given point
+                 */
+                Kernel _kernel = kernel_window(point, signal, _kernel_size);
+
+                for(std::size_t ii = 0; ii< _kernel.size(); ++ii)
+                {
+                    /*
+                     * Compute the weight
+                     */
+                    float64 weight = 1.0;
+                    boost::array<float64,D> distance = abs(point - _kernel[ii]);
+                    boost::array<float64,D> weights = (1.0-distance);
+                    for(std::size_t ww=0; ww<weights.size(); ++ww) weight *= weights[ww];
+
+                    out += ColorInterp(signal( _kernel[ii] )) * weight;
+                }
+            }
+            break;
+
+            case WEIGHTED_MEAN:
+            {
+                /*
+                 * Get the kernel elements at the given point
+                 */
+                Kernel _kernel = kernel_window(point, signal, _kernel_size);
+
+                float64 norm=0.0;
+                for(std::size_t ii = 0; ii< _kernel.size(); ++ii)
+                {
+                    float64 weight = 1.0;
+                    boost::array<float64,D> distance = abs(point - _kernel[ii]);
+                    boost::array<float64,D> weights = (_kernel_size-distance);
+                    for(std::size_t ww=0; ww<weights.size(); ++ww) weight *= weights[ww];
+
+                    out += ColorInterp(signal( _kernel[ii] )) * weight;
+
+                    norm += weight;
+                }
+
+                /*
+                 * Normalize
+                 */
+                out /= norm;
+            }
+            break;
+
+            case MEAN:
+            {
+                /*
+                 * Get the kernel elements at the given point
+                 */
+                Kernel _kernel = kernel_window(point, signal, _kernel_size);
+
+
+                for(std::size_t ii = 0; ii< _kernel.size(); ++ii)
+                {
+                    out += ColorInterp(signal( _kernel[ii] )); //.color< typename imageplus::float64 >();
+                }
+                out /= float64(_kernel.size());
+            }
+            break;
+
+            case MEDIAN:
+            {
+                /*
+                 * Get the kernel elements at the given point
+                 */
+                Kernel _kernel = kernel_window(point, signal, _kernel_size);
+
+                std::vector<T> kernel_colors(_kernel.size());
+                for(std::size_t ii = 0; ii< _kernel.size(); ++ii)
+                {
+                    kernel_colors[ii] = signal( _kernel[ii] );
+                }
+
+                sort(kernel_colors.begin(), kernel_colors.end());
+
+                int64 median = _kernel.size() / 2;
+
+                if (_kernel.size() % 2 == 0)
+                {
+                    out = (kernel_colors[median-1]+kernel_colors[median]) / 2.0;
+                }
+                else
+                {
+                    out = kernel_colors[median];
+                }
+            }
+            break;
+
+            case BICUBIC:
+            default:
+                throw ImagePlusNotImplemented("Interpolation mode not implemented or unknown.");
+            }
+
+            return out;
+        }
+
+        /*!
+         * \param[in] type : the new InterpolationType to set
+         */
+        void type(InterpolationType type)
+        {
+            _type = type;
+        }
+
+        /*!
+         * \returns the current InterpolationType
+         */
+        InterpolationType type() const
+        {
+            return _type;
+        }
+
+        /*!
+         * \param[in] kernel_size : the new size of the filter window
+         */
+        void kernel_size(const boost::array<float64, D>& kernel_size)
+        {
+            _kernel_size = kernel_size;
+        }
+
+        /*!
+         * \returns the current size of the filter window
+         */
+        const boost::array<float64, D>& kernel_size() const
+        {
+            return _kernel_size;
+        }
+
+    private:
+
+        /*!
+         * Typedef for convenience
+         */
+        typedef std::vector< Coord<int64,D> > Kernel;
+
+        /*!
+         * Function to clip a Point or a Coord to the domain of a (discrete) Signal
+         *
+         * \tparam CoordPoint  : any type of Coord or Point
+         * \tparam SignalModel : any type of Signal (ImaVol)
+         *
+         * \param[in] coord : the Coord or Point to be clipped
+         * \param[in] signal : the Signal (ImaVol) to clip the coord into
+         *
+         * \return the nearest Coord or Point from the input coord, but inside the Signal
+         */
+        template< class CoordPoint, class SignalModel>
+        CoordPoint clip(const CoordPoint& coord, const SignalModel& signal) const
+        {
+            CoordPoint out = coord;
+            for( std::size_t ii=0; ii < out.size(); ++ii )
+            {
+                int64 sizeii = int64(signal.size(ii))-1;
+
+                if( out[ii] < 0      ) out[ii] = 0;
+                if( out[ii] > sizeii ) out[ii] = sizeii;
+            }
+
+            return out;
+        }
+
+        /*!
+         * Function to get a window of discrete Coord of a Signal (ImaVol) from a given Point
+         *
+         * \param[in] point  : the point to compute the window from
+         * \param[in] signal : the Signal (ImaVol) to get the window (used to clip the coords)
+         * \param[in] size   : the maxim distance allowed from the point to the discrete Coords
+         *
+         * \returns a window of Coords of a Signal (ImaVol) from the given Point
+         */
+        template< class SignalModel>
+        //std::vector< Coord<int64,SignalModel::dimensions> >
+        Kernel kernel_window( const Point<D>&                point,
+                              const SignalModel&             signal,
+                              const boost::array<float64,D>& size ) const
+        {
+            /*
+             * Compute Kernel elements
+             */
+            Coord<int64,D> first (point - size, CEIL);
+            Coord<int64,D> last  (point + size, FLOOR);
+
+            /*
+             * Skip out-of-range elements
+             */
+            first = clip(first, signal);
+            last  = clip(last , signal);
+
+            return grid(first, last);
+        }
+
+    private:
+
+        InterpolationType        _type;         //!< the InterpolationType of the filter
+        boost::array<float64, D> _kernel_size;  //!< the size of the filter window (kernel)
+    };
+
+    /*!
+     * Interpolation corresponding to a Point (real coordinates) in a MultiArray (discrete signal) using
+     * a specific \ref imageplus::math::numeric::InterpolationType "InterpolationType".
+     *
+     * The interpolation is done using the Point neighbors depending on the
+     * \ref imageplus::math::numeric::InterpolationType "InterpolationType" choose.
+     *
+     * \tparam T : data type of the input data (note that the returned value is always float64)
+     *
+     * \param[in] ma    : a MultiArray with the real values to interpolate from
+     * \param[in] point : the Point to be applied to ma to compute the interpolated data
+     * \param[in] type  : the \ref imageplus::math::numeric::InterpolationType "InterpolationType" used
+     *
+     * \returns The interpolated value corresponding to a Point (position) in a MultiArray (discrete signal)
+     *          using a specific \ref imageplus::math::numeric::InterpolationType "InterpolationType".
+     *
+     * \exception ImagePlusNotImplemented : Interpolation method not implemented
+     * \exception ImagePlusError          : The point has no valid neighbors to interpolate from
+     *
+     * \sa imageplus::math::numeric::InterpolationType
+     * \sa resize()
+     *
+     * \author 2008-05 - Eduardo Mendonca - Creation
+     * \author 2008-05 - Ramon Morros     - Creation
+     * \author 2011-07 - Albert Gil       - Review
+     */
+//    template<typename T>
+//    float64 interpolation( const MultiArray<T,2>&   ma,
+//                           const Point<2>&          point,
+//                           const InterpolationType  type ) throw ( ImagePlusError,
+//                                                                   ImagePlusNotImplemented );
+
+    /*!
+     * Interpolation corresponding to a Point (real coordinates) in ROI of a MultiArray (discrete signal) using
+     * a specific \ref imageplus::math::numeric::InterpolationType "InterpolationType".
+     *
+     * The interpolation is done using the Point neighbors depending on the
+     * \ref imageplus::math::numeric::InterpolationType "InterpolationType" choose.
+     *
+     * Only valid neighbors (i.e. the corresponding mask position is set to true) are used.\n
+     * The actual number of neighbors used is stored in the output parameter "valid_neighbors".
+     * If a point has no valid neighbors, the function returns zero (0) and valid_neighbors
+     * is set to zero. No exception is returned in this case.
+     *
+     * \tparam T : data type of the input data (note that the returned value is always float64)
+     *
+     * \param[in]  ma              : a MultiArray with the real values to interpolate from
+     * \param[in]  point           : the Point to be applied to ma to compute the interpolated data
+     * \param[in]  mask            : the ROI mask; only points belonging to the mask are used in the interpolation
+     * \param[in]  type            : the \ref imageplus::math::numeric::InterpolationType "InterpolationType" used
+     * \param[out] valid_neighbors : number of valid neighbors used in the interpolation
+     *
+     * \returns The interpolated value corresponding to a Point (position) in a MultiArray (discrete signal)
+     *          using a specific \ref imageplus::math::numeric::InterpolationType "InterpolationType".
+     *
+     * \exception ImagePlusNotImplemented : Interpolation method not implemented
+     * \exception ImagePlusError          : The point has no valid neighbors to interpolate from
+     *
+     * \sa imageplus::math::numeric::InterpolationType
+     * \sa resize()
+     *
+     * \author 2008-05 - Eduardo Mendonca - Creation
+     * \author 2008-05 - Ramon Morros     - Creation
+     * \author 2011-07 - Albert Gil       - Review
+     *
+     * \todo: when is the ImagePlusError exception thrown?
+     * \todo: we should add the mask feature to the Interpolator class
+     */
+    template<typename T>
+    float64 interpolation ( const MultiArray<T,2>&      ma,
+                            const MultiArray<bool,2>&   mask,
+                            const Point<2>&             point,
+                            const InterpolationType     type,
+                            uint32&                     valid_neighbors ) throw ( ImagePlusNotImplemented,
+                                                                                  ImagePlusError );
+
+    //!
+    //! \brief Interpolation to find values at given multiarray points
+    //!
+    //! This function performs 2-dimensional interpolation on a data set of \f${x,y,z}\f$ to
+    //! find approximate values of \f$z(x,y)\f$ at points \f${x_i,y_i }\f$ which don’t lie
+    //! on the data points \f${x,y}\f$. \n
+    //! \image html interpolation.png
+    //! A value is computed for all positions of the output multiarray where the output mask is active.
+    //! Only points that are active in the input mask are used for interpolation.
+    //! If a position is active in the output mask but it has no valid neighbors, it is not
+    //! interpolated and the corresponding position in the output mask is set to false.
+    //! This function is inspired in Matlab's function interp2().\n
+    //! It can be used for multiarray up/down sampling ( see imageplus::math::numeric::resize() ), multiarray rotation, etc.\n
+    //! Dimensions for original multiarray and input mask must agree. Dimensions for the
+    //! output mask and 'points' multiarray must agree.
+    //! Output multiarray is of the same size as the 'points' matrix. \n
+    //! When upsampling (i.e. both output image dimensions are larger than input image dimensions)
+    //! the original data points are not changed. When downsampling,
+    //! original data points are recomputed in the same way as the interleaved samples
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] ori          : Multiarray to interpolate
+    //! \param[in] mask         : ROI input mask. Only points belonging to the input mask are used in the interpolation
+    //! \param[in] points       : 2D multiarray of points where to compute interpolated data
+    //! \param[in,out] out_mask : Output mask defining which points are to be interpolated
+    //! \param[in] method       : Interpolation method
+    //!
+    //! \sa math::numeric::InterpolationType
+    //!
+    //! \return Multiarray with the interpolated values
+    //!
+    //! \exception ImagePlusError : A given point has no valid neighbors to interpolate from
+    //! \exception ImagePlusNotImplemented : Interpolation method not implemented
+    //!
+    //! \headerfile include/imageplus/math/numeric/interpolation.hpp <math/numeric/interpolation.hpp>
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 19-12-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> interpolation( const MultiArray<T,2>&        ori,
+                                   const MultiArray<bool,2>&     mask,
+                                   const MultiArray<Point<2>,2>& points,
+                                   MultiArray<bool,2>&           out_mask,
+                                   InterpolationType             method = LINEAR) throw ( ImagePlusNotImplemented,
+                                                                                          ImagePlusError );
+
+    //!
+    //! \brief Interpolation to find values at given Image points
+    //!
+    //! This function performs 2-dimensional interpolation on a data set of \f${x,y,z}\f$ to
+    //! find approximate values of \f$z(x,y)\f$ at points \f${x_i,y_i }\f$ which don’t lie
+    //! on the data points \f${x,y}\f$. \n
+    //! \image html interpolation.png
+    //! A value is computed for all positions of the output image where the output mask is active.
+    //! Only points that are active in the input mask are used for interpolation.
+    //! If a position is active in the output mask but it has no valid neighbors, it is not
+    //! interpolated and the corresponding position in the output mask is set to false.\n
+    //! This function is inspired in Matlab's function interp2().\n
+    //! It can be used for image up/down sampling ( see imageplus::math::numeric::resize() ), image rotation, etc.\n
+    //! Dimensions for original Image and input mask must agree. Dimensions for the
+    //! output mask and 'points' multiarray must agree.
+    //! Output matrix/image is of the same size as the 'points' matrix. \n
+    //! When upsampling (i.e. both output image dimensions are larger than input image dimensions)
+    //! the original data points are not changed. When downsampling,
+    //! original data points are recomputed in the same way as the interleaved samples
+    //!
+    //! \tparam T : Type of the data
+    //! \tparam N : Number of channels in the image
+    //!
+    //! \param[in] ori          : Image to interpolate
+    //! \param[in] mask         : ROI input mask. Only points belonging to the input mask are used in the interpolation
+    //! \param[in] points       : 2D multiarray of points where to compute interpolated data
+    //! \param[in,out] out_mask : Output mask defining which points are to be interpolated
+    //! \param[in] method       : Interpolation method
+    //!
+    //! \sa imageplus::math::numeric::InterpolationType
+    //!
+    //! \return Image with the interpolated values
+    //!
+    //! \exception ImagePlusError : A given point has no valid neighbors to interpolate from
+    //! \exception ImagePlusNotImplemented : Interpolation method not implemented
+    //!
+    //! \headerfile include/imageplus/math/numeric/interpolation.hpp <math/numeric/interpolation.hpp>
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 19-12-2008
+    //!
+    template<typename T, std::size_t N>
+    Image<T,N> interpolation( const Image<T,N>&             ori,
+                              const ImageMask&              mask,
+                              const MultiArray<Point<2>,2>& points,
+                              ImageMask&                    out_mask,
+                              InterpolationType             method = LINEAR) throw ( ImagePlusNotImplemented,
+                                                                                     ImagePlusError );
+
+    /*!
+     * Function to resize any type of Signal (n-dimensional and n-channel ImaVol)
+     *
+     * It creates a centered grid of Point in the range of the input Signal (ImaVol).
+     * To obtain the output values of the resized signal it interpolates that points into the input signal,
+     * using an interpolation filter (Interpolator) with the necessary window size to avoid aliasing.
+     *
+     * \see Interpolator, grid()
+     *
+     * \tparam SignalModel : Any type of Signal (ImaVol)
+     *
+     * \param[in] signal  : the input Signal (ImaVol) to resize
+     * \param[in] newsize : the size (number of samples) of the output Signal (ImaVol)
+     * \param[in] type    : the InterpolationType to interpolate (filter) the output Points
+     *
+     * \returns a resized Signal (Signal) to newsize with the values obtained from interpolated
+     *          points of the original Signal (ImaVol)
+     *
+     * \warning DO NOT CHANGE THE DEFAULT InterpoltionType unless you know what are you doing.
+     *
+     * \author 2011-07 - Albert Gil Moreno - Created to fix existing problems with already existing function
+     *                                       to interpolate, and to make it more generic.
+     */
+    template< class SignalModel >
+    SignalModel resize( const SignalModel&                                   signal,
+                        boost::array<std::size_t,SignalModel::dimensions>    newsize,
+                        InterpolationType                                    type = WEIGHTED_MEAN )
+    {
+        /*
+         * Assumptions
+         */
+#ifndef NDEBUG
+        for(std::size_t dd=0; dd < SignalModel::dimensions; ++dd) ASSERT( newsize[dd] >= 1,
+                                                                          "The output size must be >= 1 for all dimensions");
+#endif
+
+        /*
+         * Values just for convenience
+         */
+        static const std::size_t D = SignalModel::dimensions;
+        static const std::size_t N = SignalModel::channels;
+
+        /*
+         * Algorithm variables
+         */
+        boost::array<float64, D> size;        // the size of the input signal
+        boost::array<float64, D> incr;        // the distance between the resampled points
+        boost::array<float64, D> offset;      // the initial offset of the first point (to center the resampled points)
+        boost::array<float64, D> filter_size; // the size of the aliasing-filter (related to incr), also used as interpolation filter
+        //boost::array<float64, D> factor;  // the ratio between the size of the input signal and the desired size
+
+        boost::array< boost::array<std::size_t,D>,N> nnewsize; // just necessary because ImaVol still needs a size per channel...
+        nnewsize.assign(newsize);
+
+        //SignalModel out(nnewsize); // the output signal
+        SignalModel out;
+        out.resize(newsize); // the output signal
+
+        /*
+         * Initializing variables
+         */
+        size        = signal.sizes();
+        incr        = size / newsize;
+        offset      = (incr/2.0) - 0.5;   // to center the points
+        filter_size = incr;               // filter_size must be = max(1.0, incr);
+        for(std::size_t ii=0; ii<D; ++ii)
+        {
+            if(filter_size[ii]<1.0) filter_size[ii] = 1.0; // filter_size must be = max(1.0, incr);
+        }
+
+        /*
+         * Creating the resampling filter
+         */
+        Interpolator<D> filter(type, filter_size);
+
+        /*
+         * Creating the grid of Points for the resampled Signal
+         */
+        Coord<int64,D> firstc = 0;
+        Coord<int64,D> lastc  = newsize - std::size_t(1);
+
+        Point<D> firstp = offset;
+        Point<D> lastp  = offset + (incr*lastc);
+
+        std::vector< Point<D>       > pgrid = grid( firstp, lastp, Point<D>(incr) );
+        std::vector< Coord<int64,D> > cgrid = grid( firstc, lastc );
+
+        ASSERT( pgrid.size() == cgrid.size(), "Grids should have the same size. Points: " << pgrid.size() << " / Coords: " << cgrid.size());
+
+        /*
+         * Fill up the resampled signal using the grid
+         */
+        for(std::size_t ii = 0; ii<cgrid.size(); ++ii)
+        {
+            out(cgrid[ii]) = filter(pgrid[ii], signal);
+        }
+
+        return out;
+    }
+
+    //!
+    //! \brief downsample a 1 dimensional MultiArray
+    //!
+    //! No filtering is applied.
+    //!
+    //! \param[in]     in : 1D MultiArray to downsample
+    //! \param[in] factor : factor to downsample (1 has no effect)
+    //!
+    //! \return downsampled multiarray
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    template<typename T>
+    MultiArray<T,1> downsample(const MultiArray<T,1>& in, uint64 factor = 2)
+    {
+        return in[boost::indices[typename MultiArray<T,1>::index_range(0,in.dims(0),factor)]];
+    }
+
+    //!
+    //! \brief downsample a 2 dimensional MultiArray
+    //!
+    //! No filtering is applied.
+    //!
+    //! \param[in]       in : 2D MultiArray to downsample
+    //! \param[in] factor_x : factor to downsample X dimension (1 has no effect)
+    //! \param[in] factor_y : factor to downsample Y dimension (1 has no effect)
+    //!
+    //! \return downsampled multiarray
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> downsample(const MultiArray<T,2>& in, uint64 factor_x = 2, uint64 factor_y = 2)
+    {
+        return in[boost::indices[typename MultiArray<T,2>::index_range(0,in.dims(0),factor_x)]
+                                [typename MultiArray<T,2>::index_range(0,in.dims(1),factor_y)]];
+    }
+
+    //!
+    //! \brief downsample a 3 dimensional MultiArray
+    //!
+    //! No filtering is applied.
+    //!
+    //! \param[in]       in : 3D MultiArray to downsample
+    //! \param[in] factor_x : factor to downsample X dimension (1 has no effect)
+    //! \param[in] factor_y : factor to downsample Y dimension (1 has no effect)
+    //! \param[in] factor_z : factor to downsample Z dimension (1 has no effect)
+    //!
+    //! \return downsampled multiarray
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    template<typename T>
+    MultiArray<T,3> downsample(const MultiArray<T,3>& in, uint64 factor_x = 2, uint64 factor_y = 2, uint64 factor_z = 2)
+    {
+        return in[boost::indices[typename MultiArray<T,3>::index_range(0,in.dims(0),factor_x)]
+                                [typename MultiArray<T,3>::index_range(0,in.dims(1),factor_y)]
+                                [typename MultiArray<T,3>::index_range(0,in.dims(2),factor_z)]];
+    }
+
+    //!
+    //! \brief upsample a 1 dimensional MultiArray.  The new samples will have a 0 value
+    //!
+    //! \param[in]     in : 1D MultiArray to upsample
+    //! \param[in] factor : factor to upsample (factor-1 samples are added between original samples)
+    //!
+    //! \return upsampled multiarray
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    template<typename T>
+    MultiArray<T,1> upsample(const MultiArray<T,1>& in, uint64 factor = 2)
+    {
+        MultiArray<T,1> out(in.dims(0)*factor);
+        out = 0;
+        out[boost::indices[typename MultiArray<T,1>::index_range(0,out.dims(0),factor)]] = in;
+        return out;
+    }
+
+    //!
+    //! \brief upsample a 2 dimensional MultiArray.  The new samples will have a 0 value
+    //!
+    //! \param[in]       in : 2D MultiArray to upsample
+    //! \param[in] factor_x : factor to upsample X dimension (factor-1 samples are added between original samples)
+    //! \param[in] factor_y : factor to upsample Y dimension (factor-1 samples are added between original samples)
+    //!
+    //! \return upsampled multiarray
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> upsample(const MultiArray<T,2>& in, uint64 factor_x = 2, uint64 factor_y = 2)
+    {
+        MultiArray<T,2> out(in.dims(0)*factor_x,in.dims(1)*factor_y);
+        out = 0;
+        out[boost::indices[typename MultiArray<T,2>::index_range(0,out.dims(0),factor_x)]
+                          [typename MultiArray<T,2>::index_range(0,out.dims(1),factor_y)]] = in;
+        return out;
+    }
+
+    //!
+    //! \brief upsample a 3 dimensional MultiArray.  The new samples will have a 0 value
+    //!
+    //! \param[in]       in : 3D MultiArray to upsample
+    //! \param[in] factor_x : factor to upsample X dimension (factor-1 samples are added between original samples)
+    //! \param[in] factor_y : factor to upsample Y dimension (factor-1 samples are added between original samples)
+    //! \param[in] factor_z : factor to upsample Z dimension (factor-1 samples are added between original samples)
+    //!
+    //! \return upsampled multiarray
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    template<typename T>
+    MultiArray<T,3> upsample(const MultiArray<T,3>& in, uint64 factor_x = 2, uint64 factor_y = 2, uint64 factor_z = 2)
+    {
+        MultiArray<T,3> out(in.dims(0)*factor_x,in.dims(1)*factor_y,in.dims(2)*factor_z);
+        out = 0;
+        out[boost::indices[typename MultiArray<T,3>::index_range(0,out.dims(0),factor_x)]
+                          [typename MultiArray<T,3>::index_range(0,out.dims(1),factor_y)]
+                          [typename MultiArray<T,3>::index_range(0,out.dims(2),factor_z)]] = in;
+        return out;
+    }
+} // numeric
+} // math
+} // imageplus
+
+#endif // IMAGEPLUS_MATH_NUMERIC_INTERPOLATION_HPP

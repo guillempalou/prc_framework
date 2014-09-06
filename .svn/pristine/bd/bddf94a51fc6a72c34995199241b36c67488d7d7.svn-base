@@ -1,0 +1,337 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file convolution.test
+//!
+//!  tests for several numeric functions
+//!
+
+#include <iostream>
+#include <imageplus/core.hpp>
+#include <imageplus/math/numeric/convolution.hpp>
+
+
+#include <boost/test/floating_point_comparison.hpp>
+
+
+
+BOOST_AUTO_TEST_SUITE ( convolutionSuite );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+typedef boost::mpl::list<float32,float64> DataTypesF;
+typedef boost::mpl::list<int8, int16, int32, int64> DataTypesT;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( convolution_test, T, DataTypesF )
+{
+
+    MultiArray<float64,1>  k1m(3);
+    k1m[0] =  -3;
+    k1m[1] =   2;
+    k1m[2] =   1;
+
+    Kernel<1> k1(k1m, Coord<int64,1>(1));
+
+    MultiArray<int64,1> ma2(6);
+    ma2[0] =  17;
+    ma2[1] =  25;
+    ma2[2] =  43;
+    ma2[3] =  46;
+    ma2[4] =  28;
+    ma2[5] =  11;
+
+
+    MultiArray<int64,1> res2(8);
+    res2[0] = -51;
+    res2[1] = -41;
+    res2[2] = -62;
+    res2[3] = -27;
+    res2[4] =  51;
+    res2[5] =  69;
+    res2[6] =  50;
+    res2[7] =  11;
+
+
+    MultiArray<int64,1> res2_np(6);
+    res2_np[0] = -41;
+    res2_np[1] = -62;
+    res2_np[2] = -27;
+    res2_np[3] =  51;
+    res2_np[4] =  69;
+    res2_np[5] =  50;
+
+
+    MultiArray<int64,1> out2(6);
+    MultiArray<int64,1> out2_np(6);
+
+
+    // Iterator version 1D - 1D (no padding)
+    convolve(ma2.begin(), ma2.end(), k1, out2_np.begin());
+    BOOST_CHECK(out2_np == res2_np);
+    
+    // MultiArray 1D - 1D version (with padding)
+    convolve(ma2, k1, true, out2);
+    BOOST_CHECK(out2 == res2);
+
+
+
+    MultiArray<int64,2> ma_2d (5,5);
+    ma_2d=0;
+
+    ma_2d[0][0] = 3;
+    ma_2d[1][0] = 3;
+    ma_2d[2][0] = 7;
+    ma_2d[3][0] = 7;
+    ma_2d[4][0] = 21;
+
+    ma_2d[0][1] = 3;
+    ma_2d[1][1] = 3;
+    ma_2d[2][1] = 7;
+    ma_2d[3][1] = 7;
+    ma_2d[4][1] = 21;
+
+    ma_2d[0][2] = 4;
+    ma_2d[1][2] = 4;
+    ma_2d[2][2] = 9;
+    ma_2d[3][2] = 9;
+    ma_2d[4][2] = 8;
+
+    ma_2d[0][3] = 4;
+    ma_2d[1][3] = 4;
+    ma_2d[2][3] = 9;
+    ma_2d[3][3] = 9;
+    ma_2d[4][3] = 8;
+
+    ma_2d[0][4] = 0;
+    ma_2d[1][4] = 0;
+    ma_2d[2][4] = 3;
+    ma_2d[3][4] = 3;
+    ma_2d[4][4] = 5;
+
+
+    MultiArray<int64,2> res_2d2d(7,7);
+
+    res_2d2d[0][0]= 3; res_2d2d[1][0]= 6; res_2d2d[2][0]=13; res_2d2d[3][0]= 17; res_2d2d[4][0]= 35; res_2d2d[5][0]= 28; res_2d2d[6][0]= 21;
+    res_2d2d[0][1]= 3; res_2d2d[1][1]= 6; res_2d2d[2][1]=13; res_2d2d[3][1]= 17; res_2d2d[4][1]= 35; res_2d2d[5][1]= 28; res_2d2d[6][1]= 21;
+    res_2d2d[0][2]= 1; res_2d2d[1][2]= 2; res_2d2d[2][2]= 4; res_2d2d[3][2]=  5; res_2d2d[4][2]= -9; res_2d2d[5][2]=-11; res_2d2d[6][2]=-13;
+    res_2d2d[0][3]= 1; res_2d2d[1][3]= 2; res_2d2d[2][3]= 4; res_2d2d[3][3]=  5; res_2d2d[4][3]= -9; res_2d2d[5][3]=-11; res_2d2d[6][3]=-13;
+    res_2d2d[0][4]=-4; res_2d2d[1][4]=-8; res_2d2d[2][4]=-14;res_2d2d[3][4]=-16; res_2d2d[4][4]=-15; res_2d2d[5][4]= -9; res_2d2d[6][4]= -3;
+    res_2d2d[0][5]=-4; res_2d2d[1][5]=-8; res_2d2d[2][5]=-17;res_2d2d[3][5]=-22; res_2d2d[4][5]=-26; res_2d2d[5][5]=-17; res_2d2d[6][5]= -8;
+    res_2d2d[0][6]= 0; res_2d2d[1][6]= 0; res_2d2d[2][6]=-3; res_2d2d[3][6]= -6; res_2d2d[4][6]=-11; res_2d2d[5][6]= -8; res_2d2d[6][6]= -5;
+
+    MultiArray<float64,2> k2d_ma(3,3);
+
+
+    k2d_ma[0][0] =  1;     k2d_ma[1][0] =  1;    k2d_ma[2][0] =  1;
+    k2d_ma[0][1] =  0;     k2d_ma[1][1] =  0;    k2d_ma[2][1] =  0;
+    k2d_ma[0][2] = -1;     k2d_ma[1][2] = -1;    k2d_ma[2][2] = -1;
+
+    Kernel<2> k2d(k2d_ma, Coord<int64,2>(1,1), true);
+
+    // MultiArray 2D - 2D version (with padding)
+    MultiArray<int64,2> out_2d2d(7,7);
+
+    convolve(ma_2d, k2d, true, out_2d2d);
+
+
+    BOOST_CHECK(out_2d2d == res_2d2d);
+
+
+    MultiArray<int64,2> res_2d1d(7,5);
+    res_2d1d[0][0] = -9; res_2d1d[1][0] =  -3; res_2d1d[2][0] = -12; res_2d1d[3][0] =  -4; res_2d1d[4][0] = -42; res_2d1d[5][0] =  49; res_2d1d[6][0] =  21;
+    res_2d1d[0][1] = -9; res_2d1d[1][1] =  -3; res_2d1d[2][1] = -12; res_2d1d[3][1] =  -4; res_2d1d[4][1] = -42; res_2d1d[5][1] =  49; res_2d1d[6][1] =  21;
+    res_2d1d[0][2] =-12; res_2d1d[1][2] =  -4; res_2d1d[2][2] = -15; res_2d1d[3][2] =  -5; res_2d1d[4][2] =   3; res_2d1d[5][2] =  25; res_2d1d[6][2] =   8;
+    res_2d1d[0][3] =-12; res_2d1d[1][3] =  -4; res_2d1d[2][3] = -15; res_2d1d[3][3] =  -5; res_2d1d[4][3] =   3; res_2d1d[5][3] =  25; res_2d1d[6][3] =   8;
+    res_2d1d[0][4] =  0; res_2d1d[1][4] =   0; res_2d1d[2][4] =  -9; res_2d1d[3][4] =  -3; res_2d1d[4][4] =  -6; res_2d1d[5][4] =  13; res_2d1d[6][4] =   5;
+
+    // MultiArray 2D - 1D version (no padding)
+    MultiArray<int64,2> out_2d1d(7,5);
+    out_2d1d = convolve(ma_2d, k1, ROWS, true);
+
+    BOOST_CHECK(out_2d1d == res_2d1d);
+
+    // MultiArray 2D - 1D version (no padding)
+
+    MultiArray<int64,2> res_2d1d1d(7,7);
+    res_2d1d1d[0][0]= 27;res_2d1d1d[1][0]=  9;res_2d1d1d[2][0]= 36;res_2d1d1d[3][0]= 12;res_2d1d1d[4][0]= 126;res_2d1d1d[5][0]=-147;res_2d1d1d[6][0]=-63;
+    res_2d1d1d[0][1]=  9;res_2d1d1d[1][1]=  3;res_2d1d1d[2][1]= 12;res_2d1d1d[3][1]=  4;res_2d1d1d[4][1]=  42;res_2d1d1d[5][1]= -49;res_2d1d1d[6][1]=-21;
+    res_2d1d1d[0][2]=  9;res_2d1d1d[1][2]=  3;res_2d1d1d[2][2]=  9;res_2d1d1d[3][2]=  3;res_2d1d1d[4][2]=-135;res_2d1d1d[5][2]=  72;res_2d1d1d[6][2]=39;
+    res_2d1d1d[0][3]=  3;res_2d1d1d[1][3]=  1;res_2d1d1d[2][3]=  3;res_2d1d1d[3][3]=  1;res_2d1d1d[4][3]= -45;res_2d1d1d[5][3]=  24;res_2d1d1d[6][3]= 13;
+    res_2d1d1d[0][4]=-36;res_2d1d1d[1][4]=-12;res_2d1d1d[2][4]=-18;res_2d1d1d[3][4]= -6;res_2d1d1d[4][4]=  27;res_2d1d1d[5][4]=  36;res_2d1d1d[6][4]=  9;
+    res_2d1d1d[0][5]=-12;res_2d1d1d[1][5]= -4;res_2d1d1d[2][5]=-33;res_2d1d1d[3][5]=-11;res_2d1d1d[4][5]=  -9;res_2d1d1d[5][5]=  51;res_2d1d1d[6][5]= 18;
+    res_2d1d1d[0][6]=  0;res_2d1d1d[1][6]=  0;res_2d1d1d[2][6]= -9;res_2d1d1d[3][6]= -3;res_2d1d1d[4][6]=  -6;res_2d1d1d[5][6]=  13;res_2d1d1d[6][6]=  5;
+
+    // std::cout << res_2d1d1d << std::endl;
+
+    MultiArray<int64,2> out_2d1d1d;
+    out_2d1d1d = convolve(ma_2d, k1, k1, true);
+
+    // std::cout << out_2d1d1d << std::endl;
+
+
+    BOOST_CHECK(out_2d1d1d == res_2d1d1d);
+
+
+#if 0
+
+
+
+
+    MultiArray<int64,2> out1(6,1);
+
+    MultiArray<int64,2> ma1(6,1);
+
+    ma1[0][0] = 4;
+    ma1[1][0] = 3;
+    ma1[2][0] = 5;
+    ma1[3][0] = 7;
+    ma1[4][0] = 9;
+    ma1[5][0] = 1;
+
+
+    MultiArray<int64,2> res1(6,1);
+
+    res1[0][0] = 17;
+    res1[1][0] = 25;
+    res1[2][0] = 43;
+    res1[3][0] = 46;
+    res1[4][0] = 28;
+    res1[5][0] = 11;
+
+
+    convolve(ma1, k1, ROWS, out1);
+
+
+    BOOST_CHECK(out1 == res1);
+
+
+    std::cout << "out1" << std::endl;
+    std::cout << out1 << std::endl;
+
+
+    std::cout << "Res1" << std::endl;
+    std::cout << res1 << std::endl;
+
+
+
+
+
+
+    MultiArray<float64,1>  kernel(3);
+    kernel[0] =  1.0/3.0;
+    kernel[1] =  1.0/3.0;
+    kernel[2] =  1.0/3.0;
+
+
+
+    MultiArray<float64,1> data(10);
+    data[0] =   0;
+    data[1] =   4;
+    data[2] =   5;
+    data[3] =   6;
+    data[4] =  20;
+    data[5] =  21;
+    data[6] =  21;
+    data[7] =  21;
+    data[8] = 100;
+    data[9] =  20;
+
+
+    MultiArray<float64,1> out(10);
+
+    convolve1d(data.begin(), (uint64)10, kernel.begin(), (uint64)3, out.begin());
+
+
+    float64 res[10] = { 0,4,5,2,15,15,1,0,79,-1};
+
+    for (uint64 i=0; i < 10; ++i)
+    {
+        BOOST_CHECK_CLOSE(out[i], res[i], 1.e-7);
+        // std::cout << out[i] << " " << res[i] << std::endl;
+    }
+
+
+    MultiArray<float64,2> ma (6,6);
+    ma=0;
+
+    ma[0][0] = 3;
+    ma[1][0] = 3;
+    ma[2][0] = 7;
+    ma[3][0] = 7;
+    ma[4][0] = 21;
+    ma[5][0] = 21;
+
+    ma[0][1] = 3;
+    ma[1][1] = 3;
+    ma[2][1] = 7;
+    ma[3][1] = 7;
+    ma[4][1] = 21;
+    ma[5][1] = 21;
+
+    ma[0][2] = 4;
+    ma[1][2] = 4;
+    ma[2][2] = 9;
+    ma[3][2] = 9;
+    ma[4][2] = 8;
+    ma[5][2] = 8;
+
+    ma[0][3] = 4;
+    ma[1][3] = 4;
+    ma[2][3] = 9;
+    ma[3][3] = 9;
+    ma[4][3] = 8;
+    ma[5][3] = 8;
+
+    ma[0][4] = 0;
+    ma[1][4] = 0;
+    ma[2][4] = 3;
+    ma[3][4] = 3;
+    ma[4][4] = 5;
+    ma[5][4] = 5;
+
+    ma[0][5] = 0;
+    ma[1][5] = 0;
+    ma[2][5] = 3;
+    ma[3][5] = 3;
+    ma[4][5] = 5;
+    ma[5][5] = 5;
+
+
+
+    MultiArray<float64,2> out_ma1 = convolve(ma, kernel, ROWS);
+
+    std::cout << "Ori" << std::endl;
+    std::cout << ma << std::endl;
+
+    std::cout << "Horizontal" << std::endl;
+    std::cout << out_ma1 << std::endl;
+
+    std::cout << "Horizontal" << std::endl;
+    std::cout << out_ma1 << std::endl;
+
+
+    MultiArray<float64,2> out_ma2 = convolve(ma, kernel, COLUMNS);
+
+    std::cout << "Vertical" << std::endl;
+    std::cout << out_ma2 << std::endl;
+
+
+    MultiArray<float64,2> out_ma3 = convolve(ma, kernel, ROWS_COLUMNS);
+
+
+    MultiArray<float64,2> out_ma4 = convolve(ma, kernel, kernel);
+    MultiArray<float64,2> out_ma5 = convolve(ma, kernel, kernel);
+    MultiArray<float64,2> out_ma6 = convolve(ma, kernel, kernel);
+#endif
+
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

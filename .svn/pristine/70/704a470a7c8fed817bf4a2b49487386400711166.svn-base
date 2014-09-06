@@ -1,0 +1,878 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file partition.test
+//!
+//! Tests for basic functions working with Partition 
+//!
+#include <imageplus/core/partition.hpp>
+#include <imageplus/core/region.hpp>
+
+BOOST_AUTO_TEST_SUITE ( Partition_Suite );
+
+using namespace imageplus;
+using namespace std;
+
+typedef boost::mpl::list<imageplus::Region<Coord2D<int64> >, RegionContour<Coord2D<int64> > > RegionTypeList;
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_basics, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part;
+    temp_part.resize(2,2);
+    
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 8;
+    temp_part[0][1] = 8;
+    temp_part[1][1] = 9;
+
+    Partition<RegionType> my_partition(temp_part);
+
+    BOOST_CHECK(my_partition.leaves_partition()(0)==temp_part(0));
+    BOOST_CHECK(my_partition.roots_partition()(0)==temp_part(0));
+    
+    BOOST_CHECK_EQUAL( my_partition.num_regions(), (std::size_t)3 );
+    BOOST_CHECK_EQUAL( my_partition.max_label()  , (uint32)9 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[8].size(), (std::size_t)2 );
+    BOOST_CHECK_EQUAL( my_partition[9].size(), (std::size_t)1 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].label(), (uint32)3 );
+    BOOST_CHECK_EQUAL( my_partition[8].label(), (uint32)8 );
+    BOOST_CHECK_EQUAL( my_partition[9].label(), (uint32)9 );
+    
+    // Repeat to check that nothing is inherited when changing the base partition
+    ImagePartition<> temp_part2(2,1);
+        
+    temp_part2[0][0] = 3;
+    temp_part2[1][0] = 8;
+
+    my_partition.leaves_partition(temp_part2);
+        
+    BOOST_CHECK(my_partition.leaves_partition()(0)==temp_part2(0));
+    BOOST_CHECK(my_partition.roots_partition()(0)==temp_part2(0));
+    
+    BOOST_CHECK_EQUAL( my_partition.num_regions(), (std::size_t)2 );
+    BOOST_CHECK_EQUAL( my_partition.max_label()  , (uint32)8 );
+    
+        
+    BOOST_CHECK_EQUAL( my_partition[3].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[8].size(), (std::size_t)1 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].label(), (uint32)3 );
+    BOOST_CHECK_EQUAL( my_partition[8].label(), (uint32)8 );
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_basics_with_fusion, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part;
+    temp_part.resize(2,2);
+    
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 8;
+    temp_part[0][1] = 8;
+    temp_part[1][1] = 9;
+
+    Partition<RegionType> my_partition(temp_part);
+    
+    BOOST_CHECK_EQUAL( my_partition.max_label()  , (uint32)9 );
+   
+    merge_regions(8,9,26,my_partition);
+   
+    BOOST_CHECK_EQUAL( my_partition.num_regions(), (std::size_t)4 );
+    BOOST_CHECK_EQUAL( my_partition.max_label()  , (uint32)26 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[8].size(), (std::size_t)2 );
+    BOOST_CHECK_EQUAL( my_partition[9].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[26].size(), (std::size_t)3 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].label(), (uint32)3 );
+    BOOST_CHECK_EQUAL( my_partition[8].label(), (uint32)8 );
+    BOOST_CHECK_EQUAL( my_partition[9].label(), (uint32)9 );
+    BOOST_CHECK_EQUAL( my_partition[26].label(), (uint32)26 );
+
+    BOOST_CHECK_EQUAL( my_partition[3].parts().size(), (std::size_t)0 );
+    BOOST_CHECK_EQUAL( my_partition[8].parts().size(), (std::size_t)0 );
+    BOOST_CHECK_EQUAL( my_partition[9].parts().size(), (std::size_t)0 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].is_composite(), (bool)true );
+    BOOST_CHECK_EQUAL( my_partition[8].is_composite(), (bool)true );
+    BOOST_CHECK_EQUAL( my_partition[9].is_composite(), (bool)true );
+    BOOST_CHECK_EQUAL( my_partition[26].is_composite(), (bool)true );
+    
+    BOOST_CHECK_EQUAL( my_partition[26].parts().size(), (std::size_t)2 );
+    BOOST_CHECK_EQUAL( my_partition[26].parts()[0]->label(), (uint32)8 );
+    BOOST_CHECK_EQUAL( my_partition[26].parts()[1]->label(), (uint32)9 );
+    
+    BOOST_CHECK_EQUAL( my_partition[8].parent()->label(), (uint32)26 );
+    BOOST_CHECK_EQUAL( my_partition[9].parent()->label(), (uint32)26 );
+    BOOST_CHECK( my_partition[3].parent() == 0);
+    BOOST_CHECK( my_partition[26].parent() == 0);
+    
+    // Repeat to check that nothing is inherited when changing the base partition
+    ImagePartition<> temp_part2(2,1);
+        
+    temp_part2[0][0] = 3;
+    temp_part2[1][0] = 8;
+    
+    ImagePartition<> temp_part3(2,1);
+            
+    temp_part3[0][0] = 26;
+    temp_part3[1][0] = 26;
+
+    my_partition.leaves_partition(temp_part2);
+    
+    BOOST_CHECK_EQUAL( my_partition.max_label()  , (uint32)8 );
+    BOOST_CHECK(my_partition.leaves_partition()(0)==temp_part2(0));
+    BOOST_CHECK(my_partition.roots_partition()(0)==temp_part2(0));
+
+    merge_regions(8,3,26,my_partition);
+        
+    BOOST_CHECK(my_partition.leaves_partition()(0)==temp_part2(0));
+    BOOST_CHECK(my_partition.roots_partition()(0)==temp_part3(0));
+    
+    BOOST_CHECK_EQUAL( my_partition.num_regions(), (std::size_t)3 );
+    BOOST_CHECK_EQUAL( my_partition.max_label()  , (uint32)26 );
+        
+    BOOST_CHECK_EQUAL( my_partition[3].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[8].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[26].size(), (std::size_t)2 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].label(), (uint32)3 );
+    BOOST_CHECK_EQUAL( my_partition[8].label(), (uint32)8 );
+    BOOST_CHECK_EQUAL( my_partition[26].label(), (uint32)26 );
+
+
+    BOOST_CHECK_EQUAL( my_partition[8].parts().size(), (std::size_t)0 );
+    BOOST_CHECK_EQUAL( my_partition[8].parts().size(), (std::size_t)0 );
+
+    BOOST_CHECK_EQUAL( my_partition[26].is_composite(), (bool)true );
+    BOOST_CHECK_EQUAL( my_partition[26].parts().size(), (std::size_t)2 );
+    BOOST_CHECK_EQUAL( my_partition[26].parts()[0]->label(), (uint32)8 );
+    BOOST_CHECK_EQUAL( my_partition[26].parts()[1]->label(), (uint32)3 );
+    
+    BOOST_CHECK_EQUAL( my_partition[8].parent()->label(), (uint32)26 );
+    BOOST_CHECK_EQUAL( my_partition[3].parent()->label(), (uint32)26 );
+    BOOST_CHECK( my_partition[26].parent() == 0);
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_basics_with_fusion_non_neighbors, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part;
+    temp_part.resize(3,1);
+    
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 8;
+    temp_part[2][0] = 4;
+
+    Partition<RegionType> my_partition(temp_part);
+    
+    BOOST_CHECK_EQUAL( my_partition.max_label()  , (uint32)8 );
+   
+    merge_regions(3,4,23,my_partition);
+   
+    BOOST_CHECK_EQUAL( my_partition.num_regions(), (std::size_t)4 );
+    BOOST_CHECK_EQUAL( my_partition.max_label()  , (uint32)23 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[8].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[4].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[23].size(), (std::size_t)2 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].label(), (uint32)3 );
+    BOOST_CHECK_EQUAL( my_partition[8].label(), (uint32)8 );
+    BOOST_CHECK_EQUAL( my_partition[4].label(), (uint32)4 );
+    BOOST_CHECK_EQUAL( my_partition[23].label(), (uint32)23 );
+
+    BOOST_CHECK_EQUAL( my_partition[3].parts().size(), (std::size_t)0 );
+    BOOST_CHECK_EQUAL( my_partition[8].parts().size(), (std::size_t)0 );
+    BOOST_CHECK_EQUAL( my_partition[4].parts().size(), (std::size_t)0 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].is_composite(), (bool)true );
+    BOOST_CHECK_EQUAL( my_partition[8].is_composite(), (bool)true );
+    BOOST_CHECK_EQUAL( my_partition[4].is_composite(), (bool)true );
+    BOOST_CHECK_EQUAL( my_partition[23].is_composite(), (bool)true );
+    
+    BOOST_CHECK_EQUAL( my_partition[23].parts().size(), (std::size_t)2 );
+    BOOST_CHECK_EQUAL( my_partition[23].parts()[0]->label(), (uint32)3 );
+    BOOST_CHECK_EQUAL( my_partition[23].parts()[1]->label(), (uint32)4 );
+    
+    BOOST_CHECK_EQUAL( my_partition[3].parent()->label(), (uint32)23 );
+    BOOST_CHECK_EQUAL( my_partition[4].parent()->label(), (uint32)23 );
+    BOOST_CHECK( my_partition[8].parent() == 0);
+    BOOST_CHECK( my_partition[23].parent() == 0);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_copy_constructor, RegionType, RegionTypeList)
+{
+    ImagePartition<> temp_part(2,2);
+    
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 7;
+    temp_part[0][1] = 8;
+    temp_part[1][1] = 9;
+
+    Partition<RegionType> my_partition(temp_part);
+
+    merge_regions(8,9,26,my_partition);
+
+    Partition<RegionType> my_partition2(my_partition);
+
+    // Check everything is equal in the two partitions
+    BOOST_CHECK(my_partition==my_partition2);
+    
+    // Tree structure
+    BOOST_CHECK(my_partition2[26].parts()[0] == &(my_partition2[8]));
+    BOOST_CHECK(my_partition2[26].parts()[1] == &(my_partition2[9]));
+    BOOST_CHECK(my_partition2[8].parent()    == &(my_partition2[26]));
+    BOOST_CHECK(my_partition2[9].parent()    == &(my_partition2[26]));
+    
+    // Roots iterators
+    typename Partition<RegionType>::roots_iterator root_it     = my_partition2.begin();
+    typename Partition<RegionType>::roots_iterator root_it_end = my_partition2.end();
+    std::set<uint32> labels;
+    labels.insert(3);
+    labels.insert(7);
+    labels.insert(26);
+    for(; root_it!=root_it_end; ++root_it)
+    {
+        BOOST_CHECK(labels.count((*root_it).label())==1);
+    }
+    
+    // Neighbors are fine
+    typename RegionType::neighbor_iterator neigh_it = my_partition2[3].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[26]) || *neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[26]) || *neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition2[3].neighbors_end());
+    
+    neigh_it = my_partition2[26].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[3]) || *neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[3]) || *neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition2[26].neighbors_end());
+
+    // Check that regions are indeed copied
+    BOOST_CHECK(&(my_partition[3])!=&(my_partition2[3]));
+    BOOST_CHECK(&(my_partition[7])!=&(my_partition2[7]));
+    BOOST_CHECK(&(my_partition[8])!=&(my_partition2[8]));
+    BOOST_CHECK(&(my_partition[9])!=&(my_partition2[9]));
+    BOOST_CHECK(&(my_partition[26])!=&(my_partition2[26]));
+
+
+    // Merge one region to check that everything keeps fine
+    ImagePartition<> temp_part2(2,2);
+    temp_part2[0][0] = 77;
+    temp_part2[1][0] = 7;
+    temp_part2[0][1] = 77;
+    temp_part2[1][1] = 77;
+    
+    merge_regions(3,26,77,my_partition);
+    BOOST_CHECK(my_partition.roots_partition()(0)==temp_part2(0));
+    
+    neigh_it = my_partition[7].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition[77]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition[7].neighbors_end());
+    
+    neigh_it = my_partition[77].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition[7]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition[77].neighbors_end());
+
+    // Merge one region to check that everything keeps fine in partition2
+    merge_regions(3,26,77,my_partition2);
+    BOOST_CHECK(my_partition2.roots_partition()(0)==temp_part2(0));
+    
+    neigh_it = my_partition2[7].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[77]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition2[7].neighbors_end());
+    
+    neigh_it = my_partition2[77].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition2[77].neighbors_end());
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_equal_operator, RegionType, RegionTypeList)
+{
+    ImagePartition<> temp_part(2,2);
+    
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 7;
+    temp_part[0][1] = 8;
+    temp_part[1][1] = 9;
+
+    Partition<RegionType> my_partition(temp_part);
+
+    merge_regions(8,9,26,my_partition);
+
+    Partition<RegionType> my_partition2;
+    my_partition2 = my_partition;
+
+    // Check everything is equal in the two partitions
+    BOOST_CHECK(my_partition==my_partition2);
+    
+    // Tree structure
+    BOOST_CHECK(my_partition2[26].parts()[0] == &(my_partition2[8]));
+    BOOST_CHECK(my_partition2[26].parts()[1] == &(my_partition2[9]));
+    BOOST_CHECK(my_partition2[8].parent() == &(my_partition2[26]));
+    BOOST_CHECK(my_partition2[9].parent() == &(my_partition2[26]));
+    
+    // Roots iterators
+    typename Partition<RegionType>::roots_iterator root_it = my_partition2.begin();
+    typename Partition<RegionType>::roots_iterator root_it_end = my_partition2.end();
+    std::set<uint32> labels;
+    labels.insert(3);
+    labels.insert(7);
+    labels.insert(26);
+    for(; root_it!=root_it_end; ++root_it)
+    {
+        BOOST_CHECK(labels.count((*root_it).label())==1);
+    }
+    
+    // Neighbors are fine
+    typename RegionType::neighbor_iterator neigh_it = my_partition2[3].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[26]) || *neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[26]) || *neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition2[3].neighbors_end());
+    
+    neigh_it = my_partition2[26].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[3]) || *neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[3]) || *neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition2[26].neighbors_end());
+
+    // Check that regions are indeed copied
+    BOOST_CHECK(&(my_partition[3])!=&(my_partition2[3]));
+    BOOST_CHECK(&(my_partition[7])!=&(my_partition2[7]));
+    BOOST_CHECK(&(my_partition[8])!=&(my_partition2[8]));
+    BOOST_CHECK(&(my_partition[9])!=&(my_partition2[9]));
+    BOOST_CHECK(&(my_partition[26])!=&(my_partition2[26]));
+
+
+    // Merge one region to check that everything keeps fine
+    ImagePartition<> temp_part2(2,2);
+    temp_part2[0][0] = 77;
+    temp_part2[1][0] = 7;
+    temp_part2[0][1] = 77;
+    temp_part2[1][1] = 77;
+    
+    merge_regions(3,26,77,my_partition);
+    BOOST_CHECK(my_partition.roots_partition()(0)==temp_part2(0));
+    
+    neigh_it = my_partition[7].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition[77]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition[7].neighbors_end());
+    
+    neigh_it = my_partition[77].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition[7]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition[77].neighbors_end());
+
+    // Merge one region to check that everything keeps fine in partition2
+    merge_regions(3,26,77,my_partition2);
+    BOOST_CHECK(my_partition2.roots_partition()(0)==temp_part2(0));
+    
+    neigh_it = my_partition2[7].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[77]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition2[7].neighbors_end());
+    
+    neigh_it = my_partition2[77].neighbors_begin();
+    BOOST_CHECK((*neigh_it)==0);
+    ++neigh_it;
+    BOOST_CHECK(*neigh_it==&(my_partition2[7]));
+    ++neigh_it;
+    BOOST_CHECK(neigh_it==my_partition2[77].neighbors_end());
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_prune, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part(3,3);
+    temp_part[0][0] = 1;     temp_part[1][0] = 1;     temp_part[2][0] = 2;
+    temp_part[0][1] = 1;     temp_part[1][1] = 2;     temp_part[2][1] = 2;
+    temp_part[0][2] = 3;     temp_part[1][2] = 4;     temp_part[2][2] = 5;
+
+    Partition<RegionType> my_partition(temp_part);
+    merge_regions(1,2,6,my_partition);
+    merge_regions(4,5,7,my_partition);
+    merge_regions(3,6,8,my_partition);
+    merge_regions(7,8,9,my_partition);
+    
+    BOOST_CHECK_EQUAL( my_partition.num_regions(), (std::size_t)9 );
+    
+    prune(8,my_partition);
+    
+    BOOST_CHECK_EQUAL( my_partition.num_regions(), (std::size_t)5 );
+
+    BOOST_CHECK_EQUAL( my_partition[8].parts().size(), (std::size_t)0 );
+
+    BOOST_CHECK_EQUAL( my_partition[9].size(), (std::size_t)9 );
+    BOOST_CHECK_EQUAL( my_partition[8].size(), (std::size_t)7 );
+    BOOST_CHECK_EQUAL( my_partition[7].size(), (std::size_t)0 ); // It does not contain the coords
+    BOOST_CHECK_EQUAL( my_partition[4].size(), (std::size_t)1 );
+    BOOST_CHECK_EQUAL( my_partition[5].size(), (std::size_t)1 );
+    
+    BOOST_CHECK_EQUAL( my_partition[9].label(), (uint32)9 );
+    BOOST_CHECK_EQUAL( my_partition[8].label(), (uint32)8 );
+    BOOST_CHECK_EQUAL( my_partition[7].label(), (uint32)7 );
+    BOOST_CHECK_EQUAL( my_partition[4].label(), (uint32)4 );
+    BOOST_CHECK_EQUAL( my_partition[5].label(), (uint32)5 );
+    
+    // Tests avoided because boost causes leaks
+    //    BOOST_CHECK_THROW( my_partition[1], ImagePlusError);
+    //    BOOST_CHECK_THROW( my_partition[2], ImagePlusError);
+    //    BOOST_CHECK_THROW( my_partition[3], ImagePlusError);
+    //    BOOST_CHECK_THROW( my_partition[6], ImagePlusError);
+    
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[0][0], (uint32)8);
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[0][1], (uint32)8); 
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[0][2], (uint32)8); 
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[1][0], (uint32)8); 
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[1][1], (uint32)8); 
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[1][2], (uint32)4); 
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[2][0], (uint32)8); 
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[2][1], (uint32)8); 
+    BOOST_CHECK_EQUAL( my_partition.leaves_partition()(0)[2][2], (uint32)5); 
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_neighbor_iterators, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part(3,3);
+    temp_part[0][0] = 1;     temp_part[1][0] = 1;     temp_part[2][0] = 2;
+    temp_part[0][1] = 1;     temp_part[1][1] = 2;     temp_part[2][1] = 2;
+    temp_part[0][2] = 3;     temp_part[1][2] = 4;     temp_part[2][2] = 5;
+
+    typedef Partition<RegionType> partition_type;
+    partition_type my_partition(temp_part);
+
+    RegionType& my_reg = my_partition[2];
+    typename RegionType::neighbor_iterator neigh_it = my_reg.neighbors_begin();
+    
+    std::set<uint32> neighb;
+    std::set<uint32>::iterator set_it;
+    neighb.insert(1);
+    neighb.insert(4);
+    neighb.insert(5);
+    
+	BOOST_CHECK((*neigh_it) == 0);
+	++neigh_it;
+	set_it = neighb.find((*neigh_it)->label());
+	BOOST_CHECK(set_it != neighb.end());
+    ++neigh_it;
+    set_it = neighb.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb.end());
+    ++neigh_it;
+    set_it = neighb.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb.end());
+	++neigh_it;
+	BOOST_CHECK(neigh_it == my_reg.neighbors_end());
+
+ 	neigh_it = my_reg.neighbors_find(&(my_partition[3]));
+    BOOST_CHECK(neigh_it==my_reg.neighbors_end());
+    
+	neigh_it = my_reg.neighbors_find(typename partition_type::RegionPointer());
+    BOOST_CHECK(neigh_it!=my_reg.neighbors_end());
+  	  
+    neigh_it = my_reg.neighbors_find(&(my_partition[1]));
+    BOOST_CHECK(neigh_it!=my_reg.neighbors_end());
+    
+    neigh_it = my_reg.neighbors_find(&(my_partition[4]));
+    BOOST_CHECK(neigh_it!=my_reg.neighbors_end());
+
+    neigh_it = my_reg.neighbors_find(&(my_partition[5]));
+    BOOST_CHECK(neigh_it!=my_reg.neighbors_end());    
+    
+    RegionType& my_reg2 = my_partition[1];
+    
+    std::set<uint32> neighb2;
+    neighb2.insert(2);
+    neighb2.insert(3);
+    
+    neigh_it = my_reg2.neighbors_begin();
+    BOOST_CHECK((*neigh_it) == 0);
+    ++neigh_it;
+    set_it = neighb2.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb2.end());
+    ++neigh_it;
+    set_it = neighb2.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb2.end());
+    ++neigh_it;
+    BOOST_CHECK(neigh_it == my_reg2.neighbors_end());
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_neighbor_iterators_with_fusion, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part(3,3);
+    temp_part[0][0] = 1;     temp_part[1][0] = 1;     temp_part[2][0] = 2;
+    temp_part[0][1] = 1;     temp_part[1][1] = 2;     temp_part[2][1] = 2;
+    temp_part[0][2] = 3;     temp_part[1][2] = 4;     temp_part[2][2] = 5;
+
+    typedef Partition<RegionType> partition_type;
+    partition_type my_partition(temp_part);
+    
+    merge_regions(1,2,9,my_partition);
+    
+    RegionType& my_reg = my_partition[9];
+    typename RegionType::neighbor_iterator neigh_it = my_reg.neighbors_begin();
+     
+    std::set<uint32> neighb;
+    std::set<uint32>::iterator set_it;
+    neighb.insert(3);
+    neighb.insert(4);
+    neighb.insert(5);
+    
+    BOOST_CHECK((*neigh_it) == 0);
+    ++neigh_it;
+    set_it = neighb.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb.end());
+    ++neigh_it;
+    set_it = neighb.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb.end());
+    ++neigh_it;
+    set_it = neighb.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb.end());
+    ++neigh_it;
+    BOOST_CHECK(neigh_it == my_reg.neighbors_end());
+    
+    RegionType& my_reg2 = my_partition[4];
+    neigh_it = my_reg2.neighbors_begin();
+    
+    neighb.clear();
+    neighb.insert(3);
+    neighb.insert(9);
+    neighb.insert(5);
+     
+    BOOST_CHECK((*neigh_it) == 0);
+    ++neigh_it;
+    set_it = neighb.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb.end());
+    ++neigh_it;
+    set_it = neighb.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb.end());
+    ++neigh_it;
+    set_it = neighb.find((*neigh_it)->label());
+    BOOST_CHECK(set_it != neighb.end());
+    ++neigh_it;
+    BOOST_CHECK(neigh_it == my_reg2.neighbors_end());
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_iterators, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part(3,3);
+    temp_part[0][0] = 1;     temp_part[1][0] = 1;     temp_part[2][0] = 2;
+    temp_part[0][1] = 1;     temp_part[1][1] = 2;     temp_part[2][1] = 2;
+    temp_part[0][2] = 3;     temp_part[1][2] = 4;     temp_part[2][2] = 5;
+
+    typedef Partition<RegionType> partition_type;
+    partition_type my_partition(temp_part);
+    merge_regions(1,2,6,my_partition);
+    merge_regions(4,5,7,my_partition);
+    merge_regions(3,6,8,my_partition);
+ 
+    // Before pruning
+    // All regions
+    typename partition_type::global_iterator it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)1); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)2); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)3); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)4); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)5); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)6); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)7); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)8); 
+    BOOST_CHECK((*it).parent()==0);
+    ++it;
+    BOOST_CHECK(it==my_partition.end());
+
+    
+    // Leaf regions
+    typename partition_type::leaves_iterator leaf_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)1); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)2); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)3); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)4); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)5); ++leaf_it;
+    BOOST_CHECK(leaf_it==my_partition.end());
+    
+    // Non-leaf regions
+    typename partition_type::non_leaves_iterator non_leaf_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*non_leaf_it).label(), (uint32)6); ++non_leaf_it;
+    BOOST_CHECK_EQUAL((*non_leaf_it).label(), (uint32)7); ++non_leaf_it;
+    BOOST_CHECK_EQUAL((*non_leaf_it).label(), (uint32)8); ++non_leaf_it;
+    BOOST_CHECK(non_leaf_it==my_partition.end());
+  
+    // Root regions
+    typename partition_type::roots_iterator root_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)7); ++root_it;
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)8); ++root_it;
+    BOOST_CHECK(root_it==my_partition.end());
+
+    // Non-root regions
+    typename partition_type::non_roots_iterator non_root_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)1); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)2); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)3); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)4); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)5); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)6); ++non_root_it;
+    BOOST_CHECK(non_root_it==my_partition.end());    
+    
+    prune(8,my_partition);
+    
+    // After pruning
+    // All regions
+    it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)4); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)5); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)7); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)8); ++it;
+    BOOST_CHECK(it==my_partition.end());
+
+    
+    // Leaf regions
+    leaf_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)4); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)5); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)8); ++leaf_it;
+    BOOST_CHECK(leaf_it==my_partition.end());
+    
+  
+    // Root regions
+    root_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)7); ++root_it;
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)8); ++root_it;
+    BOOST_CHECK(root_it==my_partition.end());
+    
+    merge_regions(7,8,9,my_partition);
+    
+    // After adding a merging
+    // All regions
+    it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)4); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)5); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)7); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)8); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)9); ++it;
+    BOOST_CHECK(it==my_partition.end());
+
+    
+    // Leaf regions
+    leaf_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)4); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)5); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)8); ++leaf_it;
+    BOOST_CHECK(leaf_it==my_partition.end());
+    
+  
+    // Root regions
+    root_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)9); ++root_it;
+    BOOST_CHECK(root_it==my_partition.end());
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_const_iterators, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part(3,3);
+    temp_part[0][0] = 1;     temp_part[1][0] = 1;     temp_part[2][0] = 2;
+    temp_part[0][1] = 1;     temp_part[1][1] = 2;     temp_part[2][1] = 2;
+    temp_part[0][2] = 3;     temp_part[1][2] = 4;     temp_part[2][2] = 5;
+
+    typedef Partition<RegionType> partition_type;
+    partition_type my_partition(temp_part);
+    merge_regions(1,2,6,my_partition);
+    merge_regions(4,5,7,my_partition);
+    merge_regions(3,6,8,my_partition);
+    
+    const partition_type& my_const_partition = my_partition;
+ 
+    // Before pruning
+    // All regions
+    typename partition_type::const_global_iterator it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)1); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)2); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)3); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)4); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)5); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)6); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)7); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)8);
+    // If we uncomment this line, it should not compile because the iterator is const
+    //    (*it).father(NULL);
+    ++it;
+    BOOST_CHECK(it==my_const_partition.end());
+
+    
+    // Leaf regions
+    typename partition_type::const_leaves_iterator leaf_it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)1); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)2); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)3); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)4); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)5); ++leaf_it;
+    BOOST_CHECK(leaf_it==my_const_partition.end());
+    
+    // Non-leaf regions
+    typename partition_type::const_non_leaves_iterator non_leaf_it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*non_leaf_it).label(), (uint32)6); ++non_leaf_it;
+    BOOST_CHECK_EQUAL((*non_leaf_it).label(), (uint32)7); ++non_leaf_it;
+    BOOST_CHECK_EQUAL((*non_leaf_it).label(), (uint32)8); ++non_leaf_it;
+    BOOST_CHECK(non_leaf_it==my_const_partition.end());
+  
+    // Root regions
+    typename partition_type::const_roots_iterator root_it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)7); ++root_it;
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)8); ++root_it;
+    BOOST_CHECK(root_it==my_const_partition.end());
+
+    // Non-root regions
+    typename partition_type::const_non_roots_iterator non_root_it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)1); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)2); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)3); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)4); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)5); ++non_root_it;
+    BOOST_CHECK_EQUAL((*non_root_it).label(), (uint32)6); ++non_root_it;
+    BOOST_CHECK(non_root_it==my_const_partition.end());    
+    
+    prune(8,my_partition);
+    
+    // After pruning
+    // All regions
+    it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)4); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)5); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)7); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)8); ++it;
+    BOOST_CHECK(it==my_const_partition.end());
+
+    
+    // Leaf regions
+    leaf_it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)4); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)5); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)8); ++leaf_it;
+    BOOST_CHECK(leaf_it==my_const_partition.end());
+    
+  
+    // Root regions
+    root_it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)7); ++root_it;
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)8); ++root_it;
+    BOOST_CHECK(root_it==my_const_partition.end());
+    
+    merge_regions(7,8,9,my_partition);
+    
+    // After adding a merging
+    // All regions
+    it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)4); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)5); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)7); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)8); ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)9); ++it;
+    BOOST_CHECK(it==my_const_partition.end());
+
+    
+    // Leaf regions
+    leaf_it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)4); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)5); ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)8); ++leaf_it;
+    BOOST_CHECK(leaf_it==my_const_partition.end());
+    
+  
+    // Root regions
+    root_it = my_const_partition.begin();
+    BOOST_CHECK_EQUAL((*root_it).label(), (uint32)9); ++root_it;
+    BOOST_CHECK(root_it==my_const_partition.end());
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_divide_up, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part;
+    temp_part.resize(2,2);
+
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 4;
+    temp_part[0][1] = 8;
+    temp_part[1][1] = 9;
+
+
+    typedef Partition<RegionType> partition_type;
+    partition_type my_partition(temp_part);
+
+    merge_regions(8,9,26,my_partition);
+    merge_regions(3,4,27,my_partition);
+    merge_regions(26,27,29,my_partition);
+
+    cut_partition_tree_down(3, my_partition);
+
+    // Check all regions
+    typename partition_type::global_iterator it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)3);
+    ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)4);
+    ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)26);
+    ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)27);
+    ++it;
+    BOOST_CHECK_EQUAL((*it).label(), (uint32)29);
+    ++it;
+    BOOST_CHECK(it==my_partition.end());
+    
+    // Check leaf regions
+    typename partition_type::leaves_iterator leaf_it = my_partition.begin();
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)3);
+    ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)4);
+    ++leaf_it;
+    BOOST_CHECK_EQUAL((*leaf_it).label(), (uint32)26);
+    ++leaf_it;
+    BOOST_CHECK(leaf_it==my_partition.end());
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+

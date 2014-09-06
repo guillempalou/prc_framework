@@ -1,0 +1,72 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file harris.cpp
+//!
+//!  Implementation for Harris corner feature extraction
+//!
+
+#include <imageplus/filters/harris.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+#include <imageplus/core/multiarray_arithmetic.hpp>
+#include <imageplus/filters/gaussian.hpp>
+
+using namespace imageplus;
+using namespace imageplus::filters;
+
+template <typename T>
+MultiArray<T,2> imageplus::filters::harris_corner_extractor( const MultiArray<T,2> & im, const float64 sigma, const float64 k )
+{
+    MultiArray<float64,2> ymask( 3, 3 );
+    ymask[0][0]=-1; ymask[0][1]=0; ymask[0][2]=1;
+    ymask[1][0]=-1; ymask[1][1]=0; ymask[1][2]=1;
+    ymask[2][0]=-1; ymask[2][1]=0; ymask[2][2]=1;
+    LinearConvolution yconv( ymask );
+    
+    MultiArray<float64,2> xmask( 3, 3 );
+    xmask[0][0]=-1; xmask[0][1]=-1; xmask[0][2]=-1;
+    xmask[1][0]=0;  xmask[1][1]=0;  xmask[1][2]=0;
+    xmask[2][0]=1;  xmask[2][1]=1;  xmask[2][2]=1;
+    LinearConvolution xconv( xmask );
+
+    MultiArray<T,2> x=xconv.filter( im );
+    MultiArray<T,2> y=yconv.filter( im );
+    
+    MultiArray<T,2> x2( x.dims() ); product( x, x, x2 );
+    MultiArray<T,2> y2( y.dims() ); product( y, y, y2 );
+    MultiArray<T,2> xy( x.dims() ); product( x, y, xy );
+    
+    MultiArray<float64,2> gmask=gaussian_mask( sigma );
+    LinearConvolution gconv( gmask );
+    
+    MultiArray<T,2> a=gconv.filter( x2 );
+    MultiArray<T,2> b=gconv.filter( y2 );
+    MultiArray<T,2> c=gconv.filter( xy );
+    
+    MultiArray<T,2> res( im.dims() );
+    T* pr=res.data();
+    const T* pa=a.data();
+    const T* pb=b.data();
+    const T* pc=c.data();
+    const T* end=pa+a.num_elements();
+    while( pa != end )
+    {
+        *pr++ = (*pa)*(*pb)-(*pc)*(*pc)-k*((*pa)+(*pb))*((*pa)+(*pb));
+        pa++;
+        pb++;
+        pc++;
+    }
+    
+	return res;
+}
+
+namespace imageplus
+{
+	namespace filters
+	{
+		template MultiArray<float64,2> harris_corner_extractor( const MultiArray<float64,2> & in, const float64 sigma, const float64 k );
+	}
+}

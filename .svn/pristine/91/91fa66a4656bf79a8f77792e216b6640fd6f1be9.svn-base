@@ -1,0 +1,373 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file kernel.hpp
+//!
+//!  Class for filter kernels
+//! 
+
+#ifndef IMAGEPLUS_MATH_NUMERIC_KERNEL_HPP
+#define IMAGEPLUS_MATH_NUMERIC_KERNEL_HPP
+
+
+#include <imageplus/core.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            //!
+            //! \brief Class to represent a N-dimensional kernel
+            //!
+            //! For simplicity and efficiency, the N-dimensional array of weights defining the kernel are 
+            //! stored in a 1-D vector. The coordinates (relative to the center of the kernel) of each
+            //! weight are also stored in another 1-D vector. Then, applying the kernel consists on finding
+            //! the pixel at each position (using the relative coordinates) and applying the
+            //! corresponding weight.
+            //! 
+            //! Example to apply linearly a 3x3 kernel to an image ma\n
+            //! \code
+            //! // Assume image is padded to avoid. We do not take compute the values in the borders of the image
+            //! // The size of the filtered ma will be the same as the inout ma. The borders will be discarded.
+            //! uint64 num_elements = kernel.num_elements();
+            //!
+            //! for (uint64 j=0; j < s_y; ++j)
+            //! for (uint64 i=0; i < s_x; ++i)
+            //! {
+            //!     // Image coordinate where  the center of the kernel will be set
+            //!     Coord2D<int64> kernel_pos(i,j);
+            //!     
+            //!     float64 s = 0;
+            //!
+            //!     // Loop for all active elements in the se 
+            //!     for (uint64 k=0; k < num_elements; ++k)
+            //!     {
+            //!         Coord<int64,D> coord_element( kernel.coord(k) + cur_pos);
+            //!
+            //!         // Check if final coordinate is inside the multiarray
+            //!         if (check_coordinate(coord_element, ma))
+            //!         {
+            //!             s += ma(coord_element) * kernel.weights(k);
+            //!         }
+            //!      }
+            //!
+            //!       out[i][j] = std::numeric_limits<T>::is_integer ? mnint<T>(s) : static_cast<T>(s));
+            //! }
+            //!\endcode
+            //!
+            //! \tparam D : Number of dimensions
+            //!
+            //! For non-linear behaviour, see median_filter.hpp
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 13-7-2010
+            //!
+
+            template<std::size_t D>
+            class Kernel
+            {
+                public:
+
+                    //!
+                    //! \brief Default Constructor
+                    //!
+                    Kernel () 
+                    {
+                    };
+
+
+                    //!
+                    //! \brief Constructor for kernel 
+                    //!
+                    //! \param[in] se           : Multiarray<bool,2> representing the kernel weights
+                    //! \param[in] origin       : Coordinate of the origin of the kernel in the multiarray 'se'
+                    //! \param[in] reverse      : Whether the kernel is reversed or not. It must be reversed, for instance, to apply a linear convolution
+                    //!
+                    Kernel (const MultiArray<float64,D>& se, const Coord<int64,D>& origin, bool reverse = true) 
+                            : _origin(origin), _dims(), _reverse(reverse)
+                    {
+                        _displacements.reserve(se.num_elements());
+                        _values.reserve(se.num_elements());
+
+                        
+                        for (uint64 i=0; i < D; ++i)
+                        {
+                            _dims[i] = se.dims(i);
+                        } 
+
+                        const float64* itse;
+                        
+                        // If reverse is true, point to the last multiarray element (to store
+                        // the coefficients in reversed order)
+                        itse = (_reverse == true) ? se.data() + se.num_elements() - 1 : se.data();
+
+
+                        switch (D)
+                        {
+                            case 1:
+                            {
+                                for (uint64 i=0; i < se.dims(0); ++i)
+                                {
+                                    // if ( *itse != 0 )  // weights with zero value are not stored for efficiency reasons
+                                    //{
+
+                                    // Fill the array of coordinates (relative to the origin)
+                                    _displacements.push_back(Coord<int64,D>(i - _origin[0]));
+
+                                    // Fill the array of values (REVERSED order!!)
+                                    _values.push_back( *itse );
+                                    
+                                    // Direct or reversed order (reversed for linear kernels)
+                                    if (_reverse == true)
+                                    {
+                                        --itse;
+                                    }
+                                    else
+                                    {
+                                        ++itse;
+                                    }
+
+                                    //}
+                                }
+                                break;
+                            }
+
+                            case 2:
+                            {
+                                for (uint64 j=0; j < se.dims(1); ++j)
+                                for (uint64 i=0; i < se.dims(0); ++i)
+                                {
+                                    //if ( *itse != 0 ) // weights with zero value are not stored for efficiency reasons
+                                    //{
+
+                                    // Fill the array of coordinates (relative to the origin)
+                                    _displacements.push_back(Coord<int64,D>(i - _origin[0], j - _origin[1]));
+
+                                    // Fill the array of values (REVERSED order!!)
+                                    _values.push_back( *itse );
+
+                                    // Direct or reversed order, depending on whether the kernel is reverse or not
+                                    if (_reverse == true)
+                                    {
+                                        --itse;
+                                    }
+                                    else
+                                    {
+                                        ++itse;
+                                    }
+
+                                    //}
+                                }
+                                break;
+                            }
+                            case 3:
+                            {
+                                // Fill the array of coordinates (relative to the origin) for the valid elements
+                                for (uint64 k=0; k < se.dims(2); ++k)
+                                for (uint64 j=0; j < se.dims(1); ++j)
+                                for (uint64 i=0; i < se.dims(0); ++i)
+                                {
+                                    //if ( *itse != 0 ) // weights with zero value are not stored for efficiency reasons
+                                    //{
+                                        // Fill the array of coordinates (relative to the origin)
+                                        _displacements.push_back(Coord<int64,D>(i - _origin[0], j - _origin[1], k - _origin[2]));
+                                        
+                                        // Fill the array of values (REVERSED order)
+                                        _values.push_back( *itse );
+
+                                    // Direct or reversed order,
+                                    if (_reverse == true)
+                                    {
+                                        --itse;
+                                    }
+                                    else
+                                    {
+                                        ++itse;
+                                    }
+                                    //}
+                                }
+                                break;
+                            }
+                            default:
+                                throw ImagePlusError ("Kernel: dimensionality must be 1, 2 or 3");
+                        }
+                    };
+
+
+                    //!
+                    //! \brief Read only acessor for the number of 'active' elements in the kernel
+                    //!
+                    //! \return Number of 'non-zero' elements in the kernel
+                    //!
+                    uint64 num_elements() const
+                    {
+                        return _displacements.size();
+                    };
+
+                    //!
+                    //! \brief Read only acessor for the coordinate of active element 'k' of the se.
+                    //!
+                    //! \param[in] k: Index of the element (only active elements are considered)
+                    //!
+                    //! \return Coordinate (relative to center) of structuring element 'k'                     
+                    //!
+                    Coord<int64,D> coord(uint64 k) const
+                    {
+                        return _displacements[k];
+                    };
+
+
+                    //!
+                    //! \brief Read only acessor for the active weight 'k' of the se.
+                    //!
+                    //! \param[in] k: Index of the element (only active elements are considered)
+                    //!
+                    //! \return Coordinate (relative to center) of structuring element 'k'                     
+                    //!
+                    float64 weight(uint64 k) const
+                    {
+                        return _values[k];
+                    };
+
+                    //!
+                    //! \brief Read only acessor for the coordinate of the origin of the kernel
+                    //!
+                    //! \return Coordinate of the kernel center 
+                    //!
+                    Coord<int64,D> origin() const
+                    {
+                        return _origin;
+                    };
+
+                    //!
+                    //! \brief Read only acessor for the k dimension of the kernel
+                    //!
+                    //! \param[in] k: Index of the dimension
+                    //!
+                    //! \return Value of dimension k of the kernel
+                    //!
+                    uint64 dims(uint64 k) const
+                    {
+                        return _dims[k];
+                    }
+
+
+                    //!
+                    //! \brief Read only acessor for the dimensions of the kernel
+                    //!
+                    //! \return Array of dimensions of the kernel
+                    //!
+                    const boost::array<size_type,D>& dims() const
+                    {
+                        return _dims;
+                    }
+
+
+                    //!
+                    //! \brief Amount of padding in a given dimension/direction
+                    //!
+                    //! Size of the border we should put to a signal in order to filter it without going out of bound
+                    //!
+                    //! \param[in] dim : Dimension. 0 (x), 1 (y), 2 (z), etc
+                    //! \param[in] dir : Direction. 0 (left, up, ...), 1 (right, bottom, ...)
+                    //! 
+                    //! \return Number of pixels to pad for the dimension/direction
+                    //!
+                    uint64 pad_size(uint64 dim, uint64 dir) const throw (ImagePlusError)
+                    {
+                        if (dir == 0)
+                        {
+                            return _origin[dim];
+                        }
+                        else if (dir == 1)
+                        {
+                            return (_dims[dim] - _origin[dim] - 1);
+                        }
+                        else
+                        {
+                            throw ImagePlusError ("Kernel::pad_size() : Invalid direction. Must be 0 or 1");
+                        }
+                    }
+
+
+                    //!
+                    //! \brief Amount of padding
+                    //!
+                    //! Size of the border we should put to a signal in order to filter it without going out of bound
+                    //!
+                    //! \return Number of pixels to pad in each direction
+                    //!
+                    boost::array<std::pair<uint64,uint64>, D>  pad_size() const 
+                    {
+                        boost::array<std::pair<uint64,uint64>, D> out;
+                        
+                        for (uint64 ii=0; ii < D; ++ii)
+                        {
+                            out[ii].first  = _origin[ii];
+                            out[ii].second = _dims[ii] - _origin[ii] - 1;
+                        }
+                        return out;
+                    }
+
+
+                    //!
+                    //! \brief Amount of padding in a given direction
+                    //!
+                    //! Size of the border we should put to a signal in order to filter it without going out of bound
+                    //!
+                    //! \param[in] dir: Index of the direction
+                    //!
+                    //! \return 
+                    //!
+                    std::pair<uint64,uint64>  pad_size(uint64 dir) const 
+                    {
+                        std::pair<uint64,uint64> out;
+                        
+                        out.first  = _origin[dir];
+                        out.second = _dims[dir] - _origin[dir] - 1;
+
+                        return out;
+                    }
+
+
+                    //!
+                    //! \brief Read only acessor to check if kernel is reversed
+                    //!
+                    //! \return Whether the kernel is reversed (true) or not (false)
+                    //!
+                    bool reverse() const
+                    {
+                        return _reverse;
+                    }
+
+
+                private:
+                    //! Coordinate of the origin of the kernel in the multiarray 'se'
+                    Coord<int64,D>                _origin;
+
+                    //! Coordinates of the kernel relative to the center.
+                    std::vector< Coord<int64,D> > _displacements; 
+
+                    //! Kernel weights.
+                    std::vector<float64>               _values;
+
+                    //! Dimensions of the kernel
+                    boost::array<uint64,D> _dims;
+
+                    //! Whether the kernel is reversed or not. It must be reversed, for instance, to apply a linear convolution
+                    bool _reverse;
+            };
+
+        }
+    }
+}
+
+#endif
+

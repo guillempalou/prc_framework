@@ -1,0 +1,352 @@
+/*
+ * trajectory_tracking.hpp
+ *
+ *  Created on: Oct 30, 2012
+ *      Author: gpalou
+ */
+
+#ifndef TRAJECTORY_TRACKING_HPP_
+#define TRAJECTORY_TRACKING_HPP_
+
+#include <imageplus/core/video_signal.hpp>
+
+namespace imageplus {
+	namespace optical_flow {
+
+	template<class VideoModel, class OpticalFlowModel, class PartitionModel>
+	class TrajectoryTracking {
+
+		typedef PartitionModel 		PartitionType;
+		typedef OpticalFlowModel 	OpticalFlowType;
+		typedef VideoModel			VideoType;
+
+		typedef typename VideoType::ImageType			FrameType;
+
+		typedef typename VideoModel::coord_type			coord3d;
+		typedef typename VideoModel::coord_float_type 	coord_float_3d;
+
+	public:
+
+		struct Parameters {
+			float64 structure_lambda; // default 2
+			float64 variation_lambda; // default 1
+			float64 occlusion_lambda; // default 1
+			float64 color_lambda; // default 14
+		};
+
+		TrajectoryTracking(VideoType& video, Parameters pars) : _pars(pars), _flow_reliability(video.sizes()), _structure_tensor(video.sizes()), _flow_variation(video.sizes()), _flow_occlusions(video.sizes()) {
+
+		}
+
+		PartitionType calculate(VideoType& video, OpticalFlowType& forward, OpticalFlowType& backward) {
+
+			calculate_flow_variation(forward, backward);
+
+			calculate_forward_backward(forward, backward);
+
+			calculate_structure_tensor(video);
+
+			uint64 current_label = 1;
+
+			//structure tensor must be calculated before!
+
+			uint64 sx = video.size_x();
+			uint64 sy = video.size_y();
+			uint64 l = video.length();
+
+			PartitionType p(sx,sy,l);
+
+			for (typename PartitionType::iterator v = p.begin(); v != p.end(); ++v) {
+				coord3d pos = v.pos();
+
+				_flow_reliability(pos)(0) = std::min(_flow_occlusions(pos)(0), _flow_variation(pos)(0));
+			}
+
+			for (typename PartitionType::iterator v = p.begin(); v != p.end(); ++v) {
+				coord3d pos = v.pos();
+
+				typename VideoType::coord_float_type pos_float = pos.template cast<float64>();
+				typename VideoType::coord_float_type new_pos = pos.template cast<float64>();
+
+				float64 label = (*v)(0);
+
+				if (label == 0 && _structure_tensor(pos)(0) > 0.3) {
+
+					std::vector<typename VideoType::coord_float_type> trajectory;
+
+					while (true) {
+
+						trajectory.push_back(pos_float);
+
+						if (interpolate_value(_flow_reliability, pos_float)(0) < 0.3) break;
+						if (pos_float(2) == (int64)l-1) break;
+						if (pos_float(0) < 2 || pos_float(0) >= (int64)sx-3 || pos_float(1) < 2 || pos_float(1) >= (int64)sy-3) break;
+
+						typename OpticalFlowType::value_type displacement = interpolate_value(forward, pos_float);
+
+						typename VideoType::coord_float_type d(displacement(0), displacement(1), 1);
+
+						pos_float = pos_float + d;
+
+						if (!forward.inside(pos_float)) break;
+					}
+
+					for (uint64 n = 0; n < trajectory.size(); n++) {
+
+						coord3d pos;
+
+						for (uint64 i = 0; i < 3; i++) pos(i) = round(trajectory[n](i));
+
+						if (p(pos)(0) == 0)
+							p(pos)(0) = current_label;
+						else
+							break;
+					}
+					//std::cout << std::endl;
+					current_label++;
+				}
+				if (label == 0 && _structure_tensor(pos)(0) < 0.3) {
+					p(pos)(0) = current_label++;
+				}
+			}
+
+			return p;
+		}
+
+		const VideoSignal<float64,1>& structure_tensor() {
+			return _structure_tensor;
+		}
+
+		const VideoSignal<float64,1>& flow_reliability() {
+			return _flow_reliability;
+		}
+
+		const VideoSignal<float64,1>& flow_variation() {
+			return _flow_variation;
+		}
+
+		const VideoSignal<float64,1>& flow_occlusions() {
+			return _flow_occlusions;
+		}
+
+		void calculate_flow_variation(OpticalFlowType& forward, OpticalFlowType& backward) {
+
+			uint64 sx = forward.size_x();
+			uint64 sy = forward.size_y();
+
+			for (typename OpticalFlowType::iterator v = forward.begin(); v != forward.end(); ++v) {
+
+				coord3d pos = v.pos();
+				//std::cout << pos.transpose() << forward.sizes().transpose() << " " << _flow_occlusions.sizes().transpose() << std::endl;
+				typename VideoType::coord_float_type pos_float = pos.template cast<float64>();
+
+				if (pos(0) == 0 || pos(0) == (int64)sx-1 || pos(1) == 0 || pos(1) == (int64)sy-1) {
+					_flow_variation(v.pos())(0) = 0;
+					continue;
+				}
+
+				OpticalFlowType& flow =  ((uint64)pos(2) == forward.length()-1) ? backward : forward;
+
+				typename OpticalFlowType::value_type displacement = interpolate_value(flow, pos_float);
+
+				//check flow gradient
+				// estimate derivative in X with central differences
+				float64 ux = 0.5*(flow(pos(0)+1,pos(1),pos(2))(0) -  flow(pos(0)-1,pos(1),pos(2))(0));
+				// estimate derivative in Y with central differences
+				float64 uy = 0.5*(flow(pos(0),pos(1)+1,pos(2))(0) -  flow(pos(0),pos(1)-1,pos(2))(0));
+				// estimate derivative in X with central differences
+				float64 vx = 0.5*(flow(pos(0)+1,pos(1),pos(2))(1) -  flow(pos(0)-1,pos(1),pos(2))(1));
+				// estimate derivative in Y with central differences
+				float64 vy = 0.5*(flow(pos(0),pos(1)+1,pos(2))(1) -  flow(pos(0),pos(1)-1,pos(2))(1));
+
+				typename OpticalFlowType::value_type du(ux,uy);
+				typename OpticalFlowType::value_type dv(vx,vy);
+
+				float64 variation = (du.squaredNorm() + dv.squaredNorm())/(0.01*displacement.squaredNorm() + 0.002);
+
+				variation = std::exp(-variation*_pars.variation_lambda);
+
+				_flow_variation(v.pos())(0) = variation;
+			}
+		}
+
+		void calculate_forward_backward(OpticalFlowType& forward, OpticalFlowType& backward) {
+			uint64 sx = forward.size_x();
+			uint64 sy = forward.size_y();
+			uint64 l = forward.length();
+
+			for (typename OpticalFlowType::iterator v = forward.begin(); v != forward.end(); ++v) {
+
+				coord3d pos = v.pos();
+
+				typename VideoType::coord_float_type pos_float = pos.template cast<float64>();
+
+				if (pos(0) == 0 || pos(0) == (int64)sx-1 || pos(1) == 0 || pos(1) == (int64)sy-1) {
+					_flow_occlusions(v.pos())(0) = 0;
+					continue;
+				}
+
+				typename OpticalFlowType::value_type displacement = interpolate_value(forward, pos_float);
+
+				int64 temporal_displacement = 1;
+				if (pos(2) == (int64)l-1)
+					temporal_displacement = -1;
+
+				typename VideoType::coord_float_type d(displacement(0), displacement(1), temporal_displacement);
+
+				typename VideoType::coord_float_type new_pos = pos_float + d;
+
+				for (uint64 i = 0; i < 3; i++) pos(i) = round(new_pos(i));
+
+				//if (v.pos()(2) == (int64)l-1) {
+				//	std::cout << v.pos().transpose() << " " << pos.transpose() << std::endl;
+				//}
+
+				//Check if the trajectory falls inside the video
+				if (!forward.inside(pos)) {
+					_flow_occlusions(v.pos())(0) = 0;
+					continue;
+				}
+
+				// check forward/backward consistency
+				OpticalFlowType& returning_flow = (v.pos()(2) == (int64)l-1) ? forward : backward;
+
+				typename OpticalFlowType::value_type  uv_fwd  	= displacement;
+				typename OpticalFlowType::value_type  uv_bkwd 	= interpolate_value(returning_flow,new_pos);
+
+				//if (v.pos()(2) == (int64)l-1) {
+				//	std::cout << uv_fwd.transpose() << " " << uv_bkwd.transpose() << std::endl;
+				//}
+
+				float64 error = (uv_fwd + uv_bkwd).squaredNorm() / ((uv_fwd.squaredNorm() + uv_fwd.squaredNorm()) * 0.01 + 0.5);
+
+				error = std::exp(-error*_pars.occlusion_lambda);
+				_flow_occlusions(v.pos())(0) = error;
+			}
+		}
+
+		void calculate_structure_tensor(VideoType& video) {
+
+			uint64 sx = video.size_x();
+			uint64 sy = video.size_y();
+			//uint64 l = video.length();
+
+			for (uint64 i = 0; i < video.length(); i++) {
+				float64 average = 0;
+				for (typename VideoType::frame_iterator f = video.frame_begin(i); f != video.frame_end(i); ++f) {
+					coord3d p = f.pos();
+					// avoid borders
+
+					if (p(0) == 0 || p(0) == (int64)sx-1 || p(1) == 0 || p(1) == (int64)sy-1) continue;
+
+					Eigen::Matrix2f tensor = Eigen::Matrix2f::Zero();
+					float64 sigma = 1;
+					float64 tw = 0;
+					for (int64 dx = -2*sigma; dx <= 2*sigma; dx++) {
+						for (int64 dy = -2*sigma; dy <= 2*sigma; dy++) {
+							float64 w = std::exp(-(dx*dx+dy*dy)/(2*sigma));
+							coord3d pos = p + coord3d(dx,dy,0);
+
+							if (pos(0) <= 0 || pos(0) >= (int64)sx-1 || pos(1) <= 0 || pos(1) >= (int64)sy-1) continue;
+
+							Eigen::Matrix3f tensor_point;
+
+							// estimate derivative in X with central differences
+							float64 ix = 0.5*(video(pos(0)+1,pos(1),pos(2))(0) -  video(pos(0)-1,pos(1),pos(2))(0));
+							// estimate derivative in Y with central differences
+							float64 iy = 0.5*(video(pos(0),pos(1)+1,pos(2))(0) -  video(pos(0),pos(1)-1,pos(2))(0));
+							// estimate derivative in T with forward differences (backwards at the last frame)
+							//int64 disp = (i == l-1) ? -1 : 1;
+							//float64 it = disp*video(pos(0),pos(1),pos(2)+disp)(0) -  disp*video(pos)(0);
+
+							Eigen::Vector2f di(ix,iy);
+
+							tensor += w*di*di.transpose();
+							tw += w;
+						}
+					}
+
+					tensor /= (tw+1e-10);
+					// we do not need to normalize, the eigen vectors are compared relatively
+					Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> eigensolver(tensor);
+					float64 l2 = eigensolver.eigenvalues()[1];
+					average+=l2;
+
+					_structure_tensor(p)(0) = l2;
+				}
+				_structure_value.push_back(average / ((sx-2)*(sy-2)));
+			}
+
+			for (uint64 i = 0; i < video.length(); i++) {
+				float64 average = _structure_value[i];
+				for (typename VideoType::frame_iterator f = video.frame_begin(i); f != video.frame_end(i); ++f) {
+					coord3d p = f.pos();
+					_structure_tensor(p)(0) = 1-std::exp(-_structure_tensor(p)(0) * _pars.structure_lambda / (average));
+				}
+			}
+
+		}
+
+
+		template<class SignalType>
+		typename SignalType::value_type interpolate_value(SignalType& signal, typename SignalType::coord_float_type& v) {
+
+			typename SignalType::value_type p = SignalType::value_type::Zero();
+			uint64 frame = v(2);
+
+			//Check for bounds
+			const typename SignalType::coord_type& lower = signal.lower_point();
+			const typename SignalType::coord_type& upper = signal.upper_point();
+
+			typename SignalType::coord_float_type a = v - lower.template cast<float64>();
+			typename SignalType::coord_float_type b = upper.template cast<float64>() - v;
+
+			int64 sx = signal.size_x();
+			int64 sy = signal.size_y();
+
+			// Check if the interpolating point is outside
+			if (a.minCoeff() < 0 || b.minCoeff() < 0) {
+				return p;
+			}
+			// Coordinates of the four neighboring pixels (x1,y1) (x1,y2) (x2,y2) (x2,y1) and the third coordinate is frame
+
+			int64 x1 = (int)v(0);
+			int64 x2 = x1+1;
+			int64 y1 = (int)v(1);
+			int64 y2  = y1+1;
+
+			// Linear interpolation
+
+			typename SignalType::value_type v1,v2,v3,v4;
+			v1 = signal(x1,y1,frame);
+			if (x2 >= sx) v2 = v1; else v2 = signal(x2,y1,frame);
+			if (y2 >= sy) v3 = v1; else v3 = signal(x1,y2,frame);
+			if (x2 >= sx && y2 >= sy) v4 = v1; else {
+				if (x2 >= sx) v4 = v2; else
+					if (y2 >= sy) v4 = v3; else v4 = signal(x2,y2,frame);
+			}
+
+			double xp = 1-(v(0)-x1);
+			double yp = 1-(v(1)-y1);
+
+			p = xp*yp*v1 + (1-xp)*yp*v2 + xp*(1-yp)*v3 + (1-xp)*(1-yp)*v4;
+
+			//std::cout << "interpolating " << v.transpose() << " " << v1.transpose() << ", " << v2.transpose() << "," << v3.transpose() << ", " << v4.transpose() <<  " value " << p.transpose() << std::endl;
+			return p;
+		}
+
+
+	private:
+		Parameters				_pars;
+
+		VideoSignal<float64,1> 	_flow_reliability;
+		VideoSignal<float64,1> 	_structure_tensor;
+		VideoSignal<float64,1> 	_flow_variation;
+		VideoSignal<float64,1> 	_flow_occlusions;
+		std::vector<float64>	_structure_value;
+
+	};
+}
+}
+
+#endif /* TRAJECTORY_TRACKING_HPP_ */

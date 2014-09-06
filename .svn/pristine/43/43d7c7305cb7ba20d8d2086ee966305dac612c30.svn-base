@@ -1,0 +1,122 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file readwriteontology.test
+//!
+//! Tests for ReadWriteOntology class
+//!
+#include <boost/filesystem.hpp>
+#include <imageplus/semantic/ontology.hpp>
+#include <imageplus/semantic/readwriteontology.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( Semantic_ReadWriteOntology_Suite );
+
+using namespace imageplus;
+using namespace imageplus::semantic;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE( readwriteontology_functions_test )
+{
+    Ontology ontology;
+	ontology.set_name("Head parts");
+	ontology.add_semantic_class(1, "Hair");
+	ontology.add_semantic_class(2, "Face");
+
+	boost::filesystem::path file = string(TEST_DATA_PATH_W);
+	file /= "semantic-ontology.xml";
+
+    ReadWriteOntology rw_ont_out(file.string());
+    rw_ont_out.write(ontology);
+    
+    Ontology read_ont;
+    ReadWriteOntology rw_ont_in(file.string());
+    rw_ont_in.read(read_ont);
+
+    BOOST_CHECK_EQUAL(read_ont.get_file_uri(), "file:" + file.string());
+    BOOST_CHECK_EQUAL(read_ont.get_name(), "Head parts");
+    BOOST_CHECK(read_ont.includes_semantic_class(1));
+    BOOST_CHECK_EQUAL(read_ont.get_semantic_class_name(2), "Face");
+    BOOST_CHECK(!read_ont.includes_semantic_class(3));
+}
+
+BOOST_AUTO_TEST_CASE( readwriteontology_operators_test )
+{
+    Ontology ontology;
+	ontology.set_name("Head parts");
+	ontology.add_semantic_class(1, "Hair");
+	ontology.add_semantic_class(2, "Face");
+
+	boost::filesystem::path file = string(TEST_DATA_PATH_W);
+	file /= "semantic-ontology.xml";
+
+    ReadWriteOntology rw_ont_out(file.string());
+    rw_ont_out << ontology;
+
+    Ontology read_ont;
+    ReadWriteOntology rw_ont_in(file.string());
+    rw_ont_in >> read_ont;
+
+    BOOST_CHECK_EQUAL(read_ont.get_file_uri(), "file:" + file.string());
+    BOOST_CHECK_EQUAL(read_ont.get_name(), "Head parts");
+    BOOST_CHECK(read_ont.includes_semantic_class(1));
+    BOOST_CHECK_EQUAL(read_ont.get_semantic_class_name(2), "Face");
+    BOOST_CHECK(!read_ont.includes_semantic_class(3));
+}
+
+BOOST_AUTO_TEST_CASE( readwriteontology_open_test )
+{
+    Ontology ontology;
+	ontology.set_name("Head parts");
+	ontology.add_semantic_class(1, "Hair");
+	ontology.add_semantic_class(2, "Face");
+
+	boost::filesystem::path file = string(TEST_DATA_PATH_W);
+	file /= "semantic-ontology.xml";
+
+    ReadWriteOntology rw_ont;
+    BOOST_CHECK_THROW(rw_ont.open("/non/existent/ontology.xml"), ImagePlusError);
+    BOOST_CHECK_NO_THROW(rw_ont.open(file.string()));
+    rw_ont.write(ontology);
+
+    Ontology read_ont;
+    rw_ont.open(file.string());
+    rw_ont.read(read_ont);
+
+    BOOST_CHECK_EQUAL(read_ont.get_file_uri(), "file:" + file.string());
+    BOOST_CHECK_EQUAL(read_ont.get_name(), "Head parts");
+    BOOST_CHECK(read_ont.includes_semantic_class(1));
+    BOOST_CHECK_EQUAL(read_ont.get_semantic_class_name(2), "Face");
+    BOOST_CHECK(!read_ont.includes_semantic_class(3));
+}
+
+BOOST_AUTO_TEST_CASE( readwriteontology_read_test )
+{
+	boost::filesystem::path file = string(TEST_DATA_PATH_R);
+	file /= "semantic";
+	file /= "5_semantic";
+	file /= "1_ontologies";
+	file /= "F1_publicity.xml";
+
+    Ontology ontology;
+    ReadWriteOntology rw_ont(file.string());
+    rw_ont.read(ontology);
+
+    BOOST_CHECK_EQUAL(ontology.get_file_uri(), "file:" + file.string());
+    BOOST_CHECK_EQUAL(ontology.get_name(), "F1_publi");
+    BOOST_CHECK(ontology.includes_semantic_class(1));
+    BOOST_CHECK_EQUAL(ontology.get_semantic_class_name(4), "cube_MSC");
+    BOOST_CHECK(!ontology.includes_semantic_class(2));
+}
+
+BOOST_AUTO_TEST_CASE( readwriteontology_notfound_test )
+{
+    ReadWriteOntology rw_ontology;
+    Ontology ontology;
+    BOOST_CHECK_THROW(rw_ontology >> ontology, ImagePlusError);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

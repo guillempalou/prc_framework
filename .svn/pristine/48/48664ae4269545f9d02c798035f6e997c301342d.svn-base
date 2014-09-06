@@ -1,0 +1,13 @@
+/*
+ * bpt_dummy.cpp
+ *
+ *  Created on: Jul 12, 2010
+ *      Author: guillem
+ */
+
+#include <imageplus/core/signal.hpp>
+
+void dummy_function() {
+	int i = 0;
+	i++;
+}

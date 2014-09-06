@@ -1,0 +1,85 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+/*!
+ * \example io_image_example.hpp
+ *
+ * This is an example of how to read and write images to disk.
+ */
+
+/*
+ * The necessary header file
+ */
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+/*
+ * To found the main classes
+ */
+using namespace imageplus;
+using namespace imageplus::io;
+
+/*
+ * The *Image classes are designed to use the stream notation of C++: operators >> and <<
+ */
+void read_image()
+{
+    /*
+     * The following object will read the following images:
+     * /path/to/my/in/images/seq_000000.png
+     */
+    ReadImage rima("/path/to/my/in/images/image.png");
+
+    /*
+     * Now we can load the images to any of our Image classes.
+     */
+    ImageGray<uint8> gry;
+    ImageRGB<uint8>  rgb;
+
+    rima >> gry; /* the image is loaded to the "gry" object */
+    rima >> rgb; /* the image is loaded to the "rgb" object */
+}
+
+/*
+ * Completely equivalent for writing
+ */
+void write_sequence()
+{
+    /*
+     * The following object will write the following image:
+     *
+     * /path/to/my/out/images/seq_000000.png
+     */
+    WriteImage wima("/path/to/my/out/images/image.png");
+
+    /*
+     * We can write images from any of our Image classes.
+     */
+    ImageGray<uint8> gry(100,200);
+    ImageRGB<uint8>  rgb(100,200);
+
+    gry =  5; /* just to save something known to disk */
+    rgb = 10;
+
+    wima << gry; /* the first file of the sequence contains "gry" */
+    wima << rgb; /* the second file of the sequence contains "rgb" */
+}
+
+/*
+ * In the most general case we read a sequence of images, process them and save the results:
+ */
+void io_image()
+{
+    ReadImage  rima("/path/to/my/in/images/image.jpg");
+    WriteImage wima("/path/to/my/out/images/image.png");
+
+    ImageGray<uint8> gry;
+    ImageRGB<uint8>  rgb;
+
+    rima >> rgb;
+
+    gry = to_gray( rgb ); /* our process is a little simple, sure you will do something nicer! */
+
+    wima << gry;
+}

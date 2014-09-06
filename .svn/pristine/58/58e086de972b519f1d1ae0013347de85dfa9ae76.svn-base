@@ -1,0 +1,124 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \example ksc.test
+ *
+ * This is an example test to show how to send and recevie KSC messages.
+ * In this example we are going to send and receive just a Point3D.
+ * 
+ * \author Sergio Segura     - 2011-01 - Creation
+ * \author Albert Gil Moreno - 2011-11 - Reviewed and converted to test example  
+ */
+
+/*
+ * KSC is in the smart-room package, so it will only work with USE_SMARTFLOW
+ */
+#ifdef USE_SMARTFLOW
+
+/*
+ * The only necessary header
+ */
+#include <smartroom/ksc/ksc.hpp>
+
+#include <imageplus/core.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ksc_suite );
+
+using namespace imageplus;
+
+BOOST_AUTO_TEST_CASE( ksc_test )
+{
+//#define KSC_SERVER_RUNNING  // uncomment this line to really build and run the test example
+#ifndef   KSC_SERVER_RUNNING
+    BOOST_WARN_MESSAGE(false, "ksc_test: Disabled because it needs a KSC service running" );
+#else
+    
+    /*
+     * KSC Connection Parameters
+     */
+    std::string ksc_host         = "x1";
+    int32       ksc_port         = 55555;
+    std::string ksc_message_name = "example_message"; // just a "name" to send and subscribe to
+
+    /*
+     * Initialize a KSC object to send
+     *
+     * Note that "sender_name" must be unique (not registered before in the server)
+     */
+    KSC ksc_sender("sender_name", ksc_host, ksc_port);
+
+    /*
+     * Initialize a KSC object to receive
+     *
+     * - signIn
+     * - setSync
+     * - subscribe to "ksc_message_name"
+     */
+    KSC ksc_receiver;
+
+    BOOST_REQUIRE ( ksc_receiver.signIn("receiver_name", ksc_host, ksc_port) );
+
+    ksc_receiver.setSync(1, 0);
+    ksc_receiver.subscribe( ksc_message_name );
+
+    /*
+     * Sending a Point3D "message" as a "ksc_message_name"
+     *
+     * Note that the object we are sending should be "static", i.e. it can not include allocated memory.
+     */
+    Point3D p3d_sent(1.0, 2.0, 3.0);
+
+    BOOST_REQUIRE( ksc_sender.sendMessage( ksc_message_name, (void *)(&p3d_sent), sizeof(p3d_sent) ) );
+
+    /*
+     * Receiving a Point3D "message"
+     *
+     * Note that a message can contain more than one Point3D.
+     * It depends if you have read all the previous messages or not.
+     */
+    Message  msg;
+    BOOST_REQUIRE( ksc_receiver.recvMessage(&msg, 10) != -1);
+
+    /*
+     * The real Point3D are in the "next" field of the "message"
+     */
+    Message *msg_ptr = msg.next;
+
+    while(msg_ptr != NULL)
+    {
+        /*
+         * Casting the pointer to the message data in the "msg" field
+         */
+        Point3D p3d_received = *(Point3D*)(msg_ptr->msg);
+
+        /*
+         * Checking that we have received the same data we sent
+         */
+        BOOST_CHECK( p3d_sent == p3d_received );
+
+        /*
+         * If there is more messages to read we access them using the "next" field
+         */ 
+        msg_ptr = msg_ptr->next; 
+    }
+    
+    /*
+     * Finally we should free the message, to not read again the same message
+     */
+    ksc_receiver.freeMessages(&msg);
+
+    /*
+     * Sign off the service (sender and receiver)
+     */
+    ksc_sender  .signOff();
+    ksc_receiver.signOff();
+    
+#endif // KSC_SERVER_RUNNING
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+#endif // USE_SMARTFLOW

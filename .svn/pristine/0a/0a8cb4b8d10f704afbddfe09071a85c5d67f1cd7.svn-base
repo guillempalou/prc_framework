@@ -1,0 +1,54 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file multiarray_ostream.test
+//!
+
+#include <iostream>
+#include <imageplus/core.hpp>
+#include <boost/test/output_test_stream.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( multiarray_ostream_suite );
+
+using namespace imageplus;
+using boost::test_tools::output_test_stream;
+
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64, int8, int16, int32, int64, float32, float64 > DataTypes;
+
+// Tests for the 2 ostream << operators for 1 and 2 dimension MultiArray
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_1d, T, DataTypes )
+{	
+	uint64 size = 3;
+    output_test_stream output;
+    MultiArray<T,1> ma(size);
+    
+    ma[0] = 1; ma[1] = 2; ma[2] = 3;
+    
+    output << ma;
+    BOOST_CHECK( !output.is_empty( false ) );
+    BOOST_CHECK( output.check_length( 20, false ) );
+    BOOST_CHECK( output.is_equal( "      1    2    3  \n" ) );
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_2d, T, DataTypes )
+{
+	uint64 size = 3;
+    output_test_stream output;
+    MultiArray<T,2> ma(size,size);
+
+    ma[0][0] = 1; ma[1][0] = 2; ma[2][0] = 3;
+    ma[0][1] = 4; ma[1][1] = 5; ma[2][1] = 6;
+    ma[0][2] = 7; ma[1][2] = 8; ma[2][2] = 9;
+    
+    output << ma;
+    BOOST_CHECK( !output.is_empty( false ) );
+    BOOST_CHECK( output.check_length( 60, false ) );
+    BOOST_CHECK( output.is_equal( "      1    2    3  \n      4    5    6  \n      7    8    9  \n" ) );
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

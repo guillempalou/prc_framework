@@ -1,0 +1,70 @@
+/*
+ * projective_factorization.cpp
+ *
+ *  Created on: Jun 20, 2013
+ *      Author: gpalou
+ */
+
+
+#include <imageplus/monocular_depth/structure_from_motion/fundamental_matrix.hpp>
+#include <imageplus/monocular_depth/structure_from_motion/projective_reconstruction.hpp>
+#include <iostream>
+#include <fstream>
+#include <string>
+
+using namespace imageplus;
+using namespace monocular_depth;
+
+int main(int argc, char *argv[]) {
+
+	uint64 N = atoi(argv[1]); // number of points
+	uint64 M = atoi(argv[2]); // number of views
+
+	float64 f = 1000;			// focal length
+	float64 w = 512;			// image width
+	float64 h = 512;			// image height
+	float64 d = 10;				// camera centre distance
+	float64 a = M_PI/4;			// angle difference between first and last camera
+
+	math::Vector cam_t(3); 		cam_t << 0,0,d;
+	math::Matrix cam_R(3,3); 	cam_R << cos(a/M), 0, sin(a/M), 0,1,0, -sin(a/M), 0, cos(a/M);
+	math::Matrix K(3,3); 		K << f,0,w/2, 0,f,h/2, 0,0,1;
+
+	math::Matrix Xs(4,N);
+	math::Matrix Ps(3*M,4);
+
+	std::vector<math::Matrix> points(M,math::Matrix(N,2));
+
+	//generate points on a unit cube
+	for (uint64 i = 0; i < N; i++) {
+		Xs.col(i).setRandom(); Xs(3,i) = 1;
+		Xs(rand() % 3, i) = 1;
+	}
+
+	math::Matrix cam_Ri = cam_R;
+	for (uint64 i = 0; i < M; i++) {
+		math::Matrix Px(3,4); Px.block(0,0,3,3) = cam_Ri;
+							  Px.col(3) = cam_t;
+
+
+		math::Matrix P = K*Px;
+		Ps.block(3*i,0,3,4) = P;
+
+		math::Matrix pxs = P*Xs;
+
+		for (uint64 k = 0; k < N; k++) {
+			points[i].row(k)(0) = pxs.col(i)(0)/pxs.col(i)(2);
+			points[i].row(k)(1) = pxs.col(i)(1)/pxs.col(i)(2);
+		}
+
+		cam_Ri *= cam_R;
+	}
+
+
+
+	ProjectiveReconstruction p;
+	math::Matrix X = p.projective_factorization(points);
+
+	//std::cout << X.rows() << " " << X.cols() << std::endl;
+	std::cout << X;
+}

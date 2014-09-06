@@ -1,0 +1,65 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file norms.test
+//!
+//!  norms tests
+//!
+
+#include <iostream>
+#include <imageplus/core.hpp>
+#include <imageplus/math/numeric/products.hpp>
+#include <imageplus/math/numeric/norms.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+#include <imageplus/math/numeric/matrices.hpp>
+#include <imageplus/math/numeric/lu_decomposition.hpp>
+
+
+#include <boost/test/floating_point_comparison.hpp>
+
+BOOST_AUTO_TEST_SUITE ( normsSuite );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+typedef boost::mpl::list<uint8,int64,float64> DataTypes;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( norms_test, T, DataTypes )
+{
+    MultiArray<T,1> vec(10);
+
+    for (uint64 i=0; i < vec.dims(0); i++)
+    {
+        vec[i] = i;
+    }
+
+
+    float64 n2 = norm   (vec);
+    float64 p2 = p_norm (vec, 2.0); // Euclidean
+    float64 p1 = p_norm (vec, 1.0); // Manhattan
+
+    float64 mh = manhattan_norm (vec);
+
+    T       in = infinity_norm(vec);
+
+
+    BOOST_CHECK_SMALL(std::abs(n2 - 16.88194301613413),  1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(n2 - p2), 1.0e-5);
+
+    BOOST_CHECK_SMALL(std::abs(mh - 45), 1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(mh - p1), 1.0e-5);
+
+    BOOST_CHECK_SMALL(std::abs((float64)in - 9.0),  1.0e-5);
+
+
+
+}    
+
+
+
+BOOST_AUTO_TEST_SUITE_END ();

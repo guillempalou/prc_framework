@@ -1,0 +1,59 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imageplus/toolbox/segment.hpp
+//!
+//!  \brief Function to easily create a partition of an image
+//!
+
+#ifndef IMAGEPLUS_TOOLBOX_SEGMENT_HPP
+#define IMAGEPLUS_TOOLBOX_SEGMENT_HPP
+
+#include <imageplus/bpt/creation.hpp>
+
+namespace imageplus
+{
+    namespace toolbox
+    {   
+        /*!
+         * \brief Segments an image using a BPT
+         *
+         * This tool constructs a BPT on initial_partition and cuts the partition at num_regions
+         * 
+         * \param[in]             image : Image to segment
+         * \param[in] initial_partition : Partition where to start to compute the BPT (can be pixels, can be flatzone, etc.)
+         * \param[in]       num_regions : Number of regions we want in the partition
+         * \param[out]        partition : Rersulting partition
+         *
+         * \tparam InputModel : Type of image (ImageRGB, etc.)
+         *
+         * \author Jordi Pont <jordi.pont@upc.edu>
+         */
+        template<class InputModel>
+        void segment(InputModel& image, const ImagePartition<>& initial_partition, uint32 num_regions, ImagePartition<>& partition)
+        {
+            typedef RegionContour<Coord2D<int64> > RegionType;
+            bpt::BPTModels<InputModel,RegionType> model_set(new bpt::ColorHomogeneity<InputModel,RegionType,bpt::WEDM>());
+
+            Partition<RegionType> my_bpt(initial_partition);
+            create_bpt(my_bpt, image, model_set, num_regions);
+
+            partition.resize(image.size_x(), image.size_y());
+            Partition<RegionType>::roots_iterator roots_begin = my_bpt.begin();
+            Partition<RegionType>::roots_iterator roots_end   = my_bpt.end();
+            create_image_partition(roots_begin, roots_end, partition);
+            relabel(partition, partition);
+        }
+    }
+}
+
+#endif
+
+
+
+
+
+

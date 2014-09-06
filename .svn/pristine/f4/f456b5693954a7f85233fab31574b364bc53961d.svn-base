@@ -1,0 +1,187 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+# User Configuration Template                                                #
+#                                                                            #
+# This file is only a template and you shouldn't edit it.                    #
+#                                                                            #
+# To setup your build configuration, please follow these instructions:       #
+#                                                                            #
+# 0.- Copy the builder/user directory to the root directory                  # 
+# 1.- Open the new user.build file just copied before                        #
+# 2.- Uncomment and edit any of the lines below to match with your           # 
+#     preferences or your local configuration                                #
+#                                                                            #
+# Note1: This file has preference in front of command line. So if, for       # 
+#        example you set env['debug'] = True in this file, the build         #
+#        command:                                                            #
+#                                                                            #
+#       $ scons debug=false                                                  #
+#                                                                            #
+#       will use debug=true                                                  #
+#                                                                            #
+# Note2: The created "user" directory (in the root) and its files            #
+#        SHOULD NOT be added to the subverion repository.                    #
+#                                                                            #
+#                                                                            #
+##############################################################################
+
+Import('env', 'traces')
+
+#######################
+# Basic Configuration #
+#######################
+
+# Uncomment this line and add or remove the modules you want to see the debug traces
+# You should rebuild the modules in order to see any change
+#traces += ['core', 'morphology']
+
+# Uncomment this line to set your own target alias
+#Alias('all', ['#modules/core', '#modules/morphology'])
+
+# Uncomment this line to get the debug mode ON
+#env['debug'] = True
+
+# Uncomment this line to enable the profiling 
+#env['profile'] = True
+
+# Uncomment this line to run the tests under valgrind 
+#env['valgrind'] = True
+
+# Uncomment this line to run the tests with some prefix, for instance tu use "srun" or "srun-fast" 
+#env['run_cmd'] = 'srun-fast'
+
+# Uncomment this line to link statically (some external libraries will be disabled) 
+#env['static'] = True
+
+# Uncomment this line to see all the build commands
+#env['verbose'] = True
+
+# Uncomment this line to NOT build the tests of the target(s)
+# Note that to run the test you will also need to enable the option 'runtests' below
+#env['buildtests'] = False
+
+# Uncomment this line to run the tests of the target(s) 
+# Note that also the 'buildtests' option should be True to be able to run the tests (the default) 
+#env['runtests'] = True
+
+
+
+# Uncomment this line to change the default test data path (use relative paths, not absolute)
+#env['TEST_DATA_PATH_R'] = '/my/test/data/path/to/read'
+#env['TEST_DATA_PATH_W'] = '/my/test/data/path/to/write'
+
+# Uncomment these lines to use any of the external libraries 
+#env['USE_FFMPEG']       = True
+#env['USE_FFTW3']        = True
+#env['USE_VIDEO4LINUX']  = True
+#env['USE_IMAGEMAGICK']  = True
+#env['USE_XML']          = True
+#env['USE_OPENGL']       = True
+#env['USE_OPENCL']       = True
+#env['USE_OPENMESH']     = True
+#env['USE_OPENNI']       = True
+#env['USE_SMARTFLOW']    = True
+#env['USE_WT']           = True
+
+
+##########################
+# Advanced Configuration #
+##########################
+
+##
+## Microsoft Visual Studio 
+##
+
+# Uncomment this line to use msvc sdk
+#env['msvc'] = True
+
+# Uncomment this line to and set the path to the root directory of WinSDK-UPC 
+#env['WINSDK_UPC']     = '\\Program Files (x86)\\WinSDK-UPC'
+
+
+##
+## External Libraries
+##
+
+# Uncomment these lines to set the external libraries parameters
+
+#env['BOOST_LIB_PATH'] = '/path/to/lib'
+#env['BOOST_CPP_PATH'] = '/path/to/include'
+
+#env['SMARTFLOW_LIB_PATH'] = '/path/to/lib'
+#env['SMARTFLOW_CPP_PATH'] = '/path/to/include'
+
+#env['FFMPEG_LIB_PATH'] = '/path/to/lib'
+#env['FFMPEG_CPP_PATH'] = '/path/to/include'
+
+#env['FFTW3_LIB_PATH'] = '/path/to/lib'
+#env['FFTW3_CPP_PATH'] = '/path/to/include'
+
+#env['IMAGEMAGICK_LIB_PATH'] = '/path/to/lib'
+#env['IMAGEMAGICK_CPP_PATH'] = '/path/to/include'
+
+#env['XML_LIB_PATH'] = '/path/to/lib'
+#env['XML_CPP_PATH'] = '/path/to/include'
+
+#env['OPENGL_LIB_PATH'] = '/path/to/lib'
+#env['OPENGL_CPP_PATH'] = '/path/to/include'
+
+#env['OPENCL_LIB_PATH'] = '/path/to/lib'
+#env['OPENCL_CPP_PATH'] = '/path/to/include'
+
+#env['OPENMESH_LIB_PATH'] = '/path/to/lib'
+#env['OPENMESH_CPP_PATH'] = '/path/to/include'
+
+#env['OPENNI_LIB_PATH'] = '/path/to/lib'
+#env['OPENNI_CPP_PATH'] = '/path/to/include'
+
+#env['WT_LIB_PATH'] = '/path/to/lib'
+#env['WT_CPP_PATH'] = '/path/to/include'
+
+
+##
+## Advanced Compiler Configuration
+##
+
+# Uncomment this line and set your C++ compiler
+#env['CXX']  = 'g++'
+
+# Uncomment this line and add or set your flags to the C/C++ compiler
+env['CCFLAGS']  += ['-std=c++0x']
+
+# Uncomment this line and add or set your definitions to the C/C++ compiler
+#env['CPPDEFINES']  += ['DEFINE1', 'DEFINE2']
+
+# Uncomment this line and add or set the default or external include paths to 
+# the C/C++ compiler
+env['CPPPATH'] += ['/usr/local/include','/usr/local/include/eigen3', '/usr/local/opt/CPLEX_Studio124/cplex/include', '/usr/local/opt/CPLEX_Studio124/concert/include' ]
+
+
+##
+## Advanced Linker Configuration
+##
+
+# Uncomment this line and set your C++ linker
+#env['LINK']  = 'g++'
+
+# Uncomment this line and add or set your flags to the C/C++ linker
+#env['LINKFLAGS'] += ['-MyFlag1', '-MyFlag2']	
+
+# Uncomment this line and set the default or external library paths for the
+# C/C++ linker
+env['LIBPATH'] += [ '/usr/local/lib', '/usr/lib', '/usr/local/opt/CPLEX_Studio124/cplex/lib/x86-64_sles10_4.1/static_pic/', '/usr/local/opt/CPLEX_Studio124/concert/lib/x86-64_sles10_4.1/static_pic' ]
+
+# Uncomment this line and add your external libraries.
+#
+# Please note that ImagePlus tries to minimize the number of external dependences.
+# Think twice before adding a dependece.
+env['LIBS'] += [ 'opencv_core', 'opencv_highgui', 'opencv_imgproc', 'opencv_ml', 'opencv_calib3d', 'ilocplex', 'concert', 'cplex', 'm', 'pthread' ]
+

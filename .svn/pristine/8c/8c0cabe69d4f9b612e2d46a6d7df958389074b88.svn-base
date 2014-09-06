@@ -1,0 +1,188 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file graph.test
+//!
+//!  Tests for the math operations on Graphs
+//!
+
+#include <imageplus/math/graphs/graph.hpp>
+
+BOOST_AUTO_TEST_SUITE ( test_graph );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::graphs;
+
+BOOST_AUTO_TEST_CASE( graph_test_bidirectional )
+{
+	typedef BoostGraph<kGraphBidirectional> Graph;
+
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	Node a = g.add_node();
+	Node b = g.add_node();
+
+	g.node_properties(a).name = "Node A";
+	g.node_properties(b).name = "Node B";
+
+	BOOST_CHECK(g.num_nodes() == 2);
+
+	BOOST_CHECK(g.node_properties(a).name == "Node A");
+	BOOST_CHECK(g.node_properties(b).name == "Node B");
+
+	g.add_edge(a,b);
+	g.add_edge(b,a);
+
+	BOOST_CHECK(g.num_edges() == 2);
+
+	//We allow parallel edges
+	g.add_edge(a,b);
+
+	BOOST_CHECK(g.num_edges() == 3);
+
+	for (Graph::node_iterator n = g.nodes_begin(); n != g.nodes_end(); ++n) {
+		BOOST_CHECK(((*n == a) || (*n == b)));
+	}
+
+	for (Graph::edge_iterator e = g.edges_begin(); e != g.edges_end(); ++e) {
+		Node out = g.source(*e);
+		Node in = g.target(*e);
+		BOOST_CHECK((out == a || out == b) && (in == a || in == b));
+	}
+
+	uint64 n = 0;
+	for (Graph::out_edge_iterator e = g.out_edges_begin(a); e != g.out_edges_end(a); ++e) {
+		BOOST_CHECK(g.source(*e) == a && g.target(*e) == b);
+		n++;
+	}
+	BOOST_CHECK(n == 2);
+
+	n = 0;
+	for (Graph::in_edge_iterator e = g.in_edges_begin(a); e != g.in_edges_end(a); ++e) {
+		BOOST_CHECK(g.source(*e) == b && g.target(*e) == a);
+		n++;
+	}
+	BOOST_CHECK(n == 1);
+
+	for (Graph::adjacent_node_iterator n = g.adjacent_nodes_begin(a); n != g.adjacent_nodes_end(a); ++n) {
+		BOOST_CHECK(*n == b);
+	}
+
+}
+
+BOOST_AUTO_TEST_CASE( graph_test_undirected )
+{
+	typedef BoostGraph<kGraphUndirected> Graph;
+
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	Node a = g.add_node();
+	Node b = g.add_node();
+
+	g.node_properties(a).name = "Node A";
+	g.node_properties(b).name = "Node B";
+
+	BOOST_CHECK(g.num_nodes() == 2);
+
+	BOOST_CHECK(g.node_properties(a).name == "Node A");
+	BOOST_CHECK(g.node_properties(b).name == "Node B");
+
+	g.add_edge(a,b);
+	g.add_edge(b,a);
+
+	BOOST_CHECK(g.num_edges() == 2);
+
+	//We allow parallel edges
+	g.add_edge(a,b);
+
+	BOOST_CHECK(g.num_edges() == 3);
+
+	for (Graph::node_iterator n = g.nodes_begin(); n != g.nodes_end(); ++n) {
+		BOOST_CHECK(((*n == a) || (*n == b)));
+	}
+
+	for (Graph::edge_iterator e = g.edges_begin(); e != g.edges_end(); ++e) {
+		Node out = g.source(*e);
+		Node in = g.target(*e);
+		BOOST_CHECK((out == a || out == b) && (in == a || in == b));
+	}
+
+	uint64 n = 0;
+	for (Graph::out_edge_iterator e = g.out_edges_begin(a); e != g.out_edges_end(a); ++e) {
+		BOOST_CHECK(g.source(*e) == a && g.target(*e) == b);
+		n++;
+	}
+	BOOST_CHECK(n == 3);
+
+	n = 0;
+	for (Graph::in_edge_iterator e = g.in_edges_begin(a); e != g.in_edges_end(a); ++e) {
+		BOOST_CHECK(g.source(*e) == b && g.target(*e) == a);
+		n++;
+	}
+	BOOST_CHECK(n == 3); // this changes to the previous test case
+
+	for (Graph::adjacent_node_iterator n = g.adjacent_nodes_begin(a); n != g.adjacent_nodes_end(a); ++n) {
+		BOOST_CHECK(*n == b);
+	}
+
+}
+
+BOOST_AUTO_TEST_CASE( graph_test_directed )
+{
+	typedef BoostGraph<kGraphDirected> Graph;
+
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	Node a = g.add_node();
+	Node b = g.add_node();
+
+	g.node_properties(a).name = "Node A";
+	g.node_properties(b).name = "Node B";
+
+	BOOST_CHECK(g.num_nodes() == 2);
+
+	BOOST_CHECK(g.node_properties(a).name == "Node A");
+	BOOST_CHECK(g.node_properties(b).name == "Node B");
+
+	g.add_edge(a,b);
+	g.add_edge(b,a);
+
+	BOOST_CHECK(g.num_edges() == 2);
+
+	//We allow parallel edges
+	g.add_edge(a,b);
+
+	BOOST_CHECK(g.num_edges() == 3);
+
+	for (Graph::node_iterator n = g.nodes_begin(); n != g.nodes_end(); ++n) {
+		BOOST_CHECK(((*n == a) || (*n == b)));
+	}
+
+	uint64 n = 0;
+	for (Graph::out_edge_iterator e = g.out_edges_begin(a); e != g.out_edges_end(a); ++e) {
+		BOOST_CHECK(g.source(*e) == a && g.target(*e) == b);
+		n++;
+	}
+	BOOST_CHECK(n == 2);
+
+	// The directed graph doesn't have in_edge_iterators!
+	for (Graph::adjacent_node_iterator n = g.adjacent_nodes_begin(a); n != g.adjacent_nodes_end(a); ++n) {
+		BOOST_CHECK(*n == b);
+	}
+
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

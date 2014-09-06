@@ -1,0 +1,229 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file mask.hpp
+//!
+
+#ifndef IMAGEPLUS_CORE_MASK_HPP
+#define IMAGEPLUS_CORE_MASK_HPP
+
+#include <imageplus/core/imavolmask.hpp>
+#include <imageplus/core/bounding_box.hpp>
+#include <imageplus/core/visual_descriptors.hpp>
+
+#include <boost/lexical_cast.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \brief Class for visual descriptor that contains the mask of the own region.
+    //!
+    //! \author Jordi Pont <jordi.pont@upc.edu>
+    //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+    //!
+    //! \date 17-01-2010 
+    template<class PositionModel>
+    class Mask : public DescriptorBase,
+                 public ImaVolMask<PositionModel::dimensions>
+    {
+    public:
+        //! Type of coordinate
+        typedef PositionModel CoordType;
+        
+        //!
+        //! \brief Default constructor
+    	//! \param global: Whether the descriptor is global (size of the image) or not (size of the region)
+        //!
+        Mask(bool global=false) 
+                : DescriptorBase("",false), ImaVolMask<CoordType::dimensions>(), _global(global)
+        {
+            for( std::size_t dd = 0; dd < CoordType::dimensions; ++dd )
+            {
+                _border_sizes[dd] = 0;
+            }
+            if(_global)
+                this->_id = "Mask_global";
+            else
+                this->_id = "Mask";
+        }
+#ifdef MSVC
+        //!
+        //! \brief Copy Constructor
+        //!
+        Mask(const Mask& copy)
+            : DescriptorBase((DescriptorBase)copy),
+              ImaVolMask<CoordType::dimensions>((const ImaVolMask<CoordType::dimensions>&) copy),
+              _global(copy._global),
+              _border_sizes(copy._border_sizes)
+        {
+        }
+#endif
+        //!
+        //! \brief Constructor with border sizes
+        //! \param border_sizes : Sizes of the border
+        //! \param global: Whether the descriptor is global (size of the image) or not (size of the region)
+        //!
+        template <class PaddingType>
+        Mask(const PaddingType& border_sizes, bool global=false) 
+                 : DescriptorBase("",false), ImaVolMask<CoordType::dimensions>(), _global(global)
+        {
+            for( std::size_t dd = 0; dd < CoordType::dimensions; ++dd )
+            {
+                _border_sizes[dd] = border_sizes[dd];
+            }
+            _form_id();
+        }
+        
+        //! \brief Computes the mask of the image.
+        //!
+        //! \param[in] first : Iterator to the beginning of the image
+        //! \param[in] last : Iterator to the end of the image
+        //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+        template< class IteratorModel >
+        void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+        {
+            ASSERT(peer_descs!=0x0, "Mask calculate: peer_descs must be non null");
+            BoundingBox<CoordType> bb_coord;
+            if(!_global)
+            {
+                bb_coord = peer_descs->calculate(new BoundingBox<CoordType>(), first, last);
+            }
+            else
+            {
+                if(peer_descs->global_desc()!=0x0)
+                {
+                    bb_coord = peer_descs->global_desc()->calculate(new BoundingBox<CoordType>(), (*first).global_begin(), (*first).global_end());
+                }
+                else
+                {
+                    throw ImagePlusNotImplemented(_id + " descriptor needs global descriptors");
+                }
+            }
+            
+            this->resize(bb_coord.sides() + _border_sizes + _border_sizes);
+            (*this)(MASK_CHANNEL).reindex(bb_coord.origin() - _border_sizes);
+            
+            for(; first!=last; ++first)
+            {
+                (*this)(MASK_CHANNEL)((*first).position()) = true;
+            }
+        }
+        
+    private:
+        //! Border sizes
+        CoordType _border_sizes;
+
+        //! Whether the mask is computed of the size of the image of the region
+        bool _global;
+        
+        //! Forms the id from the class parameters
+        void _form_id()
+        {
+            if(_global)
+                this->_id = "Mask_global_";
+            else
+                this->_id = "Mask_";
+            for( std::size_t dd = 0; dd < CoordType::dimensions-1; ++dd )
+            {
+                this->_id = this->_id + boost::lexical_cast<std::string>((int)_border_sizes[dd]) + "_";
+            }
+            this->_id = this->_id + boost::lexical_cast<std::string>((int)_border_sizes[CoordType::dimensions-1]);
+        }
+    };
+
+    
+    
+    
+    
+    
+    //!
+    //! \brief Class for visual descriptor that contains the mask of border pixels of the own region.
+    //!
+    //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+    //!
+    //! \date 05-10-2009 
+    template<class PositionModel>
+    class ContourMask : public DescriptorBase
+    {
+    public:
+        //! Type of coordinate
+        typedef PositionModel CoordType;
+        
+        //!
+        //! \brief Default constructor
+        //!
+        ContourMask() : DescriptorBase("ContourMask", false), _mask()
+        {
+            _ngb.resize(4);
+            _ngb[0]=Neighborhood2D::CoordType( 0,-1 );
+            _ngb[1]=Neighborhood2D::CoordType(-1, 0 );
+            _ngb[2]=Neighborhood2D::CoordType( 1, 0 );
+            _ngb[3]=Neighborhood2D::CoordType( 0, 1 );
+        }        
+        
+        //! \brief Calculates  
+        //!
+        //! \param[in] first      : Iterator to the beginning of the region
+        //! \param[in] last       : Iterator to the end of the region
+        //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+        //!
+        template< class IteratorModel >
+        void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+        {        
+            ASSERT(peer_descs!=0x0, "ContourMask calculate: peer_descs must be non null");
+
+            ImaVolMask<2> mask_aux;
+            const BoundingBox<CoordType>& bb_coord = peer_descs->calculate(new BoundingBox<CoordType>(), first, last);
+            uint64 size_x = bb_coord.side(0);
+            uint64 size_y = bb_coord.side(1);
+
+            //We build a mask with a border
+            _mask.resize(size_x, size_y);
+            mask_aux.resize(size_x + 2, size_y + 2);
+
+            //The offset to obtain the respective position in the mask
+            Neighborhood2D::CoordType offset(1-bb_coord.origin()[0],1-bb_coord.origin()[1]);
+
+            IteratorModel it = first;
+            //We set to true the coordinates of the region on the mask.
+            for(; it!=last; ++it)
+            {
+                mask_aux(0)[(*it).position()[0]+offset[0]][(*it).position()[1]+offset[1]]=true;
+            }
+
+            for(it = first; it!=last; ++it)
+            {
+                //We iterate for the neighbors and increase _value when a neighbor doesn't belong to the region.
+                for(typename IteratorModel::pixel_type::neighbor_iterator nit = (*it).local_begin(_ngb); nit != (*it).local_end(_ngb); ++nit)
+                {
+                    if(!(mask_aux(0)[(*nit).position()[0]+offset[0]][(*nit).position()[1]+offset[1]]))
+                    {
+                        _mask(0)[(*it).position()[0]+offset[0]-1][(*it).position()[1]+offset[1]-1]=true;
+                    }
+                }
+            }
+            _mask(MASK_CHANNEL).reindex(bb_coord.origin());
+        }
+        
+        //! \brief Returns the mask of the border pixels of the region
+        //!
+        //! \return The mask of the border pixels of the region
+        const ImaVolMask<2>& value() const
+        {
+            return _mask;
+        }
+        
+    private:
+        
+        //! Contour mask of the region
+        ImaVolMask<2> _mask;
+        
+        //! Neighborhood of connectivity 4
+        Neighborhood2D _ngb;
+    };
+}
+
+#endif

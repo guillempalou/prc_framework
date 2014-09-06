@@ -1,0 +1,78 @@
+/*
+ * scalar_function.hpp
+ *
+ *  Created on: Oct 31, 2011
+ *      Author: guillem
+ */
+
+#ifndef SCALAR_FUNCTION_HPP_
+#define SCALAR_FUNCTION_HPP_
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/math/math_types.hpp>
+
+namespace imageplus {
+	namespace math 		{
+		namespace numeric {
+
+		//! Base (abstract) class for scalar functions. To subclass it, you should implement the virtual methods
+		//! You must implement the methods value() and dimensions(). The others are optional
+		//! \author Guillem Palou <guillem.palou@upc.edu>
+		//! \date 20-03-2011
+		class ScalarFunction {
+		public:
+			//! Variable type
+			typedef imageplus::math::VariableModel 		VariableType;
+
+			//! Gradient type
+			typedef imageplus::math::GradientModel 		GradientType;
+
+			//! Hessian type
+			typedef imageplus::math::HessianModel	 	HessianType;
+
+			//! Default constructor
+			ScalarFunction(uint64 dimensions) : _dimensions(dimensions), _gradient(dimensions), _hessian(dimensions,dimensions) {
+
+			}
+
+			//! This functions returns the function value at a given point
+			//!
+			//! \param[in] x: point where the function is evaluated
+			//! \return Returns the scalar value of the function at the given point
+			virtual inline const float64 		value(const VariableType& x) = 0;
+
+			//! This functions returns the function gradient at a given point
+			//!
+			//! \param[in] x: point where the function is evaluated
+			//! \return Returns the gradient vector of the function at the given point
+			virtual inline const GradientType& 	gradient(const VariableType& x) {return _gradient; }
+
+			//! This functions returns the function hessian matrix at a given point
+			//!
+			//! \param[in] x: point where the function is evaluated
+			//! \return Returns the hessian matrix of the function at the given point
+			virtual inline const HessianType& 	hessian(const VariableType& x) {return _hessian;}
+
+			//! This function returns the number of dimensions
+			inline uint64 dimensions() {
+				return _dimensions;
+			}
+
+		protected:
+			//! dimensions
+			uint64 _dimensions;
+
+			//! gradient
+			GradientType _gradient;
+
+			//! hessian
+			HessianType	_hessian;
+		};
+
+		}
+
+	}
+}
+
+
+#endif /* SCALAR_FUNCTION_HPP_ */

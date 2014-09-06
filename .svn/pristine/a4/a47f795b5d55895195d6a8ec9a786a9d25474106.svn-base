@@ -1,0 +1,142 @@
+/*
+ * Copyright (C) 2008 Emweb bvba, Heverlee, Belgium.
+ *
+ * See the LICENSE file for terms of use.
+ */
+
+#include <Wt/WApplication>
+#include <Wt/WContainerWidget>
+#include <Wt/WText>
+#include <Wt/WBoxLayout>
+
+using namespace Wt;
+
+
+class HelloApplication : public WApplication
+{
+private:
+    /*
+     * The skeleton containers/layouts of the GUI
+     */
+    WContainerWidget* _head;
+    WContainerWidget* _body;
+    WContainerWidget* _foot;
+    WContainerWidget* _menu;
+    WContainerWidget* _demo;
+
+    WBoxLayout* _layout_root; // the layout of the root container
+    WBoxLayout* _layout_head;
+    WBoxLayout* _layout_body;
+    WBoxLayout* _layout_foot;
+    WBoxLayout* _layout_menu;
+    WBoxLayout* _layout_demo;
+
+    /*
+     * The user widgets
+     */
+    WBoxLayout* _layout_images;
+    WBoxLayout* _layout_params;
+
+
+public:
+    HelloApplication(const WEnvironment& env)
+    :   WApplication(env)
+    {
+        /*
+         * Initialization of the main containers and layouts
+         */
+        _head = new WContainerWidget();
+        _body = new WContainerWidget();
+        _foot = new WContainerWidget();
+        _menu = new WContainerWidget();
+        _demo = new WContainerWidget();
+
+        _layout_root = new WBoxLayout(WBoxLayout::TopToBottom);
+        _layout_head = new WBoxLayout(WBoxLayout::LeftToRight);
+        _layout_body = new WBoxLayout(WBoxLayout::LeftToRight);
+        _layout_foot = new WBoxLayout(WBoxLayout::LeftToRight);
+        _layout_menu = new WBoxLayout(WBoxLayout::TopToBottom);
+        _layout_demo = new WBoxLayout(WBoxLayout::LeftToRight);
+
+        _layout_images = new WBoxLayout(WBoxLayout::LeftToRight);
+        _layout_params = new WBoxLayout(WBoxLayout::TopToBottom);
+
+        /*
+         * Setting the layouts for all the containers
+         */
+        root()->setLayout(_layout_root);
+        _head ->setLayout(_layout_head);
+        _body ->setLayout(_layout_body);
+        _foot ->setLayout(_layout_foot);
+        _menu ->setLayout(_layout_menu);
+        _demo ->setLayout(_layout_demo);
+
+        /*
+         * Creating the layout/containers hierarchy.
+         *
+         * root contains head, body and foot, from top to bottom.
+         * body contains menu and demo, from left to right.
+         *
+         * Relative dimensions are also configured.
+         */
+        _layout_root->addWidget(_head, 15, AlignMiddle);  // head will strech with factor 15, 15% of page
+        _layout_root->addWidget(_body, 70, AlignMiddle);  // body will strech with factor 70, 70% of page
+        _layout_root->addWidget(_foot, 15, AlignMiddle);  // foot will strech with factor 15, 15% of page
+
+        _layout_body->addWidget(_menu, 15, AlignTop);    // menu will strech with factor 10, 10% of body
+        _layout_body->addWidget(_demo, 85, AlignMiddle); // demo will strech wuth factor 90, 90% of body
+
+        /*
+         * Adding the real widgets to each layout
+         */
+        _layout_head->addWidget(new WText("TITLE"), 0, AlignCenter);
+        _layout_head->addWidget(new WText("HEAD") , 0, AlignCenter);
+
+        _layout_foot->addWidget(new WText("FOOT") , 0, AlignLeft);
+        _layout_foot->addWidget(new WText("NOTES"), 0, AlignRight);
+
+        _layout_menu->addWidget(new WText("MENU A"), 0, AlignLeft);   // testing
+        _layout_menu->addWidget(new WText("MENU B"), 0, AlignCenter); // alignments
+        _layout_menu->addWidget(new WText("MENU C"), 0, AlignRight);  // just for fun
+
+        /*
+         * Creating more layouts inside the demo layout (without containers).
+         * Using addLayout() instead of addWidget().
+         */
+        _layout_demo->addLayout(_layout_images, 80, AlignMiddle); // 80% of the space for the images
+        _layout_demo->addLayout(_layout_params, 20, AlignTop);    // 20% of the space for the parameters
+
+        _layout_images->addWidget(new WText("INPUT") , 0, AlignCenter);
+        _layout_images->addWidget(new WText("OUTPUT"), 0, AlignCenter);
+
+        _layout_params->addWidget(new WText("PARAM 1"), 0, AlignRight);
+        _layout_params->addWidget(new WText("PARAM 2"), 0, AlignRight);
+        _layout_params->addWidget(new WText("PARAM 3"), 0, AlignRight);
+        _layout_params->addWidget(new WText("PARAM 4"), 0, AlignRight);
+        _layout_params->addWidget(new WText("PARAM 5"), 0, AlignRight);
+
+        /*
+         * Showing borders just for the visualization of the containers
+         */
+        WBorder solid (WBorder::Solid);
+        WBorder dashed(WBorder::Dashed);
+
+        root()->decorationStyle().setBorder(dashed);
+        _head ->decorationStyle().setBorder(solid);
+        _body ->decorationStyle().setBorder(solid);
+        _foot ->decorationStyle().setBorder(solid);
+        _menu ->decorationStyle().setBorder(solid);
+        _demo ->decorationStyle().setBorder(solid);
+    }
+};
+
+
+WApplication *createApplication(const WEnvironment& env)
+{
+  return new HelloApplication(env);
+}
+
+int main(int argc, char **argv)
+{
+  return WRun(argc, argv, &createApplication);
+}

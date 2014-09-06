@@ -1,0 +1,381 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file neighbors.cpp
+//!
+//!  Add brief description of the file here
+//!
+
+#include <imageplus/core/neighbors.hpp>
+#include <imageplus/core/point.hpp>
+#include <imageplus/core/multiarray_comparison.hpp>
+
+using namespace imageplus;
+
+template<typename T>
+std::vector< Coord2D<> > imageplus::neighbors (const MultiArray<T,2>& ori, Point2D point, float64 distance, uint64 connectivity, bool respect_bounds)
+{
+    int64 size_x = ori.dims(0);
+    int64 size_y = ori.dims(1);
+
+    // Does the point represent an integer pixel position?
+    bool integer_pos = (floor(point.x()) == point.x() && floor(point.y()) == point.y());
+
+    if (!integer_pos)
+    {
+        distance = distance - 1;
+    }
+
+    int64 start_x = static_cast<int64>(floor(point.x() - distance));
+    int64 end_x   = static_cast<int64>(ceil (point.x() + distance));
+    int64 start_y = static_cast<int64>(floor(point.y() - distance));
+    int64 end_y   = static_cast<int64>(ceil (point.y() + distance));
+
+    std::vector< Coord2D<> > neighs;
+
+    for (int64 j =  start_y; j <= end_y; j++)
+    for (int64 i =  start_x; i <= end_x; i++)
+    {
+        // Skip neighbors at 8 connectivty
+        if (integer_pos && connectivity == 4 && i != static_cast<int64>(point.x()) && j != static_cast<int64>(point.y())) 
+        {
+            continue;
+        }
+        
+        // Skip current point
+        if (integer_pos && i == static_cast<int64>(point.x()) && j == static_cast<int64>(point.y()))
+        {
+            continue;
+        }
+
+        // Skip positions out ot the multiarray borders
+        if (respect_bounds && (i < 0 || i >= size_x || j < 0 || j >= size_y))
+        {
+            continue;
+        }
+
+        neighs.push_back (Coord2D<>(i,j));
+    }
+    return neighs;
+}
+
+
+template<typename T>
+std::vector< Coord2D<> > imageplus::neighbors (const MultiArray<T,2>& ori, const MultiArray<bool,2>& mask, Point2D point, float64 distance, uint64 connectivity, bool respect_bounds) throw (ImagePlusError)
+{
+    // Make sure ori and mask have the same dimensions
+    compatible(ori,mask);
+
+    int64 size_x = ori.dims(0);
+    int64 size_y = ori.dims(1);
+
+    // Does the point represent an integer pixel position?
+    bool integer_pos = (floor(point.x()) == point.x() && floor(point.y()) == point.y());
+
+    if (!integer_pos)
+    {
+        distance = distance - 1;
+    }
+
+    int64 start_x = static_cast<int64>(floor(point.x() - distance)); 
+    int64 end_x   = static_cast<int64>(ceil (point.x() + distance)); 
+    int64 start_y = static_cast<int64>(floor(point.y() - distance)); 
+    int64 end_y   = static_cast<int64>(ceil (point.y() + distance)); 
+
+    std::vector< Coord2D<> > neighs;
+
+
+    for (int64 j =  start_y; j <= end_y; j++)
+    for (int64 i =  start_x; i <= end_x; i++)
+    {
+        // Skip positions out ot the multiarray borders
+        if (i < 0 || i >= size_x || j < 0 || j >= size_y)
+        {
+            continue;
+        }
+
+        if (mask[i][j])
+        {
+            if (integer_pos && connectivity == 4 && i != static_cast<int64>(point.x()) && j != static_cast<int64>(point.y())) 
+            {
+                continue;
+            }
+
+            // Skip current point
+            if (integer_pos && i == static_cast<int64>(point.x()) && j == static_cast<int64>(point.y()))
+            {
+                continue;
+            }
+
+            // Skip positions out ot the multiarray borders
+            if (respect_bounds && (i < 0 || i >= size_x || j < 0 || j >= size_y))
+            {
+                continue;
+            }
+
+            neighs.push_back (Coord2D<>(i,j));
+        }
+    }
+    
+    return neighs;
+}
+
+
+template<typename T>
+std::vector<T> imageplus::neighbors_values (const MultiArray<T,2>& ori, Point2D point, float64 distance, uint64 connectivity)
+{
+    int64 size_x = ori.dims(0);
+    int64 size_y = ori.dims(1);
+
+    // Does the point represent an integer pixel position?
+    bool integer_pos = (floor(point.x()) == point.x() && floor(point.y()) == point.y());
+
+    if (!integer_pos)
+    {
+        distance = distance - 1;
+    }
+
+    int64 start_x = static_cast<int64>(floor(point.x() - distance));
+    int64 end_x   = static_cast<int64>(ceil (point.x() + distance));
+    int64 start_y = static_cast<int64>(floor(point.y() - distance));
+    int64 end_y   = static_cast<int64>(ceil (point.y() + distance));
+
+    std::vector<T> neighs;
+
+    for (int64 j =  start_y; j <= end_y; j++)
+    for (int64 i =  start_x; i <= end_x; i++)
+    {
+        // Skip neighbors at 8 connectivty
+        if (integer_pos && connectivity == 4 && i != static_cast<int64>(point.x()) && j != static_cast<int64>(point.y())) 
+        {
+            continue;
+        }
+
+        // Skip current point
+        if (integer_pos && i == static_cast<int64>(point.x()) && j == static_cast<int64>(point.y()))
+        {
+            continue;
+        }
+
+        // Skip positions out ot the multiarray borders
+        if (i < 0 || i >= size_x || j < 0 || j >= size_y)
+        {
+            continue;
+        }
+
+        neighs.push_back (ori[i][j]);
+    }
+
+    return neighs;
+}
+
+
+template<typename T>
+std::vector<T> imageplus::neighbors_values (const MultiArray<T,2>& ori, const MultiArray<bool,2>& mask, Point2D point, float64 distance, uint64 connectivity)   throw (ImagePlusError)
+{
+    // Make sure ori and mask have the same dimensions
+    compatible(ori,mask);
+
+    int64 size_x = ori.dims(0);
+    int64 size_y = ori.dims(1);
+
+    // Does the point represent an integer pixel position?
+    bool integer_pos = (floor(point.x()) == point.x() && floor(point.y()) == point.y());
+
+    if (!integer_pos)
+    {
+        distance = distance - 1;
+    }
+
+    int64 start_x = static_cast<int64>(floor(point.x() - distance)); 
+    int64 end_x   = static_cast<int64>(ceil (point.x() + distance)); 
+    int64 start_y = static_cast<int64>(floor(point.y() - distance)); 
+    int64 end_y   = static_cast<int64>(ceil (point.y() + distance)); 
+
+
+    std::vector<T> neighs;
+
+    for (int64 j =  start_y; j <= end_y; j++)
+    for (int64 i =  start_x; i <= end_x; i++)
+    {
+        // Skip positions out ot the multiarray borders
+        if (i < 0 || i >= size_x || j < 0 || j >= size_y)
+        {
+            continue;
+        }
+
+        if (mask[i][j])
+        {
+            if (integer_pos && connectivity == 4 && i != static_cast<int64>(point.x()) && j != static_cast<int64>(point.y())) 
+            {
+                continue;
+            }
+
+            // Skip current point
+            if (integer_pos && i == static_cast<int64>(point.x()) && j == static_cast<int64>(point.y()))
+            {
+                continue;
+            }
+
+
+            neighs.push_back (ori[i][j]);
+        }
+    }
+    
+    return neighs;
+}
+
+
+
+
+
+std::vector< Coord2D<> > imageplus::nearest_valid_neighbors (const MultiArray<bool,2>& mask, Coord2D<> coord)  throw (ImagePlusError)
+{
+    int64 size_x = mask.dims(0);
+    int64 size_y = mask.dims(1);
+
+    std::vector< Coord2D<> > neighs;
+
+    int64 current_x = coord.x();
+    int64 current_y = coord.y();
+
+    int64 h_prev = current_x-1;
+    int64 h_next = current_x+1;
+    int64 v_prev = current_y-1;
+    int64 v_next = current_y+1;
+
+    while (v_prev >= 0 && !mask[current_x][v_prev])
+    {
+        v_prev--;
+    }
+    if (v_prev >= 0)
+    {
+        neighs.push_back(Coord2D<>(current_x,v_prev));
+    }
+
+    while (h_prev >= 0 && !mask[h_prev][current_y])
+    {
+        h_prev--;
+    }
+    if (h_prev >= 0)
+    {
+        neighs.push_back(Coord2D<>(h_prev,current_y));
+    }
+
+    while (h_next < size_x && !mask[h_next][current_y])
+    {
+        h_next++;
+    }
+    if (h_next < size_x)
+    {
+        neighs.push_back(Coord2D<>(h_next,current_y));
+    }
+
+    while (v_next < size_y && !mask[current_x][v_next])
+    {
+        v_next++;
+    }
+    if (v_next < size_y)
+    {
+        neighs.push_back(Coord2D<>(current_x, v_next));
+    }
+    
+    return neighs;
+}
+
+
+template<typename T>
+std::vector<T> imageplus::nearest_valid_neighbors_values (const MultiArray<T,2>& ori, const MultiArray<bool,2>& mask, Coord2D<> coord)  throw (ImagePlusError)
+{
+    // Make sure ori and mask have the same dimensions
+    compatible(ori,mask);
+
+    int64 size_x = ori.dims(0);
+    int64 size_y = ori.dims(1);
+
+    std::vector<T> neighs;
+
+    int64 current_x = coord.x();
+    int64 current_y = coord.y();
+
+    int64 h_prev = current_x-1;
+    int64 h_next = current_x+1;
+    int64 v_prev = current_y-1;
+    int64 v_next = current_y+1;
+
+    while (v_prev >= 0 && !mask[current_x][v_prev])
+    {
+        v_prev--;
+    }
+    if (v_prev >= 0)
+    {
+        neighs.push_back(ori[current_x][v_prev]);
+    }
+
+    while (h_prev >= 0 && !mask[h_prev][current_y])
+    {
+        h_prev--;
+    }
+    if (h_prev >= 0)
+    {
+        neighs.push_back(ori[h_prev][current_y]);
+    }
+
+    while (h_next < size_x && !mask[h_next][current_y])
+    {
+        h_next++;
+    }
+    if (h_next < size_x)
+    {
+        neighs.push_back(ori[h_next][current_y]);
+    }
+
+    while (v_next < size_y && !mask[current_x][v_next])
+    {
+        v_next++;
+    }
+    if (v_next < size_y)
+    {
+        neighs.push_back(ori[current_x][v_next]);
+    }
+    
+    return neighs;
+}
+
+
+
+
+
+namespace imageplus
+{
+    template std::vector< Coord2D<> > neighbors (const MultiArray<uint8,2>& ori,   Point2D point, float64 distance, uint64 connectivity, bool respect_bounds);
+    template std::vector< Coord2D<> > neighbors (const MultiArray<int64,2>& ori,   Point2D point, float64 distance, uint64 connectivity, bool respect_bounds);
+    template std::vector< Coord2D<> > neighbors (const MultiArray<float64,2>& ori, Point2D point, float64 distance, uint64 connectivity, bool respect_bounds);
+    
+    template std::vector< Coord2D<> > neighbors (const MultiArray<uint8,2>& ori, const MultiArray<bool,2>& mask, Point2D point, float64 distance, uint64 connectivity, bool respect_bounds) throw (ImagePlusError);
+    template std::vector< Coord2D<> > neighbors (const MultiArray<int64,2>& ori, const MultiArray<bool,2>& mask, Point2D point, float64 distance, uint64 connectivity, bool respect_bounds)  throw (ImagePlusError);
+    template std::vector< Coord2D<> > neighbors (const MultiArray<float64,2>& ori, const MultiArray<bool,2>& mask, Point2D point, float64 distance, uint64 connectivity, bool respect_bounds)  throw (ImagePlusError);
+
+
+    template std::vector<uint8>   neighbors_values (const MultiArray<uint8,2>& ori,   Point2D point, float64 distance, uint64 connectivity);
+    template std::vector<int64>   neighbors_values (const MultiArray<int64,2>& ori,   Point2D point, float64 distance, uint64 connectivity);
+    template std::vector<float64> neighbors_values (const MultiArray<float64,2>& ori, Point2D point, float64 distance, uint64 connectivity);
+    
+    template std::vector<uint8>   neighbors_values (const MultiArray<uint8,2>& ori,   const MultiArray<bool,2>& mask, Point2D point, float64 distance, uint64 connectivity)  throw (ImagePlusError);
+    template std::vector<int64>   neighbors_values (const MultiArray<int64,2>& ori,   const MultiArray<bool,2>& mask, Point2D point, float64 distance, uint64 connectivity)  throw (ImagePlusError);
+    template std::vector<float64> neighbors_values (const MultiArray<float64,2>& ori, const MultiArray<bool,2>& mask, Point2D point, float64 distance, uint64 connectivity)  throw (ImagePlusError);
+
+
+//    templatstd::vector< Coord2D<> > nearest_valid_neighbors (const MultiArray<bool,2>& mask, Coord2D<> coord)  throw (ImagePlusError);
+//    template std::vector< Coord2D<> > nearest_valid_neighbors (const MultiArray<bool,2>& mask, Coord2D<> coord)  throw (ImagePlusError);
+//    template std::vector< Coord2D<> > nearest_valid_neighbors (const MultiArray<bool,2>& mask, Coord2D<> coord)  throw (ImagePlusError);
+
+
+    template std::vector<uint8>   nearest_valid_neighbors_values (const MultiArray<uint8,2>& ori,   const MultiArray<bool,2>& mask, Coord2D<> coord)  throw (ImagePlusError);
+    template std::vector<int64>   nearest_valid_neighbors_values (const MultiArray<int64,2>& ori,  const MultiArray<bool,2>& mask, Coord2D<> coord)  throw (ImagePlusError);
+    template std::vector<float64> nearest_valid_neighbors_values (const MultiArray<float64,2>& ori, const MultiArray<bool,2>& mask, Coord2D<> coord)  throw (ImagePlusError);
+
+}

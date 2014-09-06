@@ -1,0 +1,56 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file observation.cpp
+//!
+//!  Observation
+//!
+
+#include <sstream>
+#include <string>
+
+#include <imageplus/semantic/observation.hpp>
+
+using namespace imageplus::semantic;
+
+namespace imageplus
+{
+namespace semantic
+{
+
+Observation::FeatureVector Observation::get_vd_featurevector(const std::string& vd_name) throw (ImagePlusError)
+{
+	FeatureVectorsConstIterator it = _feature_vectors.find(vd_name);
+	if (it == _feature_vectors.end())
+		throw ImagePlusError("Feature vector for '" + vd_name + "' not found in this Observation.");
+	return it->second;
+}
+
+bool Observation::includes_vd_featurevector(const std::string& vd_name) {
+	return _feature_vectors.find(vd_name) != _feature_vectors.end();
+}
+
+void Observation::add_vd_featurevector(const std::string& vd_name, const Observation::FeatureVector& fv) throw (ImagePlusError)
+{
+	if (this->includes_vd_featurevector(vd_name))
+		throw ImagePlusError("Feature vector for '" + vd_name + "' already included in this observation.");
+
+	_feature_vectors.insert(make_pair(vd_name, fv));
+}
+
+std::ostream& operator<<(std::ostream &os, const Observation& o)
+{
+	os << "observation with feature vectors for visual descriptors:";
+
+	Observation::FeatureVectorsConstIterator it = o._feature_vectors.begin();
+	for (; it != o._feature_vectors.end(); it++)
+		os << " " << it->first << ",";
+
+	return os;
+}
+
+} // ns semantic
+} // ns imageplus

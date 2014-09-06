@@ -1,0 +1,311 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file writeimage.test
+//!
+//! \author Albert Gil Moreno <agil@tsc.upc.edu>
+//!
+//! Tests for class WriteImage 
+//!
+
+#include <imageplus/io/writeimage.hpp>
+
+// to check
+#include <imageplus/io/readimage.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( WriteImageSuite );
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+using namespace std;
+
+
+BOOST_AUTO_TEST_CASE( WriteImageRGBTest)
+{
+    //
+    // Initializing test variables
+    //
+    
+    // filenames
+    std::string filename_png  = string(TEST_DATA_PATH_W) + "/writeimage_rgb_uint8.png";
+    std::string filename_jpg  = string(TEST_DATA_PATH_W) + "/writeimage_rgb_uint8.jpg";
+    std::string filename_tiff = string(TEST_DATA_PATH_W) + "/writeimage_rgb_uint8.tiff";
+    
+    // reading images to test
+    ReadImage rimg1(string(TEST_DATA_PATH_R) + "/io/readimage_rgb_uint8.png");
+    ReadImage rimg2(string(TEST_DATA_PATH_R) + "/io/readimage_rgb_uint8.jpg");
+    ReadImage rimg3(string(TEST_DATA_PATH_R) + "/io/readimage_rgb_uint8.tiff");
+    
+    ImageRGB<uint8> img1;
+    ImageRGB<uint8> img2;
+    ImageRGB<uint8> img3;
+    rimg1 >> img1;
+    rimg2 >> img2;
+    rimg3 >> img3;
+    
+    //
+    // Checking Constructors
+    //
+    WriteImage wimg1( filename_png  );
+    WriteImage wimg2( filename_jpg  );
+    WriteImage wimg3( filename_tiff );
+    
+    BOOST_CHECK( wimg1.format() == PNG  );
+    BOOST_CHECK( wimg2.format() == JPEG );
+    BOOST_CHECK( wimg3.format() == TIFF );
+
+    //
+    // Checking write process
+    //
+    
+    // writing images
+    wimg1 << img1;
+    wimg2 << img2;
+    wimg3 << img3;
+    
+    // reading writted images
+    ImageRGB<uint8> img1_check;
+    ImageRGB<uint8> img2_check;
+    ImageRGB<uint8> img3_check;
+    rimg1.open( filename_png  );
+    rimg2.open( filename_jpg  );
+    rimg3.open( filename_tiff );
+
+    rimg1 >> img1_check;
+    rimg2 >> img2_check;
+    rimg3 >> img3_check;
+    
+    // with loseless, image should be equal
+    BOOST_CHECK(img1 == img1_check);
+    BOOST_CHECK(img3 == img3_check);
+    
+    // with jpeg compresion this not work...
+    // BOOST_CHECK(img2 == img2_check);
+    
+    // Using tolerance parameter:
+#ifdef USE_IMAGEMAGICK
+    int32 JPEG_TOLERANCE = 20;
+#else
+    int32 JPEG_TOLERANCE = 5;
+#endif
+    
+    BOOST_REQUIRE(img2.size_x() == img2_check.size_x());
+    BOOST_REQUIRE(img2.size_y() == img2_check.size_y());
+    
+    for(size_type c = 0; c < 3 ; c++)
+    {
+    	for(size_type x = 0; x < img2.size_x() ; x++)
+	    {
+    		for(size_type y = 0; y < img2.size_y() ; y++)
+		    {
+//    		    if(abs(img2(c)[x][y] - img2_check(c)[x][y]) > JPEG_TOLERANCE)
+//    		        std::cout << abs(img2(c)[x][y] - img2_check(c)[x][y]) << " ";
+    			BOOST_CHECK( (abs(img2(c)[x][y] - img2_check(c)[x][y]) <= JPEG_TOLERANCE));
+		    }
+	    }
+    }
+}
+
+
+BOOST_AUTO_TEST_CASE( WriteImageGrayTest)
+{
+    //
+    // Initializing test variables
+    //
+    
+    // filenames
+    std::string filename_png  = string(TEST_DATA_PATH_W) + "/writeimage_gray_uint8.png";
+    std::string filename_jpg  = string(TEST_DATA_PATH_W) + "/writeimage_gray_uint8.jpg";
+    std::string filename_tiff = string(TEST_DATA_PATH_W) + "/writeimage_gray_uint8.tiff";
+    
+    // reading images to test
+    ReadImage rimg1( string(TEST_DATA_PATH_R) + "/io/readimage_gray_uint8.png"  );
+    ReadImage rimg2( string(TEST_DATA_PATH_R) + "/io/readimage_gray_uint8.jpg"  );
+    ReadImage rimg3( string(TEST_DATA_PATH_R) + "/io/readimage_gray_uint8.tiff" );
+    
+    ImageGray<uint8> img1;
+    ImageGray<uint8> img2;
+    ImageGray<uint8> img3;
+    rimg1 >> img1;
+    rimg2 >> img2;
+    rimg3 >> img3;
+    
+    //
+    // Checking Constructors
+    //
+    WriteImage wimg1( filename_png  );
+    WriteImage wimg2( filename_jpg  );
+    WriteImage wimg3( filename_tiff );
+    
+    BOOST_CHECK( wimg1.format() == PNG  );
+    BOOST_CHECK( wimg2.format() == JPEG );
+    BOOST_CHECK( wimg3.format() == TIFF );
+
+    //
+    // Checking write process
+    //
+    
+    // writing images
+    wimg1 << img1;
+    wimg2 << img2;
+    wimg3 << img3;
+    
+    // reading writted images
+    ImageGray<uint8> img1_check;
+    ImageGray<uint8> img2_check;
+    ImageGray<uint8> img3_check;
+    rimg1.open( filename_png  );
+    rimg2.open( filename_jpg  );
+    rimg3.open( filename_tiff );
+
+    rimg1 >> img1_check;
+    rimg2 >> img2_check;
+    rimg3 >> img3_check;
+    
+    // with loseless, image should be equal
+    BOOST_CHECK(img1 == img1_check);
+    BOOST_CHECK(img3 == img3_check);
+    
+    // TODO: with jpeg compresion...
+    // with jpeg compresion this not work...
+    // BOOST_CHECK(img2 == img2_check);
+    
+    // Using tolerance parameter:
+    int32 JPEG_TOLERANCE = 6; 
+    BOOST_REQUIRE(img2.size_x() == img2_check.size_x());
+    BOOST_REQUIRE(img2.size_y() == img2_check.size_y());
+
+    for(size_type c = 0; c < 1 ; c++)
+    {
+    	for(size_type x = 0; x < img2.size_x() ; x++)
+	    {
+    		for(size_type y = 0; y < img2.size_y() ; y++)
+		    {
+    			BOOST_CHECK( (abs(img2(c)[x][y] - img2_check(c)[x][y]) <= JPEG_TOLERANCE));
+		    }
+	    }
+    }
+
+}
+
+
+BOOST_AUTO_TEST_CASE( WriteImageMaskTest)
+{
+    //
+    // Initializing test variables
+    //
+
+    ImageMask m1(10,10);
+    m1 = false;
+    m1(0)[0][0] = true;
+    m1(0)[1][0] = true;
+    m1(0)[2][0] = true;
+    m1(0)[3][0] = true;
+    m1(0)[4][0] = true;
+
+    m1(0)[0][1] = true;
+    m1(0)[1][1] = true;
+    m1(0)[2][1] = true;
+    m1(0)[3][1] = true;
+    m1(0)[4][1] = true;
+
+    std::string filename  = string(TEST_DATA_PATH_W) + "/writeimagemask.png";
+
+    WriteImage wim(filename);
+    wim << m1;
+
+
+    ImageMask m2;
+    ReadImage rim(filename);
+    rim >> m2;
+
+    BOOST_CHECK(m1 == m2);
+}
+
+
+
+
+
+// AGIL: This test is under development 
+#if 0
+BOOST_AUTO_TEST_CASE( WriteImageRGBTest_dev)
+{
+    //
+    // Initializing test variables
+    //
+    
+    // filenames
+    std::string filename_png = string(TEST_DATA_PATH_W) + "/writeimage_rgb8.png";
+    std::string filename_jpg = string(TEST_DATA_PATH_W) + "/writeimage_rgb8.jpg";
+    
+    // Ceading test images
+    ImageRGB<uint8> img1(5,5);
+    ImageRGB<uint8> img2(5,5);
+    
+    img1(0)[3][4] = 35;
+    img2(0)[3][4] = 35;
+    
+    
+    std::cout << "********* ORIGINAL *********" << std::endl;
+    std::cout << img2(0) << std::endl;
+
+    //
+    // Checking Constructors
+    //
+    WriteImage wimg1( filename_png );
+    WriteImage wimg2( filename_jpg );
+    
+    BOOST_CHECK(wimg1.format() == PNG);
+    BOOST_CHECK(wimg2.format() == JPEG);
+
+    //
+    // Checking write process
+    //
+    
+    // writing images
+    wimg1 << img1;
+    wimg2 << img2;
+    
+    // reading writted images
+    ImageRGB<uint8> img1_check;
+    ImageRGB<uint8> img2_check;
+    ReadImage rimg1( filename_png );
+    ReadImage rimg2( filename_jpg );
+
+    rimg1 >> img1_check;
+    rimg2 >> img2_check;
+    
+    // with loseless, image should be equal
+    BOOST_CHECK(img1 == img1_check);
+    
+    // with jpeg compresion...
+    std::cout << "********* WRITED *********" << std::endl;
+    std::cout << img2_check(0) << std::endl;
+    
+    BOOST_CHECK(img2(0)[3][4] == img2_check(0)[3][4]);
+    
+    BOOST_CHECK(img2(1) == img2_check(1));
+    BOOST_CHECK(img2(2) == img2_check(2));
+}
+
+#endif
+    
+    
+    
+    
+    
+   
+BOOST_AUTO_TEST_CASE( WriteImageExceptionsTest)
+{
+    BOOST_CHECK_THROW(WriteImage wimg1(string(TEST_DATA_PATH_R) + "/not_supported.iplus"), ImagePlusFileError);
+    //TODO: Check file is a directory? 
+    //BOOST_CHECK_THROW(ReadImage rimg3(string(TEST_DATA_PATH_R) + "/io");       , ImagePlusFileError);
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

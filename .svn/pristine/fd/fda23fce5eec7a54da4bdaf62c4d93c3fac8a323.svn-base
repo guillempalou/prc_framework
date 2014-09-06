@@ -1,0 +1,279 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file mifs.hpp
+//!
+//!  Interface for Mutual Information Feature Selector
+//!
+#ifndef FIX_DOCUMENTATION
+
+#include <imageplus/math/statistics/information_measures.hpp>
+
+
+#ifndef IMAGEPLUS_MACHINE_LEARNING_FEATURE_SELECTION_MIFS_HPP
+#define IMAGEPLUS_MACHINE_LEARNING_FEATURE_SELECTION_MIFS_HPP
+
+namespace imageplus
+{
+namespace machine_learning
+{
+/*!
+ * \namespace feature_selection
+ *
+ * Functions devoted to selecting the best set of features for machine learning tasks
+ */
+namespace feature_selection
+{
+	/*!
+	 * \brief Mutual Information Feature Selector
+	 *
+	 * Although the original idea was provided by Battiti, the implemented
+	 * feature selection algorithm is the improved version proposed by
+	 * <A HREF="http://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=00831152"> Kwak and Choi</A>.
+	 *
+	 * Given a set of features F and a class C, the MIFS feature selector tries to find the
+	 * subset of unidimensional features S that maximizes the Mutual information between S and C.
+	 * The method follows a greedy approach in which, due to computational requirements of the problem,
+	 * the mutual information is only approximated.
+	 *
+	 * For the sake of simplicity, the same number of bins is considered for all the features.
+	 * When dimensioning the classification problem, take into account that this method
+	 * constructs N bi-dimensional histograms between each one of the n-th features and the class.
+	 *
+	 * The feature selector works with a single class, hence the class vector must contain 0 and 1's denoting
+	 * non-class and class values respectively
+	 *
+	 * \return vector with the indices of the selected features
+	 *
+	 * \author Adolfo Lopez
+	 * \date   2011-03-23
+	 *
+	 * \todo document the parameters!
+	 */
+	template < typename T, std::size_t S, std::size_t D >
+	std::vector < std::size_t > mifs( const math::statistics::RandomVariableData < T, S, D > & features,
+			                          const MultiArray < T, D > &                              output_class,
+			                          std::size_t                                              numbins,
+                            	      float64                                                  beta,
+			                          std::size_t                                              max_features,
+			                          float64                                                  log_base = M_E,
+			                          bool                                                     prenormalized=true );
+
+} // namespace feature_selection
+} // namespace machine_learning
+} // namespace imageplus
+
+
+/******************
+ * IMPLEMENTATION
+ ******************/
+
+namespace imageplus
+{
+namespace machine_learning
+{
+namespace feature_selection
+{
+	template < typename T, std::size_t S, std::size_t D >
+	std::vector < std::size_t > mifs( const math::statistics::RandomVariableData < T, S, D > & features,
+									  const MultiArray < T, D > &                              output_class,
+									  std::size_t                                              numbins,
+									  float64                                                  beta,
+									  std::size_t                                              max_features,
+									  float64                                                  log_base,
+									  bool                                                     prenormalized)
+	{
+		namespace ms = math::statistics;
+
+		//Step 1: Initialization
+		//std::cout << "Step 1 " << std::endl;
+		T min, max;
+		min=static_cast<T>(0); max=static_cast<T>(1);
+		float64 max_mi=0;
+		std::vector< float64 > mi;
+		std::size_t max_index;
+		std::vector < size_t > selected;
+		std::vector < size_t > feature_set;
+		std::size_t exp_size=features(0).size();
+
+		typedef ms::PDF< ms::RandomVariableData< T, 2, 1 > > joint_pdf_type;
+		typedef ms::PDF< ms::RandomVariableData< T, 1, 1 > >  marg_pdf_type;
+		//TODO : Check if it's necessary to have a vector of joint pdf's.
+
+        std::vector<marg_pdf_type> marginal_pdfs;
+
+		boost::array< Quantizer<T>, 2 > qclass;
+
+		std::size_t i;
+
+		//Compute all the Joint PDFS for all the F features from the beginning
+		for (std::size_t f=0; f < features.num_channels(); ++f)
+		{
+			feature_set.push_back(f);
+			if (!prenormalized)
+			{
+				max=*(std::max_element(&features(f)[0], &features(f)[0]+features(f).size()));
+				min=*(std::min_element(&features(f)[0], &features(f)[0]+features(f).size()));
+			}
+
+			if (max==min)
+			{
+				std::cout << "Detected ct variable " << std::endl;
+				qclass[0]=Quantizer<T>(min, max+1, 1);
+			}
+			else
+				qclass[0]=Quantizer<T>(min, max, numbins);
+
+			qclass[1]=Quantizer<T>(0, 1, 2);
+
+			std::vector < uint64 > dim_extents(2, exp_size);
+			ms::RandomVariableData < T, 2, 1 > rvd (dim_extents);
+	        dim_extents.pop_back();
+	        ms::RandomVariableData < T, 1, 1 > marg_data (dim_extents);
+
+	        for (i=0; i < exp_size; ++i)
+			{
+				marg_data(0)[i]=rvd(0)[i]=features(f)[i];
+				rvd(1)[i]=output_class[i];
+			}
+
+
+	        joint_pdf_type& joint_pdfs = calc_descriptor(new joint_pdf_type(qclass), rvd);
+
+			//Obtain marginal distributions
+			marginal_pdfs.push_back( calc_descriptor(new marg_pdf_type(qclass[0]),marg_data) );
+
+
+			//Step 2: Compute the mutual information between class and each feature;
+			//std::cout << "Step 2 " << std::endl;
+			if (max==min) //degenerate case.
+			{
+				mi.push_back(0.0);
+			}
+			else
+				mi.push_back(mutual_information(joint_pdfs, log_base));
+
+			if (f==0)
+			{
+				max_mi=mi[f];
+				max_index=f;
+			}
+			else
+			{
+				if (max_mi < mi[f])
+				{
+					max_mi=mi[f];
+					max_index=f;
+				}
+			}
+		}
+
+
+		//Step 3: Selection of the first feature
+	   //std::cout << "Step 3 " << std::endl;
+		selected.push_back(max_index);
+		feature_set.erase(feature_set.begin()+max_index);
+
+
+		//Step 4: Greedy selection
+	   //std::cout << "Step 4 " << std::endl;
+		std::vector < size_t >::iterator iter, not_s, max_iter;
+		std::vector < float64 > H;
+		std::size_t count;
+
+		MultiArray< float64, 2> mi_table(features.num_channels(), features.num_channels());
+		mi_table=0.0;
+		float64 functional;
+
+		while (selected.size() < max_features)
+		{
+			//a): Computation of the entropy for all the selected features
+			H.push_back(entropy(marginal_pdfs[*selected.rbegin()], log_base));
+
+			//b) Computation of MI between variables in S and F
+		//	std::cout << "Step 4b " << std::endl;
+			for (not_s=feature_set.begin(); not_s!=feature_set.end(); ++not_s)
+			{
+				for (iter=selected.begin(); iter!=selected.end(); ++iter)
+				{
+					//Construct joint pdf for variables f and s
+					if (!prenormalized)
+					{
+						max=*(std::max_element(&features(*iter)[0], &features(*iter)[0]+features(*iter).size()));
+						min=*(std::min_element(&features(*iter)[0], &features(*iter)[0]+features(*iter).size()));
+					}
+
+					qclass[0]=Quantizer<T>(min, max, numbins);
+
+					if (!prenormalized)
+					{
+						max=*(std::max_element(&features(*not_s)[0], &features(*not_s)[0]+features(*not_s).size()));
+						min=*(std::min_element(&features(*not_s)[0], &features(*not_s)[0]+features(*not_s).size()));
+					}
+
+					qclass[1]=Quantizer<T>(min, max, numbins);
+
+					std::vector < uint64 > dim_extents(2, exp_size);
+		            ms::RandomVariableData < T, 2, 1 > rvd (dim_extents);
+
+					//Collect data
+	//			    std::cout << "Collecting data " << *iter << " and " << *not_s << std::endl;
+	//			    std::cout << rvd[0].num_elements() << " and " << rvd[1].num_elements() << " vs  " << exp_size << " and " << features[*iter].num_elements() << " and " << features[*not_s].num_elements() << std::endl;
+					for (i=0; i < exp_size; ++i)
+					{
+						//std::cout << i << " " << std::flush;
+						rvd(0)[i]=features(*iter) [i];
+						rvd(1)[i]=features(*not_s)[i];
+					}
+
+					//std::cout << "Joint pdf computation" << std::endl;
+					joint_pdf_type& joint_pdfs = calc_descriptor(new joint_pdf_type(qclass), rvd);
+
+					mi_table[*iter][*not_s]=ms::mutual_information(joint_pdfs, log_base); //marginals are useless here
+					//std::cout << " MI " << *iter << " " << *not_s << "= " << mi_table[*iter][*not_s] << std::endl;
+				}
+			}
+			//c) Select the feature that maximizes the functional
+			//std::cout << "Step 4c " << std::endl;
+			for (not_s=feature_set.begin(); not_s!=feature_set.end(); ++not_s)
+			{
+				functional=0.0;
+				for (iter=selected.begin(), count=0; iter!=selected.end(); ++iter, count++)
+				{
+					if (H[count]!=0.0)
+						functional+=mi[*iter]/H[count]*mi_table[*iter][*not_s];
+				}
+				functional=mi[*not_s]-beta*functional;
+	//			std::cout << "F(" << *not_s << ")"  << functional << std::endl;
+				if (not_s==feature_set.begin())
+				{
+					max_mi=functional;
+					max_iter=not_s;
+				}
+				else
+				{
+					if (max_mi < functional)
+					{
+						max_mi=functional;
+						max_iter=not_s;
+					}
+				}
+
+			}
+			selected.push_back(*max_iter);
+			feature_set.erase(max_iter);
+			
+		}
+		return selected;
+	}
+
+} // namespace feature_selection
+} // namespace machine_learning
+} // namespace imageplus
+
+#endif
+
+#endif //FIX_DOCUMENTATION

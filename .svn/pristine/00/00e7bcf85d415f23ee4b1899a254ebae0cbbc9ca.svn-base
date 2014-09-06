@@ -1,0 +1,63 @@
+/*
+ * reverse_angle.hpp
+ *
+ *  Created on: Dec 5, 2012
+ *      Author: guillem
+ */
+
+#ifndef REVERSE_ANGLE_HPP_
+#define REVERSE_ANGLE_HPP_
+
+#include <imageplus/core/image_signal.hpp>
+
+namespace imageplus {
+
+namespace optical_flow {
+
+	template<class OpticalFlowType>
+	ImageSignal<float64,1> reverse_angle_error(OpticalFlowType& forward, OpticalFlowType& backward) {
+
+		ImageSignal<float64,1> reverse_angle(forward.sizes());
+
+		for (typename OpticalFlowType::iterator v = forward.begin(); v != forward.end(); ++v) {
+
+			ImageSignal<float64,1>::coord_type pos = v.pos();
+
+			typename OpticalFlowType::coord_float_type pos_float = pos.template cast<float64>();
+			typename OpticalFlowType::value_type displacement = forward.interpolate_value(pos_float);
+			typename OpticalFlowType::coord_float_type new_pos = pos_float + displacement;
+
+			for (uint64 i = 0; i < 2; i++) pos(i) = round(new_pos(i));
+
+			ImageSignal<float64,1>::coord_type a = pos - forward.lower_point();
+			ImageSignal<float64,1>::coord_type b = forward.upper_point() - pos;
+
+			//Check if the trajectory falls inside the video
+			if (a.minCoeff() < 0 || b.minCoeff() < 0) {
+				reverse_angle(v.pos())(0) = -1;
+				continue;
+			}
+
+			// Check if the point should be tracked
+			// check forward/backward consistency
+
+			typename OpticalFlowType::value_type  uv_fwd  	= displacement;
+			typename OpticalFlowType::value_type  uv_bkwd 	= backward.interpolate_value(new_pos);
+			if ((uv_fwd.norm() * uv_bkwd.norm())==0) {
+				reverse_angle(v.pos())(0) = 1;
+				continue;
+			}
+			float64 dot_prod = uv_fwd.dot(uv_bkwd) / (uv_fwd.norm() * uv_bkwd.norm());
+			float64 error = fabs(M_PI - acos(dot_prod));
+			//std::cout << v.pos().transpose() << " ::: "  << new_pos.transpose() << " ::: " << uv_fwd.transpose() << " ::: " << uv_bkwd.transpose() << " ::: " << dot_prod << " " << acos(dot_prod) << " " << error << std::endl;
+			reverse_angle(v.pos())(0) = 1-std::exp(-error);
+		}
+
+		return reverse_angle;
+	}
+
+}
+}
+
+
+#endif /* REVERSE_ANGLE_HPP_ */

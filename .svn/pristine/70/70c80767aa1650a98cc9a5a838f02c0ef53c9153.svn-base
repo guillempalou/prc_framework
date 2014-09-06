@@ -1,0 +1,408 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file bbox.hpp
+//!
+//!  Interface for BBox class, base class of all bboxes in ImagePlus
+//!
+#ifndef IMAGEPLUS_CORE_BBOX_HPP
+#define IMAGEPLUS_CORE_BBOX_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/coord.hpp>
+#include <imageplus/core/array_arithmetic.hpp>
+
+namespace imageplus
+{
+    /*!
+     * Straight bounding boxes
+     *
+     * The bounding box, also known as minimum bounding rectangle (MBR) or envelope,
+     * is a D dimensional hyper-volume surrounding a region in an ImaVol.
+     *
+     * It is oriented with the axes of the coordinate system, and it is then known as an
+     * axis-aligned bounding box (AABB).
+     *
+     * A bounding box is specified by the coordinates of one Coord and the length of the D sides.\n
+     *
+     * \tparam T : data type of the Coord (must be an integer type)
+     * \tparam D : dimension of the oriented bounding box (2 for images, 3 for volumes...)
+     *
+     * \todo sets and gets are not correct!!
+     *
+     * \author 2008    - Josep Ramon Morros - Creation
+     * \author 2008    - Eduardo Mendoca    - Creation
+     * \author 2011-07 - Albert Gil         - Review
+     */
+    template <typename T, std::size_t D>
+    class BBox
+    {
+    public:
+
+        typedef      T           data_type;      //!< The data_type of the coordinate
+        static const std::size_t dimensions = D; //!< The dimensions of the BBox.
+
+        /*!
+         * Default Constructor
+         *
+         * It creates an "empty" BBox in the Coord (0,...,0).
+         *
+         */
+        BBox ()
+        :   _origin(0),
+            _sides(/*0*/) // boost::array has no constructor from a value, we should create a imageplus::Array class!!
+        {
+            _sides.assign(0);
+        }
+
+        /*!
+         * Copy constructor
+         *
+         * \param[in] copy : the BBox to copy from
+         */
+        BBox( const BBox& copy )
+        :   _origin(copy._origin),
+            _sides (copy._sides)
+        {}
+
+        /*!
+         * Constructor from the origin an a size.
+         *
+         * This constructor creates a square in 2D and a cube in 3D.
+         * Note that it can be also used for 1D.
+         *
+         * \param[in] tl    : Coordinate of the origin of the bbox (top-left in 2D)
+         * \param[in] size : the size for all dimensions
+         */
+        BBox (Coord<T,D> tl, std::size_t size )
+        :   _origin(tl)
+        {
+            _sides.assign(size);
+        }
+
+        /*!
+         * Constructor from the origin and the 2 sizes (only for D=2).
+         *
+         * \param[in] tl     : Coordinate of the origin of the BBox (top-left in 2D)
+         * \param[in] width  : the size of the first dimension
+         * \param[in] height : the size of the second dimension
+         */
+        BBox (Coord<T,D> tl, std::size_t width, std::size_t height )
+        :   _origin(tl)
+        {
+            ASSERT(D==2, "Calling 2 dimensions constructor with D=" << D);
+
+            _sides[0] = width;
+            _sides[1] = height;
+        }
+
+        /*!
+         * Constructor from the origin and the 3 sizes (only for D=3).
+         *
+         * \param[in] tl     : Coordinate of the origin of the BBox (top-left in 2D)
+         * \param[in] width  : the size of the first dimension
+         * \param[in] height : the size of the second dimension
+         * \param[in] depth  : the size of the third dimension
+         */
+        BBox (Coord<T,D> tl, std::size_t width, std::size_t height, std::size_t depth )
+        :   _origin(tl)
+        {
+            ASSERT(D==3, "Calling 3 dimensions constructor with D=" << D);
+    
+            _sides[0] = width;
+            _sides[1] = height;
+            _sides[2] = depth;
+        }
+
+        /*!
+         * Constructor from 2 Coord, the origin and the opposite (for all D)
+         *
+         * \param[in] tl : Origin Coord of the BBox (top-left in 2D)
+         * \param[in] br : Opposite Coord of the BBox (bottom-right in 2D)
+         */
+        BBox( Coord<T,D>  tl, Coord<T,D> br )
+        :   _origin(tl)//, _sides(br-tl+T(1)) // removed because incompatible T for boost::array, with our Array class it wouldn't happen
+        {
+#ifndef NDEBUG
+            for(std::size_t ii=0; ii<D; ++ii) ASSERT(br[ii]>=tl[ii], "Creating a BBox from incorrect coords");
+#endif
+            _sides = br-tl+T(1);
+        }
+
+        /*!
+         * Destructor
+         */
+        virtual
+        ~BBox()
+        {}
+
+        /*!
+         * Assignment operator (=) from a BBox
+         *
+         * \param[in] copy : BBox to copy from
+         *
+         * \returns this, just to concatenate
+         */
+        const BBox& operator = ( const BBox& copy )
+        {
+            _origin = copy._origin;
+            _sides  = copy._sides;
+
+            return *this;
+        }
+
+        /*!
+         * \returns dimensionality of the BBox (D)
+         */
+        const std::size_t dimension() const
+        {
+            return D;
+        }
+
+        /*!
+         * \returns the origin Coord
+         */
+        const Coord<T,D> & origin() const
+        {
+            return (_origin);
+        }
+
+        /*!
+         * \returns the origin Coord
+         */
+        Coord<T,D>& origin()
+        {
+            return (_origin);
+        }
+
+        /*!
+         * \returns the center Coord (computed)
+         */
+        Coord<T,D> center() const;
+
+        /*!
+         * \returns the opposite Coord (computed)
+         */
+        Coord<T,D> opposite() const;
+
+        /*!
+         * \returns the size of the n-th side of the BBox
+         *
+         * \param[in] n : side number to get
+         */
+        const std::size_t& side( std::size_t n ) const
+        {
+            return (_sides[n]);
+        }
+
+        /*!
+         * \returns the size of the n-th side of the BBox
+         *
+         * \param[in] n : side number to get
+         */
+        std::size_t& side( std::size_t n )
+        {
+            return (_sides[n]);
+        }
+
+        /*!
+         * \returns the size of the first dimension (equivalent to BBox.size(0))
+         */
+        const std::size_t& side_x() const
+        {
+            return _sides[0];
+        }
+
+        /*!
+         * \returns the size of the first dimension (equivalent to BBox.size(0))
+         */
+        std::size_t& side_x()
+        {
+            return _sides[0];
+        }
+
+        /*!
+         * \returns the size of the second dimension (equivalent to BBox.size(1))
+         *
+         * Note that D must be >=2
+         */
+        const std::size_t& side_y() const
+        {
+            ASSERT(D>=2, "Calling side_y for BBox with D=" << D);
+            return _sides[1];
+        }
+
+        /*!
+         * \returns the size of the second dimension (equivalent to BBox.size(1))
+         *
+         * Note that D must be >=2
+         */
+        std::size_t& side_y()
+        {
+            ASSERT(D>=2, "Calling side_y for BBox with D=" << D);
+            return _sides[1];
+        }
+
+        /*!
+         * \returns the size of the third dimension (equivalent to BBox.size(2))
+         *
+         * Note that D must be >=3
+         */
+        const std::size_t& side_z() const
+        {
+            ASSERT(D>=3, "Calling side_y for BBox with D=" << D);
+            return _sides[2];
+        }
+
+        /*!
+         * \returns the size of the third dimension (equivalent to BBox.size(2))
+         *
+         * Note that D must be >=3
+         */
+        std::size_t& side_z()
+        {
+            ASSERT(D>=3, "Calling side_y for BBox with D=" << D);
+            return _sides[2];
+        }
+
+        /*!
+         * \return true if c is contained in the BBox, false otherwise
+         *
+         * \param[in] c : Coord to be checked
+         */
+        bool contains(Coord<T,D> c) const
+        {
+            Coord<T,D> opp = opposite();
+
+            for( std::size_t ii=0; ii<D; ++ii)
+            {
+                if(c[ii] < _origin[ii] || c[ii] > opp[ii]) return false;
+            }
+
+            return true;
+        }
+
+        /*!
+         * \returns the D-dimensional hyper-volume enclosed by the BBox
+         *
+         * For 2D it is the area, and for 3D it is the volume enclosed by the BBox
+         */
+        float32 space() const
+        {
+            float32 space = 1.0;
+            for(std::size_t dd=0; dd<D; ++dd)
+            {
+                space *= _sides[dd];
+            }
+
+            return space;
+        }
+
+        /*!
+         * \returns the area enclosed by the BBox (2D).
+         *
+         * It calls space(), added just for convenience.
+         */
+        float32 area() const
+        {
+            return space();
+        }
+
+        /*!
+         * \returns the volume enclosed by the BBox (3D).
+         *
+         * It calls space(), added just for convenience.
+         */
+        float32 volume() const
+        {
+            return space();
+        }
+
+    protected:
+
+        //! Origin of the bbox. Nearest vertex to the origin of the coordinate system
+        Coord<T,D> _origin;
+
+        //! Sizes of the sides of bbox (width, height, depth, ...)
+        boost::array<std::size_t,D> _sides;
+    };
+
+    /*!
+     * \typedef imageplus::BBox2D
+     *
+     * An specific type of BBox with T=int64 and D=2
+     *
+     * \see         imageplus::BBox, BBox3D
+     * \relatedalso imageplus::BBox
+     */
+    typedef BBox<int64, 2> BBox2D;
+
+    /*!
+     * \typedef BBox3D
+     *
+     * An specific type of BBox with T=int64 and D=3
+     *
+     * \see         BBox, BBox2D
+     * \relatedalso imageplus::BBox
+     */
+    typedef BBox<int64, 3> BBox3D;
+
+    /*!
+     * \returns the XY face of a BBox3D as a BBox2D
+     *
+     * \param[in] b3d : the BBox3D to get the XY face
+     *
+     * \see        imageplus::BBox, imageplus::BBox2D, imageplus::BBox3D
+     * \relatedalso imageplus::BBox
+     */
+    inline
+    BBox2D get_bbox_xy(const BBox3D& b3d)
+    {
+        BBox2D bb( Coord<int64,2>( b3d.origin()  .x(), b3d.origin()  .y()),
+                   Coord<int64,2>( b3d.opposite().x(), b3d.opposite().y()) );
+        return bb;
+    }
+
+    /*!
+     * \returns the coordinates of the 8 vertices of the BBox3D
+     *
+     * \param[in] b3d : the BBox3D to get the vertices
+     *
+     * \see         imageplus::BBox, imageplus::BBox3D
+     * \relatedalso imageplus::BBox
+     */
+    template<typename T>
+    std::vector<Coord<T,3> > vertices(const BBox3D& b3d)
+    {
+        std::vector<Coord<T,3> > ret;
+        for( uint64 i=0; i<2; i++)
+            for( uint64 j=0; j<2; j++)
+                for( uint64 k=0; k<2; k++)
+                {
+                    float64 x = static_cast<float64>( b3d.origin().x() + i*b3d.side_x() );
+                    float64 y = static_cast<float64>( b3d.origin().y() + j*b3d.side_y() );
+                    float64 z = static_cast<float64>( b3d.origin().z() + k*b3d.side_z() );
+                    ret.push_back( Coord<float64,3>(x,y,z) );
+                }
+        return ret;
+    }
+
+    /*!
+     * \returns the Y side divided by the X side of a BBox2D
+     *
+     * \param[in] b2d : the BBox2D to get the X and Y sides
+     *
+     * \see         imageplus::BBox, imageplus::BBox2D
+     * \relatedalso imageplus::BBox
+     */
+    inline
+    float64 aspect_ratio(const BBox2D& b2d)
+    {
+        return static_cast<float64>(b2d.side(1)) / static_cast<float64>(b2d.side(0));
+    }
+} // namespace imageplus
+
+#endif /* IMAGEPLUS_BBOX_HPP */

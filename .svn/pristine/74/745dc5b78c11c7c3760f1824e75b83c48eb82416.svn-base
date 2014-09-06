@@ -1,0 +1,153 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file filter.hpp
+//!
+//!  Interface for the Filter class, a standard way to implement filters that work over
+//!  any MultiArray or ImaVol classes.
+//!
+
+#ifndef IMAGEPLUS_CORE_FILTER_HPP
+#define IMAGEPLUS_CORE_FILTER_HPP
+
+#include <imageplus/core/exceptions.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+
+namespace imageplus
+{
+
+    //!
+    //! \brief base class to image and volume filters
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    //! This class is used as a base class for all filters in ImagePlus. You should not instantiate
+    //! this class but create new filters as classes by inheritance (check erosion.hpp as an example)
+    //! Derived classes should always implement method implementation()
+    //!
+    //! Template Derived is the derived class of the filter
+    //!
+    //! Base class Filter is a class template. It has a template of the derived class
+    //! because it is one way to implement virtual function templates in C++. Check the
+    //! wikipedia <a href="http://en.wikipedia.org/wiki/Curiously_recurring_template_pattern">article</a> for
+    //! a more detailed explanation of this solution.
+    //! \code
+    //!   template<class Derived>
+    //!   class Filter
+    //!   {
+    //!       ...
+    //!   }
+    //! \endcode
+    //!
+    //! Note that this class has all its implementation in the hpp as it will be very difficult
+    //! to instantiate all implemented filters.
+    //!
+    //! At the moment this class can only return the same type as the input
+    //! so if the input is a MultiArray it returns a MultiArray (with same type and dimensions but it can be
+    //! of different size), if and ImageRGB then the output is also an ImageRGB. A solution to
+    //! this will be to implement more filter() methods with different input and output parameters
+    //!
+    //! Filters implemented as derived of this class Filter can be used as:
+    //! \code
+    //!   // Declare input and output images
+    //!   ImageGray<uint8> g1(100,100);
+    //!   ImageGray<uint8> g2(100,100);
+    //!
+    //!   // Morphological opening with connectivity=4 and size=1
+    //!   Opening ope(4,1);
+    //!
+    //!   // Apply filter to image
+    //!   g2 = ope.filter(g1);
+    //! \endcode
+    //!
+    //! To define a filter, create a new derived class particularizing the template with the
+    //! derived class itself (see  <a href="classimageplus_1_1morphology_1_1Opening.html">opening.hpp</a>).
+    //! Derived classes must have a public method called <b>implementation()</b>
+    //! that performs the actual filtering. The <b>filter()</b> method defined in the base class
+    //! does nothing else than calling <b>implementation()</b>.
+    //! Note that the <b>implementation()</b> method is public only for practical purposes and it
+    //! must NEVER be used directly. It is only intended to be called by <b>filter()</b>.
+    //! \code
+    //!   class Opening : public Filter<Opening>
+    //!   {
+    //!       public:
+    //!           template<typename T>
+    //!           MultiArray<T,2> implementation(const MultiArray<T,2>& m) throw (ImagePlusError);
+    //!   }
+    //! \endcode
+    //!
+    //! This solution allows to use filters as parameters in functions, check
+    //! modules/morphology/test/test_erosion.test for an example.<br>
+    //!
+    template<class Derived>
+    class Filter
+    {
+
+        public:
+
+            //!
+            //! \brief Default constructor, empty filter
+            //!
+            Filter( ) : _name("Filter") {};
+
+
+            //!
+            //! \brief Constructor, empty filter
+            //!
+            //! \param[in] name: Filter name
+            //!
+            Filter( std::string name) : _name(name) {};
+
+
+            //!
+            //! \brief Filters any multiarray, image or volume
+            //!
+            //! \param[in] m : object to filter
+            //!
+            //! \return Filtered object (same type and dimensions but it can be of different size)
+            //!
+            template<typename T>
+            T filter(const T& m) const
+            {
+                return static_cast<const Derived*>(this)->implementation(m);
+            }
+
+
+            //!
+            //! \brief Filters any multiarray, image or volume (in-place version)
+            //!
+            //! \param[in]    m : object to filter
+            //! \param[out] res : Filtered object
+            //!
+            template<typename T>
+            void filter(const T& m, T& res) const
+            {
+                this->implementation(m, res);
+            }
+
+            //!
+            //! \brief access filter name
+            //!
+            //! \return String with the filter name
+            //!
+            const std::string& name() const 
+            {
+                return _name;
+            }
+
+        protected:
+
+            //! Stores the filter name
+            std::string _name;
+
+    };
+
+}
+
+#endif

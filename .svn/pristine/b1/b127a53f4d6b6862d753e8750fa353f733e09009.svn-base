@@ -1,0 +1,375 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file readsequence.hpp
+//!
+//!  Interface classes for reading sequences of images or volumes from disk
+//!
+
+
+#ifndef IMAGEPLUS_IO_READSEQUENCE_HPP
+#define IMAGEPLUS_IO_READSEQUENCE_HPP
+
+#include <string>
+#include <boost/smart_ptr.hpp>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/io_types.hpp>
+
+namespace imageplus
+{
+    
+    namespace io
+    {
+        
+#ifdef USE_FFMPEG
+        // forward declaration of ffmpeg class reader
+        class ReadSequenceFfmpeg;
+#endif
+
+        //!
+        //! \brief class to read sequences from disk into images or volumes
+        //!
+        //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+        //!
+        //! \date 10-1-2008
+        //!
+        //! At the moment this class supports reading the following formats for video files:
+        //! - YUV planar video sequences with formats 444, 420 and 400 (using .dat file to read size and format)
+        //! - Several images on disk (using printf style), the image formats supported are the same as ReadImage
+        //! - If compiled with <a href="http://ffmpeg.mplayerhq.hu/">ffmpeg</a> all videos supported by the library
+        //! 
+        //! To open a sequence use:
+        //! \code
+        //!   ReadSequence rseq;
+        //!   try
+        //!   {
+        //!       rseq.open("seq444.yuv");
+        //!   }
+        //!   catch (exception& e)
+        //!   {
+        //!       // make sure you control if the file does not exists
+        //!   }
+        //! \endcode
+        //!
+        //! You can read a specific frame of the sequence like:
+        //! \code
+        //!   ImageGray<int64> g;
+        //!   rseq[0] >> g; // <- frame 0 is read
+        //!   rseq[7] >> g; // <- frame 7 is read
+        //! \endcode
+        //!
+        //! You can also use >> to read frame by frame
+        //! \code
+        //!   rseq >> g; // <- frame 8 is read
+        //! \endcode
+        //!
+        //! So next time you use >> the next frame is read
+        //! \code
+        //!   rseq >> g; // <- frame 9 is read, etc.
+        //! \endcode
+        //!
+        //! You can set the frame pointer like:
+        //! \code
+        //!   rseq[5];
+        //! \endcode
+        //!
+        //! so next time you use operator '>>' that frame will be read
+        //! \code
+        //!   rseq >> g; // <- frame 5 is read
+        //! \endcode
+        //!
+        //! To read all frames do something like
+        //! \code
+        //!   rseq[0];  // <- reset to 0 (not needed if recently opened)
+        //!   while ( !rseq.eof() )
+        //!   {
+        //!       rseq >> g;
+        //!   }
+        //! \endcode
+        //!
+        //! The ReadSequence class also works reading several images as an unique sequence. 
+        //! You can use the printf style notation to read a list of images like this:
+        //! \code
+        //!   ReadSequence rseq;
+        //!   ImageRGB<uint8> ima;
+        //!   rseq.open("ima_%03d.png",0,3);
+        //! \endcode
+        //!
+        //! The code above will read images 'ima_000.png', 'ima_001.png', 'ima_002.png' and 'ima_003.png'
+        //! as if they are a single sequence so 
+        //! \code
+        //!   rseq >> ima; // <- this reads image 'ima_000.png' into object ima
+        //!   rseq >> ima; // <- now 'ima_001.png' is read, etc.
+        //! \endcode
+        //!
+        //! If compiled with <a href="http://ffmpeg.mplayerhq.hu/">ffmpeg</a> support then this 
+        //! class can read all video files that the ffmpeg library supports. The usage is the
+        //! same as the previous examples:
+        //! \code
+        //!  ReadSequence rseq;
+        //!  rseq.open("videfile.avi");
+        //!  while ( !rseq.eof() )
+        //!       rseq >> g;
+        //! \endcode
+        //! 
+        //! In this case the internal format is set to FFMPEG.
+        //! At the moment, you can not move through the sequence using rseq[frame] when 
+        //! reading a video file using the ffmpeg library.
+        //!
+        class ReadSequence
+        {
+                
+            public:
+
+                //!
+                //! \brief Default contructor
+                //!
+                ReadSequence();
+
+                //!
+                //! \brief Contructor for single file sequences
+                //!
+                //! This constructor also opens a single file sequence
+                //!
+                //! \param[in] filename : string with filename of the sequence in disk
+                //! \param[in]     skip : Number of frames to skip (default 0 so no skipping)
+                //!
+                //! \sa open()
+                //!
+                explicit ReadSequence( const std::string& filename, uint64 skip = 0);
+
+                //!
+                //! \brief Contructor for multiple file sequences (printf style)
+                //!
+                //! \param[in]  filenames : string with filenames of images in disk (printf style)
+                //! \param[in] startframe : starting frame number
+                //! \param[in]   endframe : ending frame number
+                //! \param[in]       skip : Number of frames to skip (default 0 so no skipping)
+                //!
+                explicit ReadSequence( const std::string& filenames, uint64 startframe, uint64 endframe, uint64 skip = 0);
+
+                //!
+                //! \brief Contructor for multiple file sequences with separated channels (printf style)
+                //!
+                //! \param[in]  filenames : string with filenames of images in disk (printf style)
+                //! \param[in] startframe : starting frame number
+                //! \param[in]   endframe : ending frame number
+                //! \param[in]   channels : vector of strings containing the channels to read
+                //! \param[in]       skip : Number of frames to skip (default 0 so no skipping)
+                //!
+                explicit ReadSequence( const std::string& filenames, uint64 startframe, uint64 endframe, std::vector<std::string> channels, uint64 skip = 0);
+
+                //!
+                //! \brief Destructor
+                //!
+                ~ReadSequence();
+
+                //!
+                //! \brief Opens single file sequence for reading
+                //!
+                //! \param[in] filename : string with filename of the sequence in disk
+                //! \param[in]     skip : Number of frames to skip (default 0 so no skipping)
+                //!
+                void open( const std::string& filename, uint64 skip = 0) throw (ImagePlusError);
+
+                //!
+                //! \brief Opens list of images for reading (printf style)
+                //!
+                //! \param[in]  filenames : string with filenames of images in disk (printf style)
+                //! \param[in] startframe : starting frame number
+                //! \param[in]   endframe : ending frame number
+                //! \param[in]       skip : Number of frames to skip (default 0 so no skipping)
+                //!
+                void open( const std::string& filenames, uint64 startframe, uint64 endframe, uint64 skip = 0) throw (ImagePlusError);
+                
+                //!
+                //! \brief Opens list of images for reading with separated channels (printf style)
+                //!
+                //! \param[in]  filenames : string with filenames of images in disk (printf style)
+                //! \param[in] startframe : starting frame number
+                //! \param[in]   endframe : ending frame number
+                //! \param[in]   channels : vector of strings containing the channels to read
+                //! \param[in]       skip : Number of frames to skip (default 0 so no skipping)
+                //!
+                void open( const std::string& filenames, uint64 startframe, uint64 endframe, std::vector<std::string> channels, uint64 skip = 0) throw (ImagePlusError);
+                
+                //!
+                //! \brief Reads next gray image from sequence
+                //!
+                //! \param[out] image : ImageGray where the read frame will be stored
+                //!
+                //! \return this, to concatenate
+                //!
+                ReadSequence& operator>>( ImageGray<uint8>& image ) throw (ImagePlusError);
+                
+                //!
+                //! \brief Reads next yuv image from sequence
+                //!
+                //! \param[out] image : ImageYUV where the read frame will be stored
+                //!
+                //! \return this, to concatenate
+                //!
+                ReadSequence& operator>>( ImageYUV<uint8>& image ) throw (ImagePlusError);
+                
+                //!
+                //! \brief Reads next yuv420 image from sequence
+                //!
+                //! \param[out] image : Image where the read frame will be stored
+                //!
+                //! \return this, to concatenate
+                //!
+                ReadSequence& operator>>( ImageYUV420<uint8>& image ) throw (ImagePlusError);
+
+                //!
+                //! \brief Reads next rgb image from sequence
+                //!
+                //! \param[out] image : Image where the read frame will be stored
+                //!
+                //! \return this, to concatenate
+                //!
+                ReadSequence& operator>>( ImageRGB<uint8>& image ) throw (ImagePlusError);
+
+                //!
+                //! \brief Reads next partition from sequence
+                //!
+                //! \param[out] image : partition where the read frame will be stored
+                //!
+                //! \return this, to concatenate
+                //!
+                ReadSequence& operator>>( ImagePartition<uint32>& image ) throw (ImagePlusError);
+
+                //!
+                //! \brief Sets specific frame to read next time operator>> is called
+                //!
+                //! \param[in] frame : Frame number to read
+                //!
+                //! \return this, to concatenate with other operations
+                //!
+                ReadSequence& operator[]( uint64 frame );
+                
+                //!
+                //! \brief Access dimensions of sequence frames
+                //!
+                //! \param[in] d : dimension to read
+                //!
+                //! \return size of dimension d of the frames in the sequence
+                //!
+                uint64 dims(uint64 d) const;
+               
+                //!
+                //! \brief Access dimensions of sequence frames
+                //!
+                //! \return size of dimensions of the frames in the sequence
+                //!
+                const std::vector<uint64>& dims() const;
+
+                //!
+                //! \brief Access frames per second
+                //!
+                //! \return frames per second of the sequence (0.0 when no information of fps is found)
+                //!
+                float64 fps() const;
+                
+                //!
+                //! \brief Access start frame number in the sequence
+                //!
+                //! \return start frame number of sequence
+                //!
+                uint64 startframe() const;
+
+                //!
+                //! \brief Access end frame number in the sequence
+                //!
+                //! \return end frame number of sequence
+                //!
+                uint64 endframe() const;
+	    
+                //!
+                //! \brief Access format of sequence
+                //!
+                //! \return SeqFormat enumerate with the format information of the sequence
+                //!
+                SeqFormat format() const;
+
+                //!
+                //! \brief Access channels vector
+                //!
+                //! \return Vector of strings containg the channels to read
+                //!
+                std::vector<std::string> channels() const;
+
+                //!
+                //! \brief Access frame pointer
+                //!
+                //! \return the frame number of the next frame to be read
+                //!
+                uint64 frame_pointer() const;
+
+                //!
+                //! \brief Access frame pointer
+                //!
+                //! \return the frame number of the last frame read
+                //!
+                uint64 last_frame_pointer() const;
+
+                //!
+                //! \brief Signals if the end of sequence has been reached
+                //!
+                //! \returns true if end of file is found (so next read will be an error) else it returns false
+                bool eof();
+
+                
+            private:
+                
+                //! Stores filename of the sequence on disk
+                std::string _filename;
+                
+                //! Variable to keep track of the frame to be read next
+                uint64 _framecount;
+                
+                //! Store the dimensions of the sequence in pixels
+                std::vector<uint64> _dims;
+                
+                //! Stores the start frame of the sequence
+                uint64 _startframe;
+                
+                //! Stores the end frame of the sequence
+                uint64 _endframe;
+                
+                //! Frames per second of the sequence. 0.0 if unknown
+                float64 _fps;
+                
+                //! Enumerate with the input format of the sequence
+                SeqFormat _format;
+                
+                //! Store frame size (needed when jumping between frames in yuv format)
+                uint64 _yuvframesize;
+                
+                //! Store the channels to read in a vector of strings
+                std::vector<std::string> _channels;
+
+                //! Stores the skip frame of the sequence
+                uint64 _skip;
+	    
+#ifdef USE_FFMPEG
+                //! hide the ReadSequenceFfmpeg class inside a smart pointer so it can be private
+                boost::shared_ptr<ReadSequenceFfmpeg> _ffmpeg;
+#endif
+                //!
+                //! \brief Checks frame is within limits, ortherwise throws exception
+                //!
+                //! \param[in] frame: frame to check
+                //!
+                void _check_frame(uint64 frame) throw (ImagePlusError);
+                
+        };
+        
+    } // namespace io
+    
+} //namespace imageplus
+
+#endif

@@ -1,0 +1,22 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//
+//  This file is used as a context check for the build system.
+//  It is compiled, linked and executed to check if local environment is 
+//  ready for building the software.
+//
+//  Author: Albert Gil, UPC <agil@gps.tsc.upc.edu>
+//
+//  Date: 26-3-2008
+//
+
+#include <string>
+#include <linux/videodev2.h>
+
+int main(int ac, char* av[])
+{
+    return 0;
+}

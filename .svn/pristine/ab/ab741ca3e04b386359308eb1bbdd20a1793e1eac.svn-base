@@ -1,0 +1,52 @@
+#include <iostream>
+#include <imageplus/core.hpp>
+#include <imageplus/io/writevolume.hpp>
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::io;
+
+int main()
+{
+	//Creates a model volume in the UPC room
+	uint32 x=200, y=250, z=105;
+	VolumeGray<uint8> vol;
+	
+	vol=VolumeGray<uint8>(x,y,z);
+	
+	for (uint32 i=0; i<x; i++)
+	{
+		for (uint32 j=0; j<y; j++)
+		{
+			for (uint32 k=0; k<z; k++)
+			{
+				if (i>80 && i<120 && j>100 && j < 150 && k >40 && k <60) vol(0)[i][j][k]=1;
+			}
+		}
+	}
+    string rlefile= string(TEST_DATA_PATH_R) + "/test_write.rle";
+    string outfile= string(TEST_DATA_PATH_W) + "/test_write.x3d";	
+	
+	ReadVolume rv(rlefile);
+	WriteVolume vwrt(outfile);
+	
+	//Write as rle volume in file
+	cout << "Writing volume as RLE ..." << flush;
+	vwrt << vol;
+	cout << "Done!" << endl;
+	VolumeGray<uint8> vol2;
+	//Check compatibility: read written volume
+	cout << "Reading volume as RLE ..." << flush;
+	try{
+		rv >> vol2;
+	}catch (exception& e){
+		cout << e.what() << endl;
+		return -1;
+	}
+	cout << "Done!" << endl;
+	//Once read, write again but in x3d format
+	vwrt.open(outfile);
+	cout << "Writing to x3d..." << flush;
+	vwrt<<vol2;
+	cout << "Done!" << endl;
+}

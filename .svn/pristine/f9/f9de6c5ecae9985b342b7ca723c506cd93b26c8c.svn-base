@@ -1,0 +1,58 @@
+# Tumult_detection configuration file used for tumult_detection tool.
+# Path of the original sequence input files. (Only used when not being a smartflow client)
+###in_dir_prefix = "/imatge/allorca/work/CAPTURAS_UTILES/ENVIRONMENT2/CAPTURAS_TRAINING20/training_"
+# Path of the Foreground extraction output files (output format is always jpg)
+###out_fg_dir_prefix = "/imatge/allorca/work/CAPTURAS_UTILES/ENVIRONMENT2/Resultados_ex_FG_Y_Cb_Cr20/FrameFore"
+# Format of the input and output files. Currently only bmp or jpg (Only used when not being a smartflow client)
+###input_filetype = "jpg"
+###output_filetype = "jpg"
+# Path of the output files (output format same as input format)
+###out_dir_prefix = "/imatge/allorca/work/CAPTURAS_UTILES/ENVIRONMENT2/Resultados_tracking20/"
+# Number of digits of the input/output sequence
+number_of_digits = 4
+# Width
+image_width = 40
+# Height
+image_height = 240
+# Number of particles used for each particle filter
+number_of_particles = 200
+# Maximum Number of particle filters used for tracking
+number_of_filters = 2000
+# Variance used for the particle filters resampling
+variance = 5
+# BETA parameter that varies the influence of Battacharyya's distance
+beta = 5
+# RAMPERROR parameter that limits how far a PF can get from the ramp estimation (in average %)
+ramp_error = 30
+# NumberOfBins: Number of bins of the histogram of each particle and the PF
+number_of_bins = 10
+# LAMDAC: To control the influence of the BattDist in the score
+lambda_color = 0.5
+# LAMDAF: To control the influence of the FG pixels in the score
+lambda_fg = 0.5
+# SurivalRateThreshold: Threshold of the survival rate of the PF
+survival_rate_threshold = 0.1
+# Y' Resolution ( E1 => 500 cm, E2 => 250 cm, E3 => 250 cm, E4 => 500 cm )
+resolution_y = 250
+# Speed Resolution ( E1 => 50 cm/s, E2 => 50 cm/s, E3 => 50 cm/s, E4 => 50 cm/s )
+resolution_speed = 50
+# Tumult threshold used for the detection of a tumult
+detection_threshold = 3
+# Tumult HISTERESIS threshold used to decide if a possible tumult condition is a real tumult
+detection_histeresis = 2	
+# AlphaMax: Maximum value for alpha (actualization of PF histogram) 
+alpha_max = 0.5
+# AlphaMin: Minimum value for alpha (actualization of PF histogram) 
+alpha_min = 0.0
+# VarMax: Maximum value for the estimation variance (actualization of PF histogram) 
+variance_max = 5.0
+# VarMin: Minimum value for the estimation variance (actualization of PF histogram)
+variance_min = 0.0
+#Number of training frames used to initialize background
+training_frames = 50
+# This parameter is used to calculate the THRESHOLD
+init_variance = 144
+# This parameter is used to calculate the THRESHOLD		
+std_dev_factor = 2.0
+# This parameter is used to actualize mean and variance models
+ro = 0.01 

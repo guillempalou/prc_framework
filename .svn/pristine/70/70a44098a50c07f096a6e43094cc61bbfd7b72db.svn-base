@@ -1,0 +1,314 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file haar.hpp
+//!
+//!
+
+#ifndef IMAGEPLUS_DESCRIPTORS_TEXTURE_HAAR_HPP
+#define IMAGEPLUS_DESCRIPTORS_TEXTURE_HAAR_HPP
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/descriptors/color/color_statistics.hpp>
+#include <imageplus/math/transforms/dwt.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Class for visual descriptor that represents the square of powers of the Haar wavelet coefficients associated to the region pixels for the LH, HL and HH subbands in the N levels of the decomposition.
+        //! 
+        //! Template InputModel refers to the model of the input: ImageRGB<uint8>, ImageGray<uint32>, etc.
+        //! Template N refers to the levels of decomposition we want to obtain.
+        //! Note that to obtain the power is necessary to do the square root of the result. This class is useful for avoiding some operations in the recursive way. 
+        //! The user has to use the helper functions defined in visual_descriptors.hpp because of their simplicity.
+        //! The image given by the user must be with borders.
+        //!
+        //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+        //!
+        //! \date 29-6-2009
+        template<class InputModel, uint8 N = 1>
+        class HaarPower : public DescriptorBase
+        {
+        public:
+            
+            //!
+            //! \brief Default constructor
+            //!
+            HaarPower() : DescriptorBase("HaarPower", true)
+            {
+                _value_lh.resize(N);
+                _value_hl.resize(N);
+                _value_hh.resize(N);
+            }
+            
+            //! \brief Calculates the square of powers of the Haar wavelet coefficients associated to the region pixels for the LH, HL and HH subbands in the N levels of the decomposition.
+            //!
+            //! \param[in] first : Iterator to the beginning of the region
+            //! \param[in] last : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            //! \return A reference to the object which contains the square of powers of the Haar wavelet coefficients associated to the region pixels for the LH, HL and HH subbands in the N levels of the decomposition.
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs=0x0)
+            {
+                ASSERT(peer_descs!=0x0, "HaarPower calculate: peer_descs cannot be null");
+                ASSERT(peer_descs->global_desc()!=0x0, "HaarPower calculate: peer_descs->global_desc() cannot be null");
+
+                math::transforms::HAAR haar;
+                typedef math::transforms::DWT<math::transforms::HAAR, math::transforms::UNDECIMATE, N> dwt_type;
+                const dwt_type& desc = peer_descs->global_desc()->calculate(new dwt_type(haar), (*first).global_begin(), (*first).global_end());
+
+                //Once the HaarWav is obtained, we calculate the sum of the powers of its respective coefficients for each level of decomposition.
+                for(std::size_t i=0; i < N; i++)
+                {
+                    _value_lh[i] = _value_hl[i] = _value_hh[i] = 0;
+                    for(IteratorModel it = first;it!=last;++it)
+                    {
+                        _value_lh[i] = _value_lh[i] + std::pow(desc.horiz(i)(0)((*it).position()),2);
+                        _value_hl[i] = _value_hl[i] + std::pow(desc.vert(i)(0)((*it).position()),2);
+                        _value_hh[i] = _value_hh[i] + std::pow(desc.diag(i)(0)((*it).position()),2);
+                    }
+
+                    uint64 correction = 1 << (2*(i+1));
+                    _value_lh[i] = _value_lh[i]/(float64)correction;
+                    _value_hl[i] = _value_hl[i]/(float64)correction;
+                    _value_hh[i] = _value_hh[i]/(float64)correction;
+                }
+            }
+            
+            //! \brief Calculates the power of the father region recursively given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            //! \return A reference to the object which contains the square of powers of the Haar wavelet coefficients associated to the father's region pixels for the LH, HL and HH subbands in the N levels of the decomposition.
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs=0x0)
+            {        
+                //The square of the powers of father is obtained by adding the sons ones.
+                const HaarPower<InputModel, N>& desc_son1 = son1_descs.get(*this);
+                for(std::size_t i = 0; i<N; i++)
+                {
+                    _value_lh[i] = desc_son1.lh(i);
+                    _value_hl[i] = desc_son1.hl(i);
+                    _value_hh[i] = desc_son1.hh(i);
+                }
+    
+                 
+                const HaarPower<InputModel, N>& desc_son2 = son2_descs.get(*this);
+                for(std::size_t i = 0; i<N; i++)
+                {
+                    _value_lh[i] = _value_lh[i] + desc_son2.lh(i);
+                    _value_hl[i] = _value_hl[i] + desc_son2.hl(i);
+                    _value_hh[i] = _value_hh[i] + desc_son2.hh(i);
+                }
+            }
+            
+            //! \brief Returns the square of the power of the Haar wavelet coefficients associated to the region pixels for the LH subband in a specific level of the decomposition.
+            //!
+            //! \param[in] level : level of the decomposition in which we want obtain the square of the power.
+            //!
+            //! \return The square of the power of the Haar wavelet coefficients associated to the region pixels for the LH subband in a specific level of the decomposition.
+            //! 
+            const float64& lh(std::size_t level = 0) const
+            {
+                return _value_lh[level];
+            }
+            
+            //! \brief Returns the square of the power of the Haar wavelet coefficients associated to the region pixels for the HL subband in a specific level of the decomposition.
+            //!
+            //! \param[in] level : level of the decomposition in which we want obtain the square of the power.
+            //!
+            //! \return The square of the power of the Haar wavelet coefficients associated to the region pixels for the HL subband in a specific level of the decomposition.
+            //! 
+            const float64& hl(std::size_t level = 0) const
+            {
+                return _value_hl[level];
+            }
+            
+            //! \brief Returns the square of the power of the Haar wavelet coefficients associated to the region pixels for the HH subband in a specific level of the decomposition.
+            //!
+            //! \param[in] level : level of the decomposition in which we want obtain the square of the power.
+            //!
+            //! \return The square of the power of the Haar wavelet coefficients associated to the region pixels for the HH subband in a specific level of the decomposition.
+            //! 
+            const float64& hh(std::size_t level = 0) const
+            {
+                return _value_hh[level];
+            }
+           
+                
+    #ifdef USE_XML    
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "HaarPowerSquareType";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem;
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem2;
+                XERCES_CPP_NAMESPACE::DOMText* textElem;
+                std::string append;
+                std::string space(" ");
+                char append2[100];
+                
+#ifdef IN_PROGRESS
+                dataElem = doc->createElement(io::fromNative("Kernel").c_str());
+                vdElem->appendChild(dataElem);
+                sprintf(append2,"?");
+                textElem = doc->createTextNode(io::fromNative(append2).c_str());
+                dataElem->appendChild(textElem);
+#endif                
+                dataElem = doc->createElement(io::fromNative("NumLevels").c_str());
+                vdElem->appendChild(dataElem);
+                sprintf(append2,"%u", N);
+                textElem = doc->createTextNode(io::fromNative(append2).c_str());
+                dataElem->appendChild(textElem);
+                
+                dataElem = doc->createElement(io::fromNative("Power").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>("LH");
+                dataElem->setAttribute(io::fromNative("band").c_str(), io::fromNative(append.c_str()).c_str());
+                
+                
+                for(uint8 i = 0; i < N; i++)
+                {
+                    sprintf(append2, "Level%u", i);
+                    dataElem2 = doc->createElement(io::fromNative(append2).c_str());
+                    dataElem->appendChild(dataElem2);
+                    sprintf(append2,"%f", _value_lh[i]);
+                    textElem = doc->createTextNode(io::fromNative(append2).c_str());
+                    dataElem2->appendChild(textElem);
+                    
+                }
+    
+                dataElem = doc->createElement(io::fromNative("Power").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>("HL");
+                dataElem->setAttribute(io::fromNative("band").c_str(), io::fromNative(append.c_str()).c_str());
+                
+                
+                for(uint8 i = 0; i < N; i++)
+                {
+                    sprintf(append2, "Level%u", i);
+                    dataElem2 = doc->createElement(io::fromNative(append2).c_str());
+                    dataElem->appendChild(dataElem2);
+                    sprintf(append2,"%f", _value_hl[i]);
+                    textElem = doc->createTextNode(io::fromNative(append2).c_str());
+                    dataElem2->appendChild(textElem);
+                    
+                }
+                
+                dataElem = doc->createElement(io::fromNative("Power").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>("HH");
+                dataElem->setAttribute(io::fromNative("band").c_str(), io::fromNative(append.c_str()).c_str());
+                
+                
+                for(uint8 i = 0; i < N; i++)
+                {
+                    sprintf(append2, "Level%u", i);
+                    dataElem2 = doc->createElement(io::fromNative(append2).c_str());
+                    dataElem->appendChild(dataElem2);
+                    sprintf(append2,"%f", _value_hh[i]);
+                    textElem = doc->createTextNode(io::fromNative(append2).c_str());
+                    dataElem2->appendChild(textElem);
+                    
+                }
+    
+                
+            }
+
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \returns true if the descriptor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "HaarPowerSquareType");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("HaarPowerSquareType not found");
+                }
+                else
+                {
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = io::xml_get_check_son(curr_node, "NumLevels");
+                    std::string text = io::xml_get_text_son(curr_node2, curr_node2);
+                    uint32 num_levels;
+                    sscanf(text.c_str(), "%u", &num_levels);
+                    _value_hl.resize(num_levels);
+                    _value_lh.resize(num_levels);
+                    _value_hh.resize(num_levels);
+                    curr_node2 = io::xml_get_check_son_by_field(curr_node,"Power","band","LH");
+                    for(uint32 ii=0; ii<num_levels;ii++)
+                    {
+                        char cur_level[50];
+                        sprintf(cur_level, "%u", ii);
+                        std::string str_level;
+                        str_level.assign(cur_level);
+                        std::string level = "Level" + str_level;
+                        XERCES_CPP_NAMESPACE::DOMNode* curr_node3 = io::xml_get_check_son(curr_node2, level.c_str());
+                        text = io::xml_get_text_son(curr_node3, curr_node3);
+                        sscanf(text.c_str(), "%lf", &_value_lh[ii]);
+                    }
+                    curr_node2 = io::xml_get_check_son_by_field(curr_node,"Power","band","HL");
+                    for(uint32 ii=0; ii<num_levels;ii++)
+                    {
+                        char cur_level[50];
+                        sprintf(cur_level, "%u", ii);
+                        std::string str_level;
+                        str_level.assign(cur_level);
+                        std::string level = "Level" + str_level;
+                        XERCES_CPP_NAMESPACE::DOMNode* curr_node3 = io::xml_get_check_son(curr_node2, level.c_str());
+                        text = io::xml_get_text_son(curr_node3, curr_node3);
+                        sscanf(text.c_str(), "%lf", &_value_hl[ii]);
+                    }
+                    curr_node2 = io::xml_get_check_son_by_field(curr_node,"Power","band","HH");
+                    for(uint32 ii=0; ii<num_levels;ii++)
+                    {
+                        char cur_level[50];
+                        sprintf(cur_level, "%u", ii);
+                        std::string str_level;
+                        str_level.assign(cur_level);
+                        std::string level = "Level" + str_level;
+                        XERCES_CPP_NAMESPACE::DOMNode* curr_node3 = io::xml_get_check_son(curr_node2, level.c_str());
+                        text = io::xml_get_text_son(curr_node3, curr_node3);
+                        sscanf(text.c_str(), "%lf", &_value_hh[ii]);
+                    }
+                    read = true;
+                }
+                return read;
+            }
+    #endif
+                      
+        private:
+            
+            //! Vector which contains the square of the power of the Haar wavelet coefficients associated to the region pixels for the LH subband in each level of the decomposition.
+            std::vector<float64> _value_lh;
+            
+            //! Vector which contains the square of the power of the Haar wavelet coefficients associated to the region pixels for the HL subband in each level of the decomposition.
+            std::vector<float64> _value_hl;
+            
+            //! Vector which contains the square of the power of the Haar wavelet coefficients associated to the region pixels for the HH subband in each level of the decomposition.
+            std::vector<float64> _value_hh;
+        };
+    }
+}
+#endif
+

@@ -1,0 +1,76 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+#define IMAGEPLUS_TOOL_CONFIG_NAME  prl2bmp
+#define IMAGEPLUS_TOOL_CONFIG_GROUP converters
+
+#include <imageplus/toolbox/tool_config.hpp>
+
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+#include <iostream>
+
+using namespace std;
+using namespace imageplus;
+
+
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+
+    "Conversion from PRL to PNG, TIFF or BMP\n";
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+    "This tool reads a partition in PRL and writes it to an image in PNG, TIFF or BMP. \n" +
+    "\n"+
+    "Notes: \n" +
+    "  - the process is lossy if the number of regions is larger than 255.\n" +
+    "  - PNG and TIFF are the recomended output formats.\n" +
+    "  - BMP supoprt is only available if the tool was compiled with USE_IMAGEMAGICK.\n" +
+    "  - This tool can also write lossy compression formats, like JPEG, but you shouldn't save 'partitions' in these formats.\n";
+
+
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+    // my arguments
+    string filename_in_prl;
+    string filename_out;
+
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    // add arguments in the desired order
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_in_prl  , "Input image in PRL" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_out     , "Output file in PNG, TIFF or BMP" );
+
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_in_prl   );
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_out  );
+
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{
+    io::ReadImage ri(cfg.filename_in_prl);
+    ImagePartition<uint32> temp_part;
+    ri >> temp_part;
+
+    ImageGray<uint8> temp_gray(temp_part.size_x(), temp_part.size_y());
+
+    temp_gray(0) = convert<uint8>(temp_part(0));
+
+    io::WriteImage wi(cfg.filename_out);
+    wi << temp_gray;
+
+    return 0;
+}
+
+IMAGEPLUS_TOOL_CONFIG_END()

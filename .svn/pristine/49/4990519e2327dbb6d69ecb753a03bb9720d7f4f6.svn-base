@@ -1,0 +1,1250 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file gaussian_mixture_model.hpp
+ */
+#ifndef IMAGEPLUS_MATH_STATISTICS_GMM_HPP
+#define IMAGEPLUS_MATH_STATISTICS_GMM_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/math/statistics/gaussian_distribution.hpp>
+
+namespace imageplus
+{
+namespace math
+{
+namespace statistics
+{
+    /*!
+     * \brief Gaussian Mixture Model class
+     *
+     * \tparam M : gaussian dimension
+     *
+     * \author Jaume Gallego Vila <jgallego@gps.tsc.upc.edu>
+     * \author Albert Gil Moreno  <albert.gil@upc.edu> (review)
+     *
+     * \date 2008-04-15
+     * \date 2011-03-05 (review)
+     *
+     * \todo Documentation of ALL members should be reviewed!!
+     * \todo can we create a generic MM for any type of distribution? is this necessary/useful?
+     */
+    template <typename T, std::size_t M>
+    class GMM
+#ifndef FIX_DOCUMENTATION
+    {
+    public:
+        /*
+         * Nested class declaration, definition is at the end of the parent class
+         */
+        class Gaussian;
+
+        //! Model for Probability distributions
+        static const int32 continuous=1;
+        //! Channels are equivalent to feature space dimensionality
+        static const std::size_t channels=M;
+
+        /*!
+         * \brief Default constructor
+         */
+        GMM();
+
+        /*!
+         * \brief Constructor by number of gaussian
+         *
+         * \todo is this constructor useful? what we can do with only the number of gaussians, but without its parameters?
+         *       why not merge this constructor with the next one and give default values to all parameters except num_gauss?
+         *       (we will need to move the parameters order there...)
+         */
+        GMM( std::size_t num_gauss );
+
+        /*!
+         * \brief Constructor: The same value for all the gaussians and also, for all the dimensions of each gaussian
+         *
+         * \param[in] initial_mean        : initial mean value
+         * \param[in] initial_variance    : initial_variance
+         * \param[in] num_gauss           : uint8 number of gaussians used to model each pixel
+         * \param[in] diagonal_cov_matrix : Flag that indicates if diagonal covariance matrix simplification will be done in the GMM.
+         */
+        GMM( T initial_mean, float64 initial_variance, size_t num_gauss, bool diagonal_cov_matrix );
+
+        /*!
+         * \brief Constructor: The same value for all the gaussians and also, for all the dimensions of each gaussian
+         *
+         * \param[in] initial_mean        : initial mean value
+         * \param[in] initial_variance    : initial_variance
+         * \param[in] num_gauss           : uint8 number of gaussians used to model each pixel
+         * \param[in] diagonal_cov_matrix : Flag that indicates if diagonal covariance matrix simplification will be done in the GMM.
+         */
+        GMM( std::size_t                      num_gauss,
+             const boost::array<T, M> &       initial_mean,
+             const boost::array<float64, M> & initial_variance,
+             bool                             diagonal_cov_matrix );
+
+        /*!
+         * \brief Constructor: Different value for all the gaussians and also different values for each dimension of every gaussian
+         *
+         * \param[in] num_gauss            : uint8 number of gaussians used to model each pixel
+         * \param[in] diagonal_cov_matrix  : Flag that indicates if diagonal covariance matrix simplification will be done in the GMM.
+         * \param[in] initial_data         : vector with 2 dimensional MultiArrays for each one of the gaussians :  N cols (one for each dimension). 3 files: 1st mean, 2nd diagonal variance term, 3rd weight.  Depth = number of gaussians
+         */
+        GMM( const std::vector< MultiArray<float64,2> > & initial_data, bool diagonal_cov_matrix );
+
+        /*!
+         * \brief Constructor: Different value for all the gaussians and also different values for each dimension of every gaussian
+         *
+         * \param[in] initial_mean        : MultiArray with M dimensions: one for each gaussian dimension, cols= number_gaussians N. 3 files : file1=mean_values,file2=var_values, file3=weight_values
+         * \param[in] initial_cov_matrix  : Initial covariance matrix
+         * \param[in] diagonal_cov_matrix : Flag that indicates if diagonal covariance matrix simplification will be done in the GMM.
+         */
+        GMM( const boost::array<T, M> & initial_mean, const MultiArray<float64,2> & initial_cov_matrix, bool diagonal_cov_matrix);
+
+        /*!
+         * \brief Copy Constructor
+         *
+         * \param[in] cpy : object to copy from
+         */
+        GMM(const GMM & cpy);
+
+        /*!
+         * \brief Constructor Combining 2 GMM in 1 GMM
+         *
+         * \param[in] initial_GMM1
+         * \param[in] initial_GMM2
+         * \param[in] weight_normalization_factor   :   Factor to normalize to 1 the weights for both GMM distributions.
+         */
+        GMM(const GMM & initial_GMM1, const GMM & initial_GMM2);
+
+        /*!
+         * \brief Destructor
+         */
+        ~GMM(){}
+
+        /*!
+         * \brief Reset the GMM parameters clearing the gauss vector, and stablishing to 0 all parameters.
+         */
+        void reset();
+
+        /*!
+         * \brief Reset the GMM parameters.
+         *
+         * \param[in] initial_mean        : initial mean value
+         * \param[in] initial_variance    : initial_variance
+         * \param[in] num_gauss           : size_t number of gaussians used to model each pixel
+         * \param[in] diagonal_cov_matrix : Flag that indicates if diagonal covariance matrix simplification will be done in the GMM.
+         */
+        void reset( T initial_mean, float64 initial_variance, size_t num_gauss, bool diagonal_cov_matrix);
+
+        /*!
+         * \brief Reset the GMM parameters.
+         *
+         * \param[in] num_gauss            : std::size_t number of gaussians used to model each pixel
+         * \param[in] initial_mean         : boost::array<T, M> initial mean values
+         * \param[in] initial_variance     : boost::array<float64, M> . initial diagonal variance
+         * \param[in] diagonal_cov_matrix  : Flag that indicates if diagonal covariance matrix simplification will be done in the GMM.
+         */
+        void reset( std::size_t                      num_gauss,
+                    const boost::array<T, M> &       initial_mean,
+                    const boost::array<float64, M> & initial_variance,
+                    bool                             diagonal_cov_matrix );
+
+        /*!
+         * \brief GMM_Reset: Reset the GMM parameters.
+         *
+         * \param[in] initial_data         : std::vector<MultiArray<float64,2> >
+         * \param[in] diagonal_cov_matrix : Flag that indicates if diagonal covariance matrix simplification will be done in the GMM.
+         */
+        void reset( const std::vector< MultiArray<float64,2> > & initial_data, bool diagonal_cov_matrix );
+
+        /*!
+         * \brief Reset the GMM parameters.
+         *
+         * \param[in]  num_gauss            : std::size_t number of gaussians used to model each pixel
+         * \param[in]  initial_mean         : boost::array<T,M> initial mean value
+         * \param[in]  initial_cov_matrix   : MultiArray <float64, 2> initial_variance
+         * \param[in]  diagonal_cov_matrix  : Flag that indicates if diagonal covariance matrix simplification will be done in the GMM.
+         */
+        void reset( std::size_t                     num_gauss,
+                    const boost::array<T,M> &       initial_mean,
+                    const MultiArray <float64, 2> & initial_cov_matrix,
+                    bool                            diagonal_cov_matrix );
+
+        /*!
+         * \brief Assignment operator
+         *
+         * \param[in]  initial_GMM1
+         */
+        void operator=( const GMM & cpy );
+
+        /*!
+         * \brief GMM_add_gauss
+         *
+         * \param[in] gaussian : Gaussian to add
+         */
+        void add_gauss(const Gaussian & gaussian);
+
+        /*!
+         * \brief GMM_remove_gauss : Remove Gaussian distribution from the GMM model.
+         *
+         * \param[in] index : Index of the Gaussian to be removed. It starts from zero (first gaussian) and ends in size()-1(last one).
+         */
+        void remove_gauss( uint32 index );
+
+        /*!
+         * \brief Return the probability of a MultiArray point
+         */
+        float64 probability( const MultiArray<float64,1> & point ) const
+        {
+            return this->operator()(point);
+        }
+
+        /*!
+         * \brief Return the probability of MultiArray point
+         *
+         * This operator makes the function similar to a cost function
+         */
+        float64 operator()( const MultiArray<float64,1> & point ) const;
+
+        /*!
+         * \brief Emit sample
+         *
+         * \todo why is this method for?
+         */
+        boost::array<float64, M> emit() const
+        {
+            //Choose a mixture pdf according to the mixture coefficients
+            //MTRand RandNum;
+            float64 rm = (float64)rand_uniform(); //RandNum();
+            float64 sum=0;
+            uint32 index=0;
+
+            while(true)
+            {
+                if (index==_gauss_vector.size()-1){break;}
+                if (rm <= (sum+=_gauss_vector[index].weight())){break;}
+
+                index++;
+            }
+            return _gauss_vector[index].emit();
+        }
+
+        /*!
+         *
+         * \todo add documentation!!
+         */
+        void split(const GMM & in, GMM & out, uint32 split_gauss_position);
+
+        /*!
+         * \todo add documentation!!
+         */
+        void update();
+
+        /*!
+         * \brief Number of gaussians in the GMM
+         *
+         * \return variance
+         */
+        const uint32 & num_gaussians() const
+        {
+            return _num_gauss;
+        }
+
+        /*!
+         * \brief return the gaussians vector (used for development purposes)
+         *
+         * \todo is this method really necessary? if is necessary, why not to inherit from vector<>
+         */
+        const std::vector< Gaussian > & gaussians()
+        {
+            return _gauss_vector;
+        }
+
+        /*!
+         * \brief return the i-th Gaussian in the mixture
+         */
+        const Gaussian & operator[]( int32 i ) const
+        {
+            return _gauss_vector[i];
+        }
+
+        /*!
+         * \brief return the i-th Gaussian in the mixture
+         *
+         * \todo why we need a non-const access?
+         */
+        Gaussian & operator[]( int32 i )
+        {
+            return _gauss_vector[i];
+        }
+
+        /*!
+         * \brief Gaussian "index" Weight
+         *
+         * \return weight   :   float64
+         *
+         * \todo why here index is 64 bits and in other functions index is 32 bits? Index should bebe size_t!
+         */
+        const float64 & weight(uint64 index) const
+        {
+            return _gauss_vector.at(index).weight();
+        }
+
+        /*!
+         * \brief Gaussian "index" Weight
+         *
+         * \return weight   :   float64
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        float64& weight(uint64 index)
+        {
+            return _gauss_vector.at(index).weight();
+        }
+
+        /*!
+         * \brief Gaussian "index" mean
+         *
+         * \return weight   :   float64
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        boost::array<T,M> & mean(uint64 index)
+        {
+            return _gauss_vector.at(index).mean();
+        }
+
+        /*!
+         * \brief Gaussian "index" var  diagonal values for diagonal matrix simplification.
+         *
+         * \return weight   :   float64
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        boost::array<T,M> & var(uint64 index)
+        {
+            return _gauss_vector.at(index).var();
+        }
+
+        /*!
+         * \brief Gaussian "index" mean
+         *
+         * \return weight   :   float64
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        MultiArray<T,2> & covariance_matrix(uint64 index)
+        {
+            return _gauss_vector.at(index).covariance_matrix();
+        }
+
+        /*!
+         * \brief Gaussian "index" mean
+         *
+         * \return weight  :   float64
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        MultiArray<T,2> & inverse_covariance_matrix(uint64 index)
+        {
+            return _gauss_vector.at(index).inverse_covariance_matrix();
+        }
+
+        /*!
+         * \brief Gaussian "index" eigenvalues
+         *
+         * \return eigenvalues  :   boost::array<float64,N>
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        boost::array<float64,M> & eigenvalues(uint64 index)
+        {
+            return _gauss_vector.at(index).eigenvalues();
+        }
+
+        /*!
+         * \brief Gaussian "index" eigenvectors
+         *
+         * \return weight  :    boost::array<Point2D,M>
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        boost::array<Point2D,M> & eigenvector(uint64 index)
+        {
+            return _gauss_vector.at(index).eigenvector();
+        }
+
+        /*!
+         * \brief return the flag that indicates if the index gaussian uses a diagonal matrix.
+         *
+         * \return diagonal_matrix    : bool
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        bool & diagonal(uint64 index)
+        {
+            return _gauss_vector.at(index).diagonal_covariance();
+        }
+
+        /*!
+         * \brief return the flag that indicates if we are working with diagonal matrix for simplification
+         *
+         * \return _diagonal_matrix : bool
+         *
+         * \todo THIS IS AN INCORRECT SET!!
+         */
+        bool & diagonal_cov_matrix()
+        {
+            return _diagonal_matrix;
+        }
+
+        /*!
+         *
+         * \todo DOCUMENTATION!!
+         * \todo these methods should be changed for the operator<<
+         */
+        void print_file(FILE *File);
+        void print();
+
+    protected:
+
+        //! gaussian vector
+        std::vector< Gaussian > _gauss_vector;
+
+        //! number of gaussians
+        uint32 _num_gauss;
+
+        //! Flag to indicate if matrix is a diagonal matrix. It's a simplification.
+        bool _diagonal_matrix;
+
+    public:
+        /*!
+         * \brief Gaussian Distribution for Mixture Models.
+         *
+         * \author Jaume Gallego <jgallego@gps.tsc.upc.edu>
+         * \author Albert Gil Moreno <albert.gil@upc.edu> (review)
+         *
+         * \date 2008-07-29
+         * \date 2011-03-05 (review)
+         *
+         * \todo add documentation, test and example!
+         */
+        class Gaussian : public GaussianDistribution<T,M>
+        {
+        public:
+
+            /*!
+             * \brief Constructor
+             *
+             * \param[in]  init_mean   : float64
+             * \param[in]  init_var    : float64
+             * \param[in]  init_weight : float64
+             *
+             * \todo why these default values and not others...?
+             * \todo this will be the "default constructor", that's what we want? with these default values...?
+             * \todo not clear how a user should use/set the "diagonal_cov_matrix" parameter
+             * \todo a better name for "diagonal_cov_matrix"? (e.g. "is_cov_matrix_diagonal"?)
+             */
+            Gaussian( T       init_mean           = -1000,
+                      float64 init_var            = 200.0,
+                      float64 init_weight         = 0.001,
+                      bool    diagonal_cov_matrix = true );
+            /*!
+             * \brief Constructor
+             *
+             * \param[in]  init_mean      : boost::array<float64,N>. N cols(one for each gaussian dimension)
+             * \param[in]  init_var       : float64
+             * \param[in]  init_weight    : float64
+             *
+             * \todo why not add any default value here?
+             */
+            Gaussian( const boost::array< T,M>& init_mean,
+                      float64                   init_var,
+                      float64                   init_weight ,
+                      bool                      diagonal_cov_matrix);
+
+            /*!
+             * \brief Constructor
+             *
+             * \param[in] init_mean : boost::array<float64,N>. N cols(one for each gaussian dimension)
+             * \param[in] init_var  : boost::array<float64,N>. N cols(one for each gaussian dimension)
+             *
+             * \param[in]  init_weight : float64
+             */
+            Gaussian( const boost::array<T,M> &       init_mean,
+                      const boost::array<float64,M> & init_var,
+                      float64                         init_weight,
+                      bool                            diagonal_cov_matrix );
+
+            /*!
+             * \brief Constructor
+             *
+             * \param[in]  mean_vector           :   boost::array<T,N>. N cols(one for each gaussian dimension)
+             * \param[in]  covariance_matrix     :   MultiArray<float64,2>.   Covariance matrix
+             * \param[in]  diagonal_cov_matrix   :   bool
+             *
+             * \todo should we use default values for weight and diagonal_cov_matrix?
+             */
+            Gaussian( const boost::array<T,M> &     mean_vector,
+                      const MultiArray<float64,2> & covariance_matrix,
+                      float64                       init_weight,
+                      bool                          diagonal_cov_matrix );
+
+            /*!
+             * \brief Constructor
+             *
+             * \param[in]  init_data : MultiArray<float64,2>. N cols (one for each dimension). 3 files(mean, var, weight).
+             *
+             * \todo should we use a default value for diagonal_cov_matrix?
+             * \todo is this method really necessary?
+             */
+            Gaussian(const MultiArray<float64,2> & init_data, bool diagonal_cov_matrix);
+
+            /*!
+             * \brief Copy Constructor
+             *
+             * \param[in] cpy : object to copy from
+             */
+            Gaussian(const Gaussian& cpy);
+
+            /*!
+             * \brief Destructor
+             */
+            ~Gaussian(){};
+
+            /*!
+             * \brief This function resets the gaussian parameters
+             *
+             * \param new_mean_vector: ColorView<uint8,3>
+             * \param new_var: float64
+             * \param new_weight: float64
+             *
+             * \todo which is the difference between "reset" and "set"?
+             */
+            void reset( const boost::array<T,M> & new_mean_vector, float64 new_var, float64 new_weight );
+
+            /*!
+             * \brief This function access to gaussian match value
+             *
+             * \return true id Gaussian has matched or false if not
+             *
+             * \todo this is an INCORRECT set!! this makes _match as public and can be modified without control!!
+             */
+            bool & match()
+            {
+                return  _match;
+            }
+
+            /*!
+             * \brief his function access to gaussian weight value
+             *
+             * \todo this is an INCORRECT set!! this makes _weight as public and can be modified without control!!
+             */
+            float64 & weight()
+            {
+                return _weight;
+            }
+
+            /*!
+             * \brief const access to gaussian weight value
+             */
+            const float64 & weight() const
+            {
+                return  _weight;
+            }
+
+            /*!
+             * \brief Gaussian mean to input p variance. Symplification: all dimensions have the same variance.
+             *
+             * \todo this is an INCORRECT set!! this makes _distance as public and can be modified without control!!
+             */
+            float64 & distance()
+            {
+                return _distance;
+            }
+
+            /*!
+             * \brief Gaussian covariance matrix eigenvalues
+             *
+             * \todo this is an INCORRECT set!! this makes _eigenvalues as public and can be modified without control!!
+             */
+            boost::array<float64,M> & eigenvalues()
+            {
+                return _eigenvalues;
+            }
+
+            /*!
+             * \brief Gaussian covariance matrix eigenvectors.
+             *
+             * \todo this is an INCORRECT set!! this makes _eigenvectors as public and can be modified without control!!
+             */
+            boost::array<float64 , 2 * M> & eigenvectors()
+            {
+                return _eigenvectors;
+            }
+
+            /*!
+             * \brief Print gaussian parameters
+             *
+             * \todo we should use the operator>> !!
+             */
+            void print_gaussian_parameters(FILE *File);
+
+            /*!
+             * \brief Print gaussian parameters
+             *
+             * \todo why 2 print functions?
+             * \todo we should use the operator>> !!
+             */
+            void print_info_screen();
+
+            /*!
+             * \brief This function gets the gaussian weight/variance sort value for mixture of gaussian model.
+             *
+             * \return weight/variance : float64
+             */
+            float64 importance_factor()
+            {
+                return _weight/this->_total_var;
+            }
+
+            /*!
+             * \brief assignment operator
+             *
+             * Function to copy a Gaussian distribution to other previously initialized.
+             */
+            void operator=(const Gaussian & gd_GMM_in);
+
+        protected:
+
+            //! Flag that indicates if the gaussian have match with the input pixel value
+            bool _match;
+
+            //! Gaussian weight
+            float64 _weight;
+
+            //! Gaussian mean to input color distance
+            float64 _distance;
+
+            //!Vector with the eigenvectors
+            boost::array<float64,2 * M> _eigenvectors;
+
+            //!Vector with the eigenvalues
+            boost::array<float64,M> _eigenvalues;
+        };
+    };
+
+    /*!
+     * \todo ADD DOCUMENTATION!
+     * \todo why not move these functions as static member of the GMM class? they are specific for GMM
+     *       the original name was GMM_* why not GMM::* it also help in documentation... now these functions are in math::statistics
+     *       but not appear in the GMM class
+     */
+    template <typename T, std::size_t M, std::size_t N> //M, N = gaussian dimension
+    void split_dims(GMM<T,M> & initial_GMM, GMM<T,N> & GMM_out, uint32 split_dims_position);
+
+    template <typename T, std::size_t N, std::size_t M, std::size_t P> //M, N, P = gaussian dimension
+    void merge_dims(GMM<T,M> & GMM_in1, GMM<T,N> & GMM_in2, GMM<T,P> & GMM_out);
+
+    /*!
+     * Ostream operator
+     */
+    template <typename T, std::size_t M>
+    std::ostream& operator<< (std::ostream& os, const GMM<T,M>& gmm);
+
+    /*!
+     * Istream operator
+     */
+    template <typename T, std::size_t M>
+    std::istream& operator>> (std::istream& is, GMM<T,M>& gmm);
+}
+}
+}
+
+namespace imageplus
+{
+namespace math
+{
+namespace statistics
+{
+    template <typename T, std::size_t M> // M dimensions
+    GMM<T,M>::GMM()
+    {}
+
+    /*
+     * TODO: when possible, member should be initialized in the "initialization list" (:)!
+     */
+    template <typename T, std::size_t M> // M dimensions
+    GMM<T,M>::GMM(size_t num_gauss)
+    {
+        _num_gauss=num_gauss;
+        for (uint32 i = 0; i < _num_gauss; i++)
+        {
+            _gauss_vector.push_back(Gaussian());
+        }
+    }
+
+    template <typename T, std::size_t M>
+    GMM<T,M>::GMM( T initial_mean, float64 initial_variance, size_t num_gauss, bool diagonal_cov_matrix)
+    :   _num_gauss(num_gauss), _diagonal_matrix(diagonal_cov_matrix)
+    {
+        float64 weight= float64(1.0/float64(_num_gauss));
+        for (uint32 i = 0; i < _num_gauss; i++)
+        {
+            _gauss_vector.push_back(Gaussian(initial_mean, initial_variance, weight, diagonal_cov_matrix) );
+        }
+    }
+
+    template <typename T, std::size_t M>
+    GMM<T,M>::GMM( std::size_t                      num_gauss,
+                   const boost::array<T, M> &       initial_mean,
+                   const boost::array<float64, M> & initial_variance,
+                   bool                             diagonal_cov_matrix )
+    :   _num_gauss(num_gauss),
+        _diagonal_matrix(diagonal_cov_matrix)
+    {
+        float64 weight = float64(1.0/float64(_num_gauss));
+//    		_num_gauss=num_gauss;
+        for (uint32 i = 0; i < _num_gauss; i++)
+        {
+//    	          Gaussian_distribution_GMM(boost::array<float64,N> & init_mean, boost::array<float64,N> & init_var, float64 init_weight , 
+//    	                    bool diagonal_cov_matrix);
+            _gauss_vector.push_back(Gaussian(initial_mean, initial_variance, weight, diagonal_cov_matrix) );
+        }
+    }
+
+    template <typename T, std::size_t M>
+    GMM<T,M>::GMM( const std::vector<MultiArray<float64,2> > & initial_data, bool diagonal_cov_matrix )
+    :   _diagonal_matrix(diagonal_cov_matrix)
+    {
+        _num_gauss=initial_data.size();
+        for (uint32 z = 0; z < _num_gauss; z++)
+        {
+//    		    Gaussian_distribution_GMM(MultiArray<float64,2> & init_data, bool diagonal_cov_matrix);
+            _gauss_vector.push_back( Gaussian(initial_data[z], diagonal_cov_matrix));
+        }
+    }
+
+    template <typename T, std::size_t M>
+    GMM<T,M>::GMM( const boost::array<T,M> & initial_mean, const MultiArray <float64, 2> & initial_cov_matrix, bool diagonal_cov_matrix)
+    :   _diagonal_matrix(diagonal_cov_matrix)
+    {
+        ASSERT( (M == initial_cov_matrix.dims(0) ) ,"ERROR. Distintas dimensiones del vector de medias y pesos del GMM" );
+
+        _num_gauss=M;
+
+        float64 weight = float64(1.0/float64(_num_gauss));
+        for (uint32 z = 0; z < _num_gauss; z++)
+        {
+//                GaussianDistribution_GMM(boost::array<T,N> & mean_vector, float64 & init_weight,
+//                                     MultiArray<float64,2> & covariance_matrix, bool diagonal_cov_matrix)
+            _gauss_vector.push_back( Gaussian(initial_mean, weight, initial_cov_matrix, diagonal_cov_matrix));
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    GMM<T,M>::GMM(const GMM<T,M> & initial_GMM)
+    {
+        _num_gauss= initial_GMM._num_gauss;
+        _gauss_vector.assign(initial_GMM._gauss_vector.begin(), initial_GMM._gauss_vector.end());	//used to copy one vector to another
+        _diagonal_matrix=initial_GMM._diagonal_matrix;
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    GMM<T,M>::GMM(const GMM<T,M> & initial_GMM1, const GMM<T,M> & initial_GMM2)
+    {
+        _num_gauss= initial_GMM1._num_gauss + initial_GMM2._num_gauss;
+
+        _gauss_vector.reserve(initial_GMM1._gauss_vector.size() + initial_GMM2._gauss_vector.size());
+
+        _gauss_vector.insert(_gauss_vector.end(), initial_GMM1._gauss_vector.begin(), initial_GMM1._gauss_vector.end()); //	insert the first vector
+        _gauss_vector.insert(_gauss_vector.end(), initial_GMM2._gauss_vector.begin(), initial_GMM2._gauss_vector.end()); // insert the second vector.
+
+        if ((initial_GMM1._diagonal_matrix==true)||(initial_GMM2._diagonal_matrix==true))
+        {
+            _diagonal_matrix=true;
+        }
+        else
+        {
+            _diagonal_matrix=false;
+        }
+    }
+    
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::reset()
+    {
+        _gauss_vector.clear();
+        _num_gauss = 0;
+
+        //!Flag to indicate if matrix is a diagonal matrix. It's a simplification.
+        _diagonal_matrix = false;
+
+        float64 weight= 0;
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::reset( T initial_mean, float64 initial_variance, size_t num_gauss, bool diagonal_cov_matrix)
+    {
+        _gauss_vector.clear();
+        _num_gauss = num_gauss;
+
+        //!Flag to indicate if matrix is a diagonal matrix. It's a simplification.
+        _diagonal_matrix = diagonal_cov_matrix;
+
+        float64 weight= float64(1.0/float64(_num_gauss));
+        for (uint32 i = 0; i < _num_gauss; i++)
+        {
+            _gauss_vector.push_back(Gaussian(initial_mean, initial_variance, weight, diagonal_cov_matrix) );
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::reset( std::size_t num_gauss,
+                          const boost::array<T, M> & initial_mean,
+                          const boost::array<float64, M> & initial_variance,
+                          bool diagonal_cov_matrix )
+    {
+        _gauss_vector.clear();
+        _num_gauss = num_gauss;
+
+        //!Flag to indicate if matrix is a diagonal matrix. It's a simplification.
+        _diagonal_matrix = diagonal_cov_matrix;
+        float64 weight = float64(1.0/float64(_num_gauss));
+        //          _num_gauss=num_gauss;
+        for (uint32 i = 0; i < _num_gauss; i++)
+        {
+            //                Gaussian_distribution_GMM(boost::array<float64,N> & init_mean, boost::array<float64,N> & init_var, float64 init_weight ,
+            //                          bool diagonal_cov_matrix);
+            _gauss_vector.push_back(Gaussian(initial_mean, initial_variance, weight, diagonal_cov_matrix) );
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::reset( const std::vector<MultiArray<float64,2> > & initial_data, bool diagonal_cov_matrix)
+    {
+        _gauss_vector.clear();
+        _num_gauss = initial_data.size();
+
+        //!Flag to indicate if matrix is a diagonal matrix. It's a simplification.
+        _diagonal_matrix = diagonal_cov_matrix;
+
+        for (uint32 z = 0; z < _num_gauss; z++)
+        {
+            //              Gaussian_distribution_GMM(MultiArray<float64,2> & init_data, bool diagonal_cov_matrix);
+            _gauss_vector.push_back( Gaussian(initial_data[z], diagonal_cov_matrix));
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::reset(std::size_t num_gauss, const boost::array<T,M> & initial_mean, const MultiArray <float64, 2> & initial_cov_matrix, bool diagonal_cov_matrix)
+    {
+        ASSERT( (M == initial_cov_matrix.dims(0) ) ,"ERROR. Distintas dimensiones del vector de medias y pesos del GMM" );
+
+        _gauss_vector.clear();
+        _num_gauss = num_gauss;
+
+        //!Flag to indicate if matrix is a diagonal matrix. It's a simplification.
+        _diagonal_matrix = diagonal_cov_matrix;
+
+        float64 weight = float64(1.0/float64(_num_gauss));
+
+        for (uint32 z = 0; z < _num_gauss; z++)
+        {
+              //                GaussianDistribution_GMM(boost::array<T,N> & mean_vector, float64 & init_weight,
+              //                                     MultiArray<float64,2> & covariance_matrix, bool diagonal_cov_matrix)
+              _gauss_vector.push_back( Gaussian(initial_mean, weight, initial_cov_matrix, diagonal_cov_matrix) );
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::split(const GMM<T,M> & initial_GMM, GMM<T,M> & GMM_out, uint32 split_gauss_position)
+    {
+        ASSERT( (initial_GMM._num_gauss >= split_gauss_position) ,
+              "GMM_Split ERROR. Split position is bigger than GMM_in number of gaussians!!!" );
+
+        if (initial_GMM._num_gauss >= split_gauss_position)
+        {
+            GMM_out._num_gauss = split_gauss_position;
+            GMM_out._gauss_vector.reserve(split_gauss_position);
+            GMM_out._gauss_vector.insert(GMM_out._gauss_vector.end(), initial_GMM._gauss_vector.begin(),
+                                       initial_GMM._gauss_vector.begin()+ split_gauss_position); // insert the  vector
+            //          GMM_out._gauss_vector.insert(GMM_out._gauss_vector.end(), initial_GMM2._gauss_vector.begin(), initial_GMM2._gauss_vector.end()); // insert the second vector.
+
+            if (initial_GMM._diagonal_matrix==true)
+            {
+                GMM_out._diagonal_matrix=true;
+            }
+            else
+            {
+                GMM_out._diagonal_matrix=false;
+            }
+        }
+        else      //only  GMM_in copy
+        {
+            GMM_out._num_gauss= initial_GMM._num_gauss;
+            GMM_out._gauss_vector.reserve(initial_GMM._num_gauss);
+            GMM_out._gauss_vector.insert(GMM_out._gauss_vector.end(), initial_GMM._gauss_vector.begin(),
+                                       initial_GMM._gauss_vector.end()); // insert the  vector
+            //          GMM_out._gauss_vector.insert(GMM_out._gauss_vector.end(), initial_GMM2._gauss_vector.begin(), initial_GMM2._gauss_vector.end()); // insert the second vector.
+
+            if (initial_GMM._diagonal_matrix==true)
+            {
+                GMM_out._diagonal_matrix=true;
+            }
+            else
+            {
+                GMM_out._diagonal_matrix=false;
+            }
+        }
+    }
+
+    //Probabilistic nature of the mixture must hold
+    template <typename T, std::size_t M>
+    float64 GMM<T,M>::operator() (const MultiArray<float64,1> & input_vector ) const
+    {
+        float64 probability=0.0;
+        for (uint64 j=0; j<_num_gauss; j++)
+        {
+            //std::cout << "Prob in gaussian (" << input_vector << ") = "  <<  std::endl;
+            probability+=weight(j)*_gauss_vector[j](input_vector);
+        }
+        return probability;
+    }
+
+    template <typename T, std::size_t M>
+    void GMM<T,M>::update()
+    {
+        for (uint32 i = 0; i < _num_gauss; i++)
+        {
+            _gauss_vector[i].update();
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::print_file(FILE *File)
+    {
+        fprintf (File,"\n num_gauss= %d", _num_gauss);
+        for (uint32 i=0; i< _num_gauss; i++)
+        {
+            _gauss_vector.at(i).print_gaussian_parameters(File);
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::print()
+    {
+        printf ("\n ***********************GMM num_gauss = %d ************************************* \n", _num_gauss);
+
+        for (uint32 i=0; i< _num_gauss; i++)
+        {
+            printf ("\n Gaussian number = %d *************************************\n", i);
+            _gauss_vector.at(i).print_info_screen();
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::operator=(const GMM<T,M> & initial_GMM)
+    {
+        this->_num_gauss= initial_GMM._num_gauss;
+        this->_gauss_vector.assign(initial_GMM._gauss_vector.begin(), initial_GMM._gauss_vector.end());	//used to copy one vector to another
+        this->_diagonal_matrix=initial_GMM._diagonal_matrix;
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::add_gauss (const Gaussian& Gaussian_in)
+    {
+        _num_gauss = _num_gauss++;
+        _gauss_vector.push_back(Gaussian_in);
+        
+        float64 weight_sum = 0.0;
+        for (uint32 i = 0; i < _num_gauss; i++)
+        {
+            weight_sum += weight(i);
+        }
+        for (uint32 i = 0; i < _num_gauss; i++)
+        {
+            weight(i) = weight(i)/weight_sum;
+        }
+    }
+
+    template <typename T, std::size_t M> //M = gaussian dimension
+    void GMM<T,M>::remove_gauss (uint32 index)
+    {
+        ASSERT( (index < _num_gauss) ,
+                 "GMM_remove_gauss ERROR. Remove index must be smaller than the number of gaussians of the GMM model." );
+
+        if (_num_gauss>0)
+        {
+            if (index < _num_gauss)
+            {
+                _num_gauss = _num_gauss--;
+                _gauss_vector.erase (_gauss_vector.begin()+index);
+
+                float64 weight_sum = 0.0;
+                for (uint32 i = 0; i < _num_gauss; i++)
+                {
+                    weight_sum += weight(i);
+                }
+                for (uint32 i = 0; i < _num_gauss; i++)
+                {
+                    weight(i) = weight(i)/weight_sum;
+                }
+            }
+        }
+    }
+
+    template <typename T, std::size_t M, std::size_t N> //M, N = gaussian dimension
+    void split_dims(GMM<T,M> & initial_GMM, GMM<T,N> & GMM_out, uint32 split_dims_position)
+    {
+        ASSERT( (M > N) ,
+          "split_dims ERROR. Split dim position is bigger than GMM_in dimensions of gaussians!!!" );
+
+        uint32 num_gauss = initial_GMM.num_gaussians();
+        if(M >=N)
+        {
+            GMM_out.gauss_vector().clear();
+            GMM_out.num_gaussians() = num_gauss;
+
+            for (uint32 i = 0; i < num_gauss; i++)
+            {
+                GMM_out.gauss_vector().push_back ( GMM<T,N>::Gaussian() );
+            }
+            GMM_out.gauss_vector().reserve(num_gauss);
+            for (uint32 gg=0; gg < num_gauss; gg++)
+            {
+                Gaussian_distribution_GMM_split_dims(initial_GMM.gauss_vector()[gg], GMM_out.gauss_vector()[gg], split_dims_position);
+            }
+            if (initial_GMM.diagonal_cov_matrix()==true)
+            {
+                GMM_out.diagonal_cov_matrix()=true;
+            }
+            else
+            {
+                GMM_out.diagonal_cov_matrix()=false;
+            }
+        }
+    }
+
+    template <typename T, std::size_t N, std::size_t M, std::size_t P> //M, N, P = gaussian dimension
+    void merge_dims(GMM<T,M> & GMM_in1, GMM<T,N> & GMM_in2, GMM<T,P> & GMM_out)
+    {
+        ASSERT( (P == N+M) ,
+                            "merge_dims ERROR. GMM_out must have the same dimensions as GMM_in1 + GMM_in2 dims !!!" );
+
+        ASSERT( (GMM_in1.num_gaussians() == GMM_in2.num_gaussians()) ,
+                            "merge_dims ERROR. GMM_in1.num_gaussians() is not equal to GMM_in2.num_gaussians() !!!" );
+
+        uint32 num_gauss = GMM_in1.num_gaussians();
+        if(M >=N)
+        {
+            GMM_out.gauss_vector().clear();
+            GMM_out.num_gaussians() = num_gauss;
+
+            for (uint32 i = 0; i < num_gauss; i++)
+            {
+                GMM_out.gauss_vector().push_back ( GMM<T,P>::Gaussian() );
+            }
+
+            GMM_out.gauss_vector().reserve(num_gauss);
+
+            for (uint32 gg=0; gg < num_gauss; gg++)
+            {
+                GaussianDistribution_merge_dims (GMM_in1.gauss_vector()[gg], GMM_in2.gauss_vector()[gg],
+                                                 GMM_out.gauss_vector()[gg]);
+        //                  Gaussian_distribution_GMM_split_dims(initial_GMM.gauss_vector()[gg], GMM_out.gauss_vector()[gg], split_dims_position);
+            }
+
+            if ((GMM_in1.diagonal_cov_matrix() == true) || (GMM_in2.diagonal_cov_matrix()==true))
+            {
+                GMM_out.diagonal_cov_matrix() = true;
+            }
+            else
+            {
+                GMM_out.diagonal_cov_matrix() = false;
+            }
+        }
+    }
+
+    template <typename T, std::size_t M>
+    std::ostream& operator<< (std::ostream& os, const GMM<T,M>& gmm)
+    {
+        os << "**********GMM********** " <<std::endl;
+        os << gmm.num_gaussians() << std::endl;
+        for (std::size_t m=0; m < gmm.num_gaussians(); ++m )
+        {
+            os << " *****Mixture_number" << m+1 << "*****" << std::endl;
+            os << gmm[m].weight() << std::endl;
+            os << gmm[m] << std::endl;
+        }
+        return os;
+    }
+
+    /*!
+     * Istream operator
+     *
+     * \todo couts should be removed!
+     */
+    template <typename T, std::size_t M>
+    std::istream& operator>> (std::istream& is, GMM<T,M>& gmm)
+    {
+        float64 summ=0.0;
+        std::string header;
+        std::size_t  num_gaussians;
+        std::cout << "Reading inside the operator>> " << std::endl;
+        is >> header; //GMM
+        std::cout << header << std::endl;
+        is >> num_gaussians;
+
+        //Resize
+        gmm=GMM<T,M>(num_gaussians);
+
+        for (std::size_t m=0; m < gmm.num_gaussians(); ++m )
+        {
+            summ=0.0;
+            is >> header; //**** Mixture number ****
+            std::cout << header << std::endl;
+            is >> gmm[m].weight();
+            std::cout << gmm[m].weight() << std::endl;
+            is >> header; //=== Gaussian distr ===
+            std::cout << header << std::endl;
+            is >> header; //mean
+            std::cout << header << std::endl;
+            for (std::size_t d=0; d < M; ++d)
+            {
+                is >> gmm[m].mean()[d];
+                std::cout << gmm[m].mean()[d] << " ";
+            }
+            std::cout << std::endl;
+            is >> header; //Cov matrix
+            std::cout << header << std::endl;
+            for (std::size_t j=0; j < M; ++j)
+            {
+                for (std::size_t i=0; i < M; ++i)
+                {
+                    is >> gmm[m].covariance_matrix()[i][j];
+                    if (i!=j) summ+=std::abs(gmm[m].covariance_matrix()[i][j]);
+                }
+            }
+            std::cout << gmm[m].covariance_matrix() << std::endl;
+            if (summ < 1e-300) //Numeric precision issues
+            {
+                std::cout << "Read covariance as diagonal" << std::endl;
+                gmm[m].diagonal_covariance()=true;
+            }
+            else
+            {
+                gmm[m].diagonal_covariance()=false;
+            }
+        }
+        return is;
+    }
+
+
+    /*!
+     * \todo in constructors, when possible, members should be initialized in the ":" section !!
+     */
+    template <typename T,std::size_t M>
+    GMM<T,M>::Gaussian::Gaussian( T       init_mean,
+                                  float64 init_var,
+                                  float64 init_weight,
+                                  bool    diagonal_cov_matrix )
+    :   GaussianDistribution<T,M>(init_mean, init_var, diagonal_cov_matrix)
+    {
+        _weight=init_weight;
+        _match=false;
+    }
+
+    template <typename T,std::size_t N>
+    GMM<T,N>::Gaussian::Gaussian( const boost::array<T,N> & init_mean,
+                                  float64                    init_var,
+                                  float64                    init_weight,
+                                  bool                       diagonal_cov_matrix )
+    :   GaussianDistribution<T,N>(init_mean, init_var, diagonal_cov_matrix)
+    {
+        _weight=init_weight;
+        _match=false;
+    }
+
+
+    template <typename T,std::size_t N>
+    GMM<T,N>::Gaussian::Gaussian( const boost::array<T, N> &      init_mean,
+                                  const boost::array<float64,N> & init_var,
+                                  float64                         init_weight,
+                                  bool                            diagonal_cov_matrix )
+    :   GaussianDistribution<T,N>( init_mean, init_var,diagonal_cov_matrix )
+    {
+        _weight=init_weight;
+        _match=false;
+    }
+
+    template <typename T,std::size_t N>
+    GMM<T,N>::Gaussian::Gaussian( const MultiArray<float64,2> & init_data,
+                                  bool                          diagonal_cov_matrix )
+    :   GaussianDistribution<float64,N>(init_data, diagonal_cov_matrix)
+    {
+        _weight=init_data[2][0];
+        _match=false;
+    }
+
+    template <typename T,std::size_t N>
+    GMM<T,N>::Gaussian::Gaussian( const Gaussian & init_Gaussian )
+    :   GaussianDistribution<T,N>(init_Gaussian)
+    {
+        _weight=init_Gaussian._weight;
+        _match=init_Gaussian._match;
+    }
+
+    template <typename T,std::size_t N>
+    GMM<T,N>::Gaussian::Gaussian( const boost::array<T,N> &     mean_vector,
+                                  const MultiArray<float64,2> & covariance_matrix,
+                                  float64                       init_weight,
+                                  bool                          diagonal_cov_matrix )
+    :   GaussianDistribution<T,N>( mean_vector, covariance_matrix, diagonal_cov_matrix )
+    {
+        _weight=init_weight;
+        _match= false;
+    }
+
+    template <typename T,std::size_t N>
+    void GMM<T,N>::Gaussian::reset( const boost::array<T,N> & new_mean_vector,
+                                    float64                   new_var,
+                                    float64                   new_weight )
+    {
+        GaussianDistribution<T,N>::reset(new_mean_vector, new_var);
+        _weight=new_weight;
+    }
+
+    template <typename T,std::size_t N>
+    void GMM<T,N>::Gaussian::operator=( const Gaussian & original )
+    {
+        GaussianDistribution<T,N>::operator=(original);
+        _weight  = original._weight;
+        _match   = original._match;
+    }
+
+    /*
+     * TODO Use operqator<< !!
+     */
+    template <typename T,std::size_t N>
+    void GMM<T,N>::Gaussian::print_gaussian_parameters(FILE *File)
+    {
+        fprintf(File,"\n \t weight= %f", _weight);
+        GaussianDistribution<T,N>::print_gaussian_parameters(File);
+    }
+
+    template <typename T, std::size_t N>
+    void GMM<T,N>::Gaussian::print_info_screen()
+    {
+        GaussianDistribution<T,N>::print_info_screen();
+
+        std::cout<<"Weight = "<< _weight << std::endl;
+        std::cout<<"Match = " <<_match<<std::endl;
+    }
+} /// namespace statistics
+} /// namespace math
+} /// namespace imageplus
+
+#endif // FIX_DOCUMENTATION
+#endif // IMAGEPLUS_MATH_STATISTICS_GMM_HPP

@@ -1,0 +1,264 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \example multiview_example.cpp
+//!
+//! This is an example of how to use the multiview classes
+//!
+
+
+/*
+ * Defines added only for testing pourposes, do not care!
+ */
+#ifndef TEST_DATA_PATH_R
+#define TEST_DATA_PATH_R "test/data_r"
+#endif
+#ifndef TEST_DATA_PATH_W
+#define TEST_DATA_PATH_W "test/data_w"
+#endif
+
+
+/*
+ * Include the main MultiView header
+ */
+#include <imageplus/multiview.hpp>
+
+/*
+ * Other includes needed in the example
+ */
+#include <iostream>
+#include <imageplus/io/readimage.hpp>
+
+
+/*
+ * This namespaces are added for convenience.
+ */
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace imageplus::multiview;
+
+using namespace std;
+
+
+/*
+ * This is typedef added for convenince, MyGlobalInfo can be any class that I want!
+ * 
+ * You will see later how this type is used. 
+ */
+typedef uint16 MyGlobalInfo; 
+
+
+
+/*
+ * Dummy functions to ilustrate how to use the AnyView type.
+ * 
+ * A MultiView<AnyView> object contains information only related to "cams" and timestamps, 
+ * but nothing about "views".
+ * 
+ * A MultiView<AnyView, MyGlobalInfo> object contains information related to "cams", timestamps
+ * and about the spacific global information type, but also nothing about "views".
+ * 
+ * As you will se later, you can call the first one with any MultiView objects, and an implicit cast
+ * will be done. The second one can be only called with a MultiView with the same global info type.
+ *
+ * The code of these functions is at the end of the example.
+ */ 
+void create_lut_function           ( MultiView< AnyView >             mv);
+void create_lut_function_with_info ( MultiView<AnyView, MyGlobalInfo> mv);
+
+
+/*
+ * Main Loop
+ */
+int main (int argc, char** argv)
+{
+    std::cout << "****** MULTIVIEW BASIC EXAMPLE ******" << std::endl;
+
+    /*
+     * Create the MultiView objects to be used.
+     * 
+     * We create two MultiView objects:
+     * - Without global information (most common)
+     * - With a global information parameter. The type "MyGlobalInfo" is a typedef, but it can be any type you need.
+     * 
+     * Both objectos will have 5 views.
+     */
+    MultiView< ImageGray<uint16> >               mv_gry(5);
+    MultiView< ImageRGB <uint8 >, MyGlobalInfo > mv_inf(5);
+    
+    /*
+     * Initializing cameras
+     */
+    mv_gry.cam(0).read_parameters(string(TEST_DATA_PATH_R) + "/TCameraParameters_cam1.dat");
+    mv_gry.cam(1).read_parameters(string(TEST_DATA_PATH_R) + "/TCameraParameters_cam2.dat");
+    mv_gry.cam(2).read_parameters(string(TEST_DATA_PATH_R) + "/TCameraParameters_cam3.dat");
+    mv_gry.cam(3).read_parameters(string(TEST_DATA_PATH_R) + "/TCameraParameters_cam4.dat");
+    mv_gry.cam(4).read_parameters(string(TEST_DATA_PATH_R) + "/TCameraParameters_cam5.dat");
+    
+    /*
+     * Acces and reading views from disk
+     */
+    ReadImage rima1( string(TEST_DATA_PATH_R) + "/SFStestdata/projRoom_cam1.jpg" );
+    ReadImage rima2( string(TEST_DATA_PATH_R) + "/SFStestdata/projRoom_cam2.jpg" );
+    ReadImage rima3( string(TEST_DATA_PATH_R) + "/SFStestdata/projRoom_cam3.jpg" );
+    ReadImage rima4( string(TEST_DATA_PATH_R) + "/SFStestdata/projRoom_cam4.jpg" );
+    ReadImage rima5( string(TEST_DATA_PATH_R) + "/SFStestdata/projRoom_cam5.jpg" );
+    rima1 >> mv_gry(0);
+    rima2 >> mv_gry(1);
+    rima3 >> mv_gry(2);
+    rima4 >> mv_gry(3);
+    rima5 >> mv_gry(4);
+    
+    /*
+     * Accessing to a view, and to its pixels.
+     */
+    mv_gry(0)[10][10] =  5;
+    mv_gry(1)[12][67] = 15;
+    mv_gry(2)[15][6]  = 25;
+    mv_gry(3)[14][45] = 53;
+    mv_gry(4)[67][33] = 54;
+
+    /*
+     * For comodity we can also use references to the views.
+     * 
+     * Note that we need to use references (ImageGray<>&) in order to be able 
+     * to change the original values.
+     */
+    std::cout << "View 1: " << mv_gry(0)[10][10] << std::endl;
+    std::cout << "View 2: " << mv_gry(1)[12][67] << std::endl;
+    std::cout << "View 3: " << mv_gry(2)[15][6]  << std::endl;
+    std::cout << "View 4: " << mv_gry(3)[14][45] << std::endl;
+    std::cout << "View 5: " << mv_gry(4)[67][33] << std::endl;
+    
+    ImageGray<uint16>& gry0 = mv_gry(0);
+    ImageGray<uint16>& gry1 = mv_gry(1);
+    ImageGray<uint16>& gry2 = mv_gry(2);
+    ImageGray<uint16>& gry3 = mv_gry(3);
+    ImageGray<uint16>& gry4 = mv_gry(4);
+    
+    gry0[10][10] = 0;
+    gry1[12][67] = 0;
+    gry2[15][6]  = 0;
+    gry3[14][45] = 0;
+    gry4[67][33] = 0;
+    
+    std::cout << "View 1: " << mv_gry(0)[10][10] << std::endl;
+    std::cout << "View 2: " << mv_gry(1)[12][67] << std::endl;
+    std::cout << "View 3: " << mv_gry(2)[15][6]  << std::endl;
+    std::cout << "View 4: " << mv_gry(3)[14][45] << std::endl;
+    std::cout << "View 5: " << mv_gry(4)[67][33] << std::endl;
+    
+    /*
+     * Access to the global info.
+     * Note that in this example MyGlobalInfo is just an integer (see above).
+     */
+    mv_inf.info() = 10;
+    
+    /*
+     * Implicit casts between MultiView objects.
+     * 
+     * If two MultiView objects of the same (identical) type are assigned, 
+     * then everything is copied.
+     * 
+     * But if two MultiView objects have different types of Views, or GlobalInfo 
+     * we can still assign objects. In this case only cameras,
+     * timestamps and/or global info are copied.
+     * 
+     * To test it we create some copy objects.
+     */
+    MultiView< ImageGray<uint16> >               cp_gry(5); /* Identical type of mv_gry object */
+    MultiView< ImageRGB<uint16> >                cp_rgb(5); /* Different ViewType from mv_gry  */
+    MultiView< ImageGray<uint8 >, MyGlobalInfo > cp_inf(5); /* Sharing GlobalInfo with mv_info */
+
+    /* Copy cameras from the object that we read from disk (mv_gry), to another */
+    mv_inf = mv_gry;  
+    
+    /* Another copies and casts */
+    cp_gry = mv_gry; /* Everything is copied */
+    cp_rgb = mv_gry; /* Only cameras and timestamp are copied */
+    cp_inf = mv_inf; /* Cameras, timestamp and global info are copied */
+    
+    /*
+     * Cast are also aplied when calling functions that receives different types of MultiView objects.
+     * 
+     * This is tipical in functions that are only interested in cameras or global information, 
+     * like functions to create LUTs.
+     */
+    create_lut_function(mv_gry); /* Only cameras are use in this function */
+    create_lut_function(mv_inf); /* Only cameras are use in this function */
+    
+    create_lut_function_with_info(mv_inf); /* Cameras and global info used in this function */
+    
+    
+    /*
+     * The following function is commented out because althoutght it compiles,
+     * it is not correct, and in debug mode it will throw an exception.
+     * 
+     * Why?
+     * 
+     * Because the function needs a MultiView object with a specific type of global info (e.g. mv_info), 
+     * and we are passing a MultiView object without global info (e.g. mv_gry).
+     * 
+     * It compiles because there is a cast-constructor that makes the cast possible.
+     * But this cast-constructor is designed to be used in the reverse direction, 
+     * from a MultiView object with any type of global info, to a MultiView object without global info.
+     * 
+     * This condition is in an ASSERT statment, so it throws an InternalError exception in debug mode.
+     */ 
+    //create_lut_function_with_info(mv_gry); 
+
+    
+    std::cout << "****** MULTIVIEW EXAMPLE END ******" << std::endl;
+    exit(0);
+} 
+
+
+
+
+/*
+ * An example functions that receives a basic MultiView<AnyView> object.
+ * This basic MultiVIew<AnyView> object contains information only related to "cams", 
+ * but nothing about "views".
+ * 
+ */ 
+void create_lut_function( MultiView< AnyView > mv)
+{
+    std::cout << "Create LUT method "  << std::endl;
+    for(size_t i = 0; i < mv.size(); ++i)
+    {
+        std::cout << "Camera " << i << ": " << std::endl;
+        std::cout << mv.cam(i).rot()        << std::endl;
+    }
+    
+    
+    /*
+     * Note that if you uncomment the following line you will have a compile-time error.
+     * So, you can NOT access to a "view" from a basic MultiView<> object.
+     * You need to specify a type of "view" with MultiView< ViewType >, as you will see 
+     * in the main function.
+     */
+    //mv.view(0);
+}
+
+
+/*
+ * An example functions that receives a MultiView<AnyView, GlobalInfo> object.
+ * So, this function can be used by any MultiView object that uses an specific type 
+ * of GlobalInfo.
+ *  
+ * As the previous one, "views" are ignored, and we can't access to them.
+ */ 
+void create_lut_function_with_info( MultiView<AnyView, MyGlobalInfo> mv)
+{
+    std::cout << "Create LUT method with info "  << std::endl;
+    for(size_t i = 0; i < mv.size(); ++i)
+    {
+        std::cout << "Camera " << i << ": " << std::endl;
+        std::cout << mv.cam(i).rot()        << std::endl;
+    }
+    
+    std::cout << "Info: " << mv.info()      << std::endl;
+}

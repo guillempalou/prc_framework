@@ -1,0 +1,234 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+#ifdef USE_OPENNI
+
+#ifndef IMAGEPLUS_IO_CAPTURE_KINECT_HPP
+#define IMAGEPLUS_IO_CAPTURE_KINECT_HPP
+
+/*
+ * ImagePlus headers
+ */
+#include <imageplus/core.hpp>
+#include <imageplus/toolbox/openni.hpp>
+
+/*
+ * Open NI Headers (C++ wrapper)
+ */
+
+#include <XnCppWrapper.h>
+
+namespace imageplus
+{
+namespace io
+{
+    /*
+     * \todo Add the registration mode option
+     */
+	class CaptureKinect
+	{
+	public:
+
+		class Frame
+		{
+		public:
+			Frame( std::size_t width = 0, std::size_t height = 0 )
+			: depth (width, height),
+			  image  (width, height),
+			  point (width, height,3)
+			{}
+
+			ImageGray<uint16>     depth;
+			ImageRGB<uint8>       image;
+			MultiArray<float64,3> point;
+			Timestamp             ts_depth;
+			Timestamp             ts_image;
+			Timestamp             ts_point;
+			uint16 frcurr_depth;
+			uint16 frcurr_image;
+			uint16 frcurr_point;
+
+		};
+
+		CaptureKinect( const std::string& onifile = "")
+		:   status   ( XN_STATUS_OK ),
+		    _onifile ( onifile )
+		{}
+
+		~CaptureKinect()
+		{}
+
+		void start()
+		{
+			/*
+			 * Configuration
+			 */
+			std::cout << "Initializing the ONI context..." << std::endl;
+			status = context.Init();
+			if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error initializing ONI context: " << xnGetStatusString(status));
+
+			if( _onifile != "")
+			{
+                std::cout << "Opening oni file: "<< _onifile <<"..." << std::endl;
+
+                status = context.OpenFileRecording( _onifile.c_str() );
+                if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error opening the ONI file: " << xnGetStatusString(status));
+
+                std::cout << "  Finding the depth generator..." << std::endl;
+                status = context.FindExistingNode(XN_NODE_TYPE_DEPTH, depth);
+                if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error creating the depth generator: " << xnGetStatusString(status));
+
+                std::cout << "  Finding the image generator..." << std::endl;
+                status = context.FindExistingNode(XN_NODE_TYPE_IMAGE, image);
+                if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error creating the image generator: " << xnGetStatusString(status));
+			}
+			else
+			{
+                std::cout << "Creating image and depth generators..." << std::endl;
+                std::cout << "  Creating the depth generator..." << std::endl;
+                status = depth.Create(context);
+                if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error creating the depth generator: " << xnGetStatusString(status));
+
+                std::cout << "  Creating the image generator..." << std::endl;
+                status = image.Create(context);
+                if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error creating the image generator: " << xnGetStatusString(status));
+
+                std::cout << "  Configuring the output mode..." << std::endl;
+                XnMapOutputMode outmode;
+                outmode.nXRes = XN_VGA_X_RES;
+                outmode.nYRes = XN_VGA_Y_RES;
+                outmode.nFPS  = 30;
+
+                status = depth.SetMapOutputMode(outmode);
+                if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error configuring the output mode: " << xnGetStatusString(status));
+
+                status = image.SetMapOutputMode(outmode);
+                if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error configuring the output mode: " << xnGetStatusString(status));
+
+                std::cout << "  Configuring the registration..." << std::endl;
+                if (!depth.IsCapabilitySupported(XN_CAPABILITY_ALTERNATIVE_VIEW_POINT)) IMAGEPLUS_ERROR("Registration not supported");
+                status = depth.GetAlternativeViewPointCap().SetViewPoint(image);
+                if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error configuring the registration mode: " << xnGetStatusString(status));
+            }
+
+			/*
+			 * Staring capture
+			 */
+
+			std::cout << "Starting generation..." << std::endl;
+			status = context.StartGeneratingAll();
+			if ( status != XN_STATUS_OK) IMAGEPLUS_ERROR("Error starting generators: " << xnGetStatusString(status));
+
+			std::cout << "Configuring metadata..." << std::endl;
+			xn::ImageMetaData imd;
+			xn::DepthMetaData dmd;
+
+			image.GetMetaData(imd);
+			depth.GetMetaData(dmd);
+
+			_frame=Frame(imd.XRes(),imd.YRes()); //Same resolution for both images
+
+		}
+
+		void stop()
+		{
+			// End client
+			context.Shutdown();
+			std::cout << "ONI Context shutdown" << std::endl;
+		}
+
+		CaptureKinect& operator>>(Frame & frame)
+		{
+			/*
+			 * Capture a new frame
+			 */
+			status=context.WaitAndUpdateAll();
+
+			//context.WaitOneUpdateAll(depth);
+
+//					while (status != XN_STATUS_OK )
+//					{
+//					    status=context.WaitAndUpdateAll();
+//					}
+
+			/*
+			 * Conversions
+			 */
+			toolbox::oni2img(depth, _frame.depth);
+			toolbox::oni2img(image, _frame.image);
+			toolbox::oni2img(depth, _frame.point);
+
+			/*
+			 * Save the timestamp
+			 */
+			_frame.ts_depth = Timestamp(0,0,0,depth.GetTimestamp());
+			_frame.ts_image = Timestamp(0,0,0,image.GetTimestamp());
+			_frame.ts_point = _frame.ts_depth;
+
+			_frame.frcurr_depth = depth.GetFrameID();
+			_frame.frcurr_image = image.GetFrameID();
+			_frame.frcurr_point = _frame.frcurr_depth;
+
+			frame=_frame;
+
+
+//					tsfile_d << io::TimestampIOSync::Entry( tscurr_d, frcurr_d, 0) << std::endl;
+//					tsfile_i << io::TimestampIOSync::Entry( tscurr_i, frcurr_i, 0) << std::endl;
+//
+//					/*
+//					 * Check dropped frame (whenever fps is available)
+//					 */
+//					if(cfg.verbose)
+//					{
+//						Timestamp dist_d = tscurr_d - tsprev_d;
+//						Timestamp dist_i = tscurr_i - tsprev_i;
+//						Timestamp dist   = abs(tscurr_d-tscurr_i);
+//						if( dist_d > max_dist ) std::cout << "Dropped  frame - depth: " << frcurr_d << " / " << dist_d   << std::endl;
+//						if( dist_i > max_dist ) std::cout << "Dropped  frame - image: " << frcurr_i << " / " << dist_i   << std::endl;
+//						if( dist_d < min_dist ) std::cout << "Repeated frame - depth: " << frcurr_d << " / " << dist_d   << std::endl;
+//						if( dist_i < min_dist ) std::cout << "Repeated frame - image: " << frcurr_i << " / " << dist_i   << std::endl;
+//						if( dist   > min_dist ) std::cout << "Frames not sync:        " << tscurr_i << " - " << frcurr_i << " / "
+//																						<< tscurr_d << " - " << frcurr_d << " / "
+//																						<< Timestamp(tscurr_i-tscurr_d) << std::endl;
+//
+//
+//						if( frcurr_d - frprev_d != 1) std::cout << "Skipped frame - depth: " << frcurr_d << " / " << frprev_d << std::endl;
+//						if( frcurr_i - frprev_i != 1) std::cout << "Skipped frame - image: " << frcurr_i << " / " << frprev_i << std::endl;
+//					}
+//
+//
+//			        /*
+//			         * Update frame
+//			         */
+//					tsprev_d = tscurr_d;
+//					tsprev_i = tscurr_i;
+//
+//					frprev_d = frcurr_d;
+//					frprev_i = frcurr_i;
+
+			return *this;
+		}
+
+		xn::Context        context;
+		xn::DepthGenerator depth;
+		xn::ImageGenerator image;
+		xn::Recorder       recorder;
+
+	private:
+		/*
+		 * OpenNI variables
+		 */
+		XnStatus           status;
+
+		Frame        _frame;
+		std::string  _onifile;
+
+	}; // class CaptureKinect
+
+} // ns io
+} // ns imageplus
+
+#endif //hpp
+#endif //USE_OPENNI

@@ -1,0 +1,289 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file xml_auxiliar.hpp
+//!
+//!  \brief  Xerces XML helper functions
+//!
+
+#ifndef IMAGEPLUS_IO_XML_AUXILIAR_HPP
+#define IMAGEPLUS_IO_XML_AUXILIAR_HPP
+
+#ifdef USE_XML
+
+#include <xercesc/dom/DOM.hpp>
+#include <xercesc/util/PlatformUtils.hpp>
+#include <xercesc/util/XMLString.hpp>
+#include <xercesc/framework/LocalFileFormatTarget.hpp>
+#include <xercesc/util/OutOfMemoryException.hpp>
+#include <boost/scoped_array.hpp>
+
+#include <imageplus/core.hpp>
+#include <string>
+
+
+
+namespace imageplus
+{
+    namespace io
+    {
+        //!
+        //! \brief It initializes all the stuff needed to read a XML file from disk.
+        //!
+        //! If the file is not found, or the XML file has an error, it throws an exception.
+        //!
+        //! Please refer to \ref xml_example.cpp "xml example" for a fully commented use of this function.
+        //!
+        //! \code
+        //!     DOMNode *curr_node = xml_init("test.xml");
+        //! \endcode
+        //!
+        //! \param[in] file_name : Name of the XML file to be read
+        //!
+        //! \throw ImagePlusFileError, ImagePlusError when the file is not available or when it has an XML error
+        //!
+        //! \return A pointer to the node (DOMNode) of the root of the file
+        //!
+        XERCES_CPP_NAMESPACE::DOMNode* xml_init(const std::string& file_name) throw (ImagePlusFileError, ImagePlusError);
+
+        //! \brief It initializes all the stuff needed to read a XML file from disk.
+        //!
+        //! If the file is not found, it throws an exception.
+        //!
+        //! Please refer to \ref xml_example.cpp "xml example" for a fully commented use of this function.
+        //!
+        //! \code
+        //!     DOMDocument doc;
+        //!     DOMNode *curr_node = xml_init("test.xml", doc);
+        //! \endcode
+        //!
+        //! \param[in] file_name : Name of the XML file to be read
+        //! \param[out] doc : Pointer to the XML document (if we want to modify it)
+        //!
+        //! \throw ImagePlusFileError, ImagePlusError when the file is not available or when it has an XML error
+        //!
+        //! \return A pointer to the node (DOMNode) of the root of the file
+        //!
+        XERCES_CPP_NAMESPACE::DOMNode* xml_init(const std::string& file_name, XERCES_CPP_NAMESPACE::DOMDocument*& doc) throw (ImagePlusFileError, ImagePlusError);
+
+        //! \brief It initializes all the stuff needed to read a XML file from disk.
+        //!
+        //! If the file is not found, it throws an exception.
+        //!
+        //! Please refer to \ref xml_example.cpp "xml example" for a fully commented use of this function.
+        //!
+        //! \code
+        //!     DOMDocument doc;
+        //!     DOMNode *curr_node = xml_init("test.xml", doc);
+        //! \endcode
+        //!
+        //! \param file_name : Name of the XML file to be read
+        //! \param doc : Pointer to the XML document (if we want to modify it)
+        //! \param parser : XML parser
+        //!
+        //! \throw ImagePlusFileError, ImagePlusError when the file is not available or when it has an XML error
+        //!
+        //! \return A pointer to the node (DOMNode) of the root of the file
+        //!
+        XERCES_CPP_NAMESPACE::DOMNode* xml_init(const std::string& file_name, XERCES_CPP_NAMESPACE::DOMDocument*& doc, XERCES_CPP_NAMESPACE::DOMBuilder*& parser ) throw (ImagePlusFileError, ImagePlusError);
+        
+        //!
+        //! \brief It checks whether the node "father" has a son called "node_name".
+        //!
+        //! If it doesn't, it throws an exception.
+        //!
+        //! Please refer to \ref xml_example.cpp "xml example" for a fully commented use of this function.
+        //!
+        //! \param[in] father   : Node of the XML file whose son we are interested in
+        //! \param[in] node_name : Name of the son we are interested in
+        //!
+        //! \throw ImagePlusError : When there is no son named "node_name"
+        //!
+        //! \return A pointer to the node (DOMNode) of the son if it was there
+        //!
+        XERCES_CPP_NAMESPACE::DOMNode* xml_get_check_son(XERCES_CPP_NAMESPACE::DOMNode *father, const char* node_name) throw (ImagePlusError);
+
+        //!
+        //! \brief It checks whether the node "father" has a son called "node_name" with the field "field_name" set to "field_value".
+        //!        If so, it returns a pointer to it.
+        //!        If it doesn't, it returns a null pointer.
+        //!
+        //! Please refer to \ref xml_example.cpp "xml example" for a fully commented use of this function.
+        //!
+        //! \param[in] father   : Node of the XML file whose son we are interested in
+        //! \param[in] node_name : Name of the son we are interested in
+        //! \param[in] field_name : Field we want to check
+        //! \param[in] field_value : Value of the field "field_name" of the son we are interested in
+        //!
+        //! \return A pointer to the node (DOMNode) of the son if it was there
+        //!
+        XERCES_CPP_NAMESPACE::DOMNode* xml_get_check_son_by_field(XERCES_CPP_NAMESPACE::DOMNode *father, const char* node_name, const char* field_name, const char* field_value);
+
+        //!
+        //! \brief Checks whether the node "father" has a text son
+        //!
+        //! If it doesn't, it throws an exception.
+        //!
+        //! Please refer to \ref xml_example.cpp "xml example" for a fully commented use of this function.
+        //!
+        //! \param[in] father   : Node of the XML file whose son we are interested in
+        //!
+        //! \throw ImagePlusError : When there is no text son
+        //!
+        //! \return The contained text of the text son if it was there
+        //!
+        std::string xml_get_text_son(XERCES_CPP_NAMESPACE::DOMNode *father) throw (ImagePlusError);
+
+        //!
+        //! \brief Checks whether the node "father" has a text son
+        //!
+        //! If it doesn't, it throws an exception.
+        //!
+        //! Please refer to \ref xml_example.cpp "xml example" for a fully commented use of this function.
+        //!
+        //! \param[in] father   : Node of the XML file whose son we are interested in
+        //! \param[out] son     : Pointer to the son text node
+        //!
+        //! \throw ImagePlusError : When there is no text son
+        //!
+        //! \return The contained text of the text son if it was there
+        //!
+        std::string xml_get_text_son(XERCES_CPP_NAMESPACE::DOMNode *father, XERCES_CPP_NAMESPACE::DOMNode*& son) throw (ImagePlusError);
+
+        //!
+        //! \brief It writes the document "doc" to the file "file_name"
+        //!
+        //! \throw ImagePlusError : When there is an error
+        //!
+        //! \param[in] doc   : Pointer to the DOMDocument to write to file
+        //! \param[in] file_name : Name of the disk file
+        //!
+        void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, const std::string& file_name) throw (ImagePlusError);
+
+        //!
+        //! \brief BPT helper function.
+        //!
+        //! Writes the header of the XML file when the tree is written to file.
+        //! If some of the URIs are equal to "-", they are omitted
+        //!
+        //! \param[in] doc               : A pointer do the "DOMDocument" created
+        //! \param[in] uri_names         : Name of the locations to be put in the header (e.g. "ImageFile")
+        //! \param[in] uri_values        : Value of the locations to be put in the header (e.g. "/mnt/seq/i3media/example.jpg")
+        //!
+        //! \return A pointer to the "image" node of the document. We append the tree to this node
+        //!
+        XERCES_CPP_NAMESPACE::DOMElement *bpt_xml_write_header(XERCES_CPP_NAMESPACE::DOMDocument *doc, const std::vector<std::string>& uri_names, const std::vector<std::string>& uri_values);
+
+        //!
+        //! \brief BPT helper function.
+        //!
+        //! Writes a specific fusion to the XML file
+        //!
+        //! \param[in] doc          : A pointer do the "DOMDocument" created
+        //! \param[in] spatial_elem : Node to which we append the fusion
+        //! \param[in] father       : Label of the resulting region after the fusion
+        //! \param[in] son1         : Label of the first original region
+        //! \param[in] son2         : Label of the second original region
+        //! \param[in] merging_order: Index of the merging in the merging sequence (1->first)
+        //! \param[in] significance : Value of significance (1-> Maximum, 0-> Minimum or not considered)
+        //!
+        void  bpt_xml_write_fusion(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *spatial_elem, uint32 father, uint32 son1, uint32 son2, uint32 merging_order=0, float64 significance=0);
+        
+        //!
+        //! \brief BPT helper function.
+        //!
+        //! Reads the header of the XML file.
+        //!
+        //! \param[in] filename : Filename of the XML file to be read
+        //! \param[in] uris     : Name and value of the locations
+        //!
+        //! \return A pointer to the "image" node of the document.
+        //!
+        XERCES_CPP_NAMESPACE::DOMNode *bpt_xml_read_header(std::string filename, std::map<std::string,std::string>& uris);
+        
+        //!
+        //! \brief BPT helper function.
+        //!
+        //! Reads the header of the XML file.
+        //!
+        //! \param[in] filename : Filename of the XML file to be read
+        //! \param[in] uris     : Name and value of the locations
+        //! \param[in] parser   : Pointer to the DOMBuilder
+        //!
+        //! \return A pointer to the "image" node of the document.
+        //!
+        XERCES_CPP_NAMESPACE::DOMNode *bpt_xml_read_header(std::string filename, std::map<std::string,std::string>& uris, XERCES_CPP_NAMESPACE::DOMBuilder*& parser );
+        
+        //!
+        //! \brief BPT helper function.
+        //!
+        //! Reads the header of the XML file and goes to a specific region.
+        //!
+        //! \param[in] vdNode: A pointer to the "image" node of the document.
+        //! \param[in] region: Region whose id indicates which "StillRegion" node must be read
+        //!
+        //! \return A pointer to the "StillRegion" node of the document that have num_region as id.
+        //!
+        template<class RegionModel>
+        XERCES_CPP_NAMESPACE::DOMNode* bpt_xml_search_region(XERCES_CPP_NAMESPACE::DOMNode* vdNode, RegionModel& region )
+        {
+            uint32 num_region = region.label();
+            XERCES_CPP_NAMESPACE::DOMNode* curr_node = xml_get_check_son(vdNode, "SpatialDecomposition");
+            std::stringstream ss_reg;
+            ss_reg << num_region;
+            std::string region_id = "Region" + ss_reg.str();
+            curr_node = io::xml_get_check_son_by_field(curr_node, "StillRegion", "id", region_id.c_str());
+            
+            return curr_node;
+        }
+        
+        //! Type to refer to the type of data which will be returned by the following functions
+        typedef std::basic_string<XMLCh> XercesString;
+
+        //! Converts from a narrow-character string to a wide-character string.
+        //!
+        //! \param[in] str	: narrow-character string to be converted to a wide-character string.
+        //! \return Char* in XercesString format
+        inline
+        XercesString fromNative(const char* str)
+        {
+#ifdef MSVC
+            return XercesString(xercesc::XMLString::transcode(str));             // to avoid segfault in msvc
+#else
+            boost::scoped_array<XMLCh> ptr(xercesc::XMLString::transcode(str));  // to avoid leaks in linux
+            return XercesString(ptr.get( ));
+#endif
+        }
+
+        //! Converts from a narrow-character string to a wide-character string.
+        //!
+        //! \param[in] str	: narrow-character string to be converted to a wide-character string.
+        //! \return String in XercesString format
+        inline
+        XercesString fromNative(const std::string& str)
+        {
+            return fromNative(str.c_str( ));
+        }
+
+        //! Converts from a wide-character string to a narrow-character string.
+        //!
+        //! \param[in] str	: wide-character string to be converted to a narrow-character string.
+        //! \return String
+        inline
+        std::string toNative(const XMLCh* str)
+        {
+#ifdef MSVC
+            return std::string(xercesc::XMLString::transcode(str));            // to avoid segfault in msvc
+#else
+            boost::scoped_array<char> ptr(xercesc::XMLString::transcode(str)); // to avoid leaks in linux
+            return std::string(ptr.get( ));
+#endif
+        }
+    }
+}
+
+#endif // USE_XML
+#endif // HPP

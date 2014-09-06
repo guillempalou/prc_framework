@@ -1,0 +1,1130 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file mesh.hpp
+//!
+
+#ifndef IMAGEPLUS_MESH_HPP_
+#define IMAGEPLUS_MESH_HPP_
+
+
+#include <iostream>
+#include <cmath>
+#include <cstring>
+#include <boost/array.hpp>
+
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/point.hpp>
+#include <imageplus/core/coord3d.hpp>
+#include <imageplus/core/context_gpu.hpp>
+
+
+
+namespace imageplus
+{
+	//!
+	//! enum type to define draw modes
+	//!
+	enum DrawMode {Solid, Transparent, HiddenLine, VertexOnly, VertexColors};
+}
+
+#ifdef USE_OPENMESH
+
+#include <OpenMesh/Core/IO/MeshIO.hh>
+#include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
+
+namespace imageplus 
+{
+
+//!
+//! \brief OMeshArrayAdaptor Class. Extension for boost::array<T,N> to use as OpenMesh Point an to interact with imageplus::Point<N>  
+//!
+//!  
+//!  This class redefines some imageplus::Point<N>, Coord<T,N> methods, and implements new ones, to accomplish
+//!  OpenMesh Array concept. OMeshArrayAdaptor is useful for OpenMesh vertex coordinates , normals, and color for example.
+//!
+//!  DO NOT USE THIS CLASS DIRECTLY. Mesh vertex coordinates, normals or color should be declared using 
+//!  the defined types in imageplus::modelling3d::TriMesh, i.e,  TriMesh::Point, TriMesh::Normal, TriMesh::Color . 
+//!  
+//!
+//!  \tparam T : float64 for vertex coordinates or normals, uint8 for color
+//!  \tparam N : Dimension of the point. Usually 3.
+//!
+//! \todo review the whole class and think if an imageplus::Array will simplify it
+//!
+//! \author Marcel Alcoverro <marcel@gps.tsc.upc.edu>
+//! \date 21-12-2009
+//!
+template <typename T, std::size_t N>
+class OMeshArrayAdaptor : public boost::array<T,N>
+{
+	/*!
+	 * \cond SKIP_DOC
+	 */
+
+private:
+
+
+	//! \brief type definition for the Base boost::array<T,N>
+	typedef  boost::array<T,N>    Base;
+
+
+public:
+
+	//! \brief the type of the scalar used 
+	typedef T Scalar;
+	//! \brief the type of the scalar used in this template
+	typedef Scalar value_type;
+
+	//! \brief type of this vector
+	typedef OMeshArrayAdaptor<T,N>  vector_type;
+
+
+
+	//! \brief returns dimension of the vector (deprecated)
+	//! \return dimension
+	static inline int dim() { return N; }
+
+	//! \brief returns dimension of the vector
+	//! \return dimension
+	static inline std::size_t size() { return N; }
+
+	//! \brief member size
+	static const std::size_t size_ = N;
+
+
+	//---------- constructors
+
+	//! \brief default constructor creates uninitialized values.
+	inline OMeshArrayAdaptor() {}
+
+	//! \brief special constructor for 1D vectors
+	//! \param[in] v : initialization value
+	explicit inline OMeshArrayAdaptor(const Scalar& v)
+	{
+		ASSERT(N==1, "Dimension must be 1")
+		vectorize(v);
+	}
+
+	//! \brief special constructor for 2D vectors
+	//! \param[in] v0 : initialization value
+	//! \param[in] v1 : initialization value
+	inline OMeshArrayAdaptor(const Scalar& v0, const Scalar& v1)
+	{
+		ASSERT(N==2,"Dimension must be 2" )
+		Base::elems[0] = v0; Base::elems[1] = v1;
+	}
+
+	//! \brief special constructor for 3D vectors
+	//! \param[in] v0 : initialization value
+	//! \param[in] v1 : initialization value
+	//! \param[in] v2 : initialization value
+	inline OMeshArrayAdaptor(const Scalar& v0, const Scalar& v1, const Scalar& v2)
+	{
+		ASSERT(N==3,"Dimension must be 3" )
+		Base::elems[0]=v0; Base::elems[1]=v1; Base::elems[2]=v2;
+	}
+
+	//! \brief special constructor for 4D vectors
+	//! \param[in] v0 : initialization value
+	//! \param[in] v1 : initialization value
+	//! \param[in] v2 : initialization value
+	//! \param[in] v3 : initialization value
+	inline OMeshArrayAdaptor(const Scalar& v0, const Scalar& v1,
+			const Scalar& v2, const Scalar& v3)
+	{
+		ASSERT(N==4,"Dimension must be 4" )
+		Base::elems[0]=v0; Base::elems[1]=v1; Base::elems[2]=v2; Base::elems[3]=v3;
+	}
+
+	//! \brief special constructor for 5D vectors
+	//! \param[in] v0 : initialization value
+	//! \param[in] v1 : initialization value
+	//! \param[in] v2 : initialization value
+	//! \param[in] v3 : initialization value
+	//! \param[in] v4 : initialization value
+	inline OMeshArrayAdaptor(const Scalar& v0, const Scalar& v1, const Scalar& v2,
+			const Scalar& v3, const Scalar& v4) 
+	{
+		ASSERT(N==5,"Dimension must be 5" )
+		Base::elems[0]=v0; Base::elems[1]=v1;Base::elems[2]=v2; Base::elems[3]=v3; Base::elems[4]=v4;
+	}
+
+	//! \brief special constructor for 6D vectors
+	//! \param[in] v0 : initialization value
+	//! \param[in] v1 : initialization value
+	//! \param[in] v2 : initialization value
+	//! \param[in] v3 : initialization value
+	//! \param[in] v4 : initialization value
+	//! \param[in] v5 : initialization value
+	inline OMeshArrayAdaptor(const Scalar& v0, const Scalar& v1, const Scalar& v2,
+			const Scalar& v3, const Scalar& v4, const Scalar& v5)
+	{
+		ASSERT(N==6,"Dimension must be 6")
+		Base::elems[0]=v0; Base::elems[1]=v1; Base::elems[2]=v2;
+		Base::elems[3]=v3; Base::elems[4]=v4; Base::elems[5]=v5;
+	}
+
+	//! \brief construct from a value array (explicit)
+	//! \param[in] values : c-type array
+	explicit inline OMeshArrayAdaptor(const Scalar values[N]) 
+	{
+		memcpy(Base::elems, values, N*sizeof(Scalar));
+	}
+
+	//! \brief construct from boost array 
+	//! \param[in] rhs : boost array
+	inline OMeshArrayAdaptor(const boost::array<Scalar,N>& rhs) 
+	{
+		memcpy(Base::elems, rhs.data(), N*sizeof(Scalar));
+	}
+
+
+
+	//!
+	//! \brief Rad-only access to Point first dimension
+	//!
+	//! \return The size of the X dimension (first)
+	//!
+	const Scalar& x() const
+	{
+		ASSERT(N >= 1, "Cannot acces to Point.x() in a Point with dimension < 1")
+		return (*this).elems[0];
+	}
+
+	//!
+	//! \brief Access to Point first dimension
+	//!
+	//! \return The size of the X dimension (first)
+	//!
+	Scalar& x()
+	{
+		ASSERT(N >= 1, "Cannot acces to Point.x() in a Point with dimension < 1")
+		return (*this).elems[0];
+	}
+
+	//!
+	//! \brief Read-only access to Point second dimension (if exists)
+	//!
+	//! \return The size of the Y dimension (second)
+	//!
+	const Scalar& y() const
+	{
+		ASSERT(N >= 2, "Cannot acces to Point.y() in a Point with dimension < 2")
+		return (*this).elems[1];
+	}
+
+	//!
+	//! \brief Access to Point second dimension (if exists)
+	//!
+	//! \return The size of the Y dimension (second)
+	//!
+	Scalar& y()
+	{
+		ASSERT(N >= 2, "Cannot acces to Point.y() in a Point with dimension < 2")
+		return (*this).elems[1];
+	}
+
+	//!
+	//! \brief Read-only access to Point third dimension (if exists)
+	//!
+	//! \return The size of the Z dimension (third)
+	//!
+	const Scalar& z() const
+	{
+		ASSERT(N >= 3, "Cannot acces to Point.z() in a Point with dimension < 3")
+		return (*this).elems[2];
+	}
+
+	//!
+	//! \brief Access to Point third dimension (if exists)
+	//!
+	//! \return The size of the Z dimension (third)
+	//!
+	Scalar& z()
+	{
+		ASSERT(N >= 3, "Cannot acces to Point.z() in a Point with dimension < 3")
+		return (*this).elems[2];
+	}
+
+
+
+
+
+
+	//! \brief copy operator from boost array 
+	//! \param[in] rhs : boost array
+	//! \return this
+	vector_type& operator=(const boost::array<Scalar,N>& rhs) 
+	{
+		memcpy(Base::elems, rhs.data(), N*sizeof(Scalar));
+		return *this;
+	}
+
+
+	//            MARCEL: probably we don't need this              
+	//
+	//            #ifdef OM_CC_MIPS
+	//              /// assignment from a vector of the same kind
+	//              // mipspro need this method
+	//              inline vector_type& operator=(const vector_type& _rhs) {
+	//                memcpy(Base::elems, _rhs.Base::elems, N*sizeof(Scalar));
+	//                return *this;
+	//              }
+	//            #endif
+	//
+	//              //--------------------------------------------------------------------- casts
+	//
+	//              /// cast from vector with a different scalar type
+	//              template<typename otherScalarType>
+	//              inline vector_type& operator=(const OMeshArrayAdaptor<otherScalarType,N>& _rhs) {  
+	//                for (std::size_t i=0; i<N; ++i) Base::elems[i] = (Scalar)_rhs[i];
+	//                return *this;
+	//              }
+	//
+	//            //   /// cast to Scalar array
+	//            //   inline operator Scalar*() { return Base::elems; }
+	//
+	//            //   /// cast to const Scalar array
+	//            //   inline operator const Scalar*() const { return Base::elems; }
+
+
+
+	//! \brief  access to Scalar array
+	//! \return pointer to first element
+	inline 
+	Scalar* data() { return Base::elems; }
+
+	//! \brief  access to const Scalar array
+	//! \return pointer to first element 
+	inline 
+	const Scalar*data() const { return Base::elems; }
+
+
+	//--- element access
+
+
+	//! \brief get i'th element read-write
+	//! \return i'th element 
+	inline 
+	Scalar& operator[](size_t _i)
+	{
+		ASSERT(_i<N,"out of range")
+		return Base::elems[_i];
+	}
+
+	//! \brief get i'th element read-only
+	//! \return i'th element 
+	inline 
+	const Scalar& operator[](size_t _i) const 
+	{
+		ASSERT(_i<N,"out of range") 
+		return Base::elems[_i];
+	}
+
+
+	//------- comparsion
+
+
+	//! \brief component-wise comparison
+	//! \return true false
+	inline 
+	bool operator==(const vector_type& _rhs) const 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			if(Base::elems[i]!=_rhs.Base::elems[i]) return false;
+		}
+		return true;
+	}
+
+	//! \brief component-wise comparison
+	//! \return true false
+	inline 
+	bool operator!=(const vector_type& _rhs) const 
+	{
+		return !(*this == _rhs);
+	}
+
+
+	//----- scalar operators
+
+	//! \brief component-wise self-multiplication with scalar
+	//! \return result
+	inline 
+	vector_type& operator*=(const Scalar& _s) 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			Base::elems[i] *= _s;
+		}
+		return *this;
+	}
+
+	//! \brief component-wise self-division by scalar
+	//!   \attention v *= (1/_s) is much faster than this  
+	//! \return result
+	inline 
+	vector_type& operator/=(const Scalar& _s) 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			Base::elems[i] /= _s;
+		}
+		return *this;
+	}
+
+
+	//! \brief component-wise multiplication with scalar
+	//! \return result
+	inline 
+	vector_type operator*(const Scalar& _s) const 
+	{
+		return vector_type(*this) *= _s;
+	}
+
+
+	//! \brief component-wise division by with scalar
+	//! \return result
+	inline 
+	vector_type operator/(const Scalar& _s) const 
+	{
+		return vector_type(*this) /= _s;
+	}
+
+
+
+
+
+
+	//-------- vector operators
+
+	//! \brief component-wise self-multiplication
+	//! \param[in] _rhs : point
+	//! \return result
+	inline 
+	vector_type& operator*=(const vector_type& _rhs) 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			Base::elems[i] *= _rhs[i];
+		}
+		return *this;
+	}
+
+	//! \brief component-wise self-division
+	//! \param[in] _rhs : point
+	//! \return result
+	inline 
+	vector_type& operator/=(const vector_type& _rhs) 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			Base::elems[i] /= _rhs[i];
+		}
+		return *this;
+	}
+
+	//! \brief vector difference from this
+	//! \param[in] _rhs : point
+	//! \return result
+	inline 
+	vector_type& operator-=(const vector_type& _rhs) 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			Base::elems[i] -= _rhs[i];
+		}
+		return *this;
+	}
+
+    /*
+     * AGIL: operator commented because it has been added to array_arithmetic
+     */
+//          //! \brief vector self-addition
+//          //! \param[in] _rhs : point
+//          //! \return result
+//          inline
+//          vector_type& operator+=(const vector_type& _rhs)
+//          {
+//            for (std::size_t i=0; i<N; ++i)
+//            {
+//              Base::elems[i] += _rhs[i];
+//            }
+//            return *this;
+//          }
+
+	//! \brief component-wise vector multiplication
+	//! \param[in] _v : point
+	//! \return result
+	inline 
+	vector_type operator*(const vector_type& _v) const 
+	{
+		return vector_type(*this) *= _v;
+	}
+
+
+	//! \brief component-wise vector division
+	//! \param[in] _v : point
+	//! \return result
+	inline 
+	vector_type operator/(const vector_type& _v) const 
+	{
+		return vector_type(*this) /= _v;
+	}
+
+
+	//! \brief  component-wise vector addition
+	//! \param[in] _v : point
+	//! \return result
+	inline 
+	vector_type operator+(const vector_type& _v) const 
+	{
+		return vector_type(*this) += _v;
+	}
+
+	//! \brief component-wise vector addition with Base
+	//! \param[in] _v : point
+	//! \return result
+	inline 
+	vector_type operator+(const Base& _v) const 
+	{
+		return vector_type(*this) += _v;
+	}
+
+
+	//! \brief component-wise vector difference
+	//! \param[in] _v : point
+	//! \return result
+	inline 
+	vector_type operator-(const vector_type& _v) const 
+	{
+		return vector_type(*this) -= _v;
+	}
+
+	//! \brief component-wise vector difference with Base
+	//! \param[in] _v : point
+	//! \return result
+	inline 
+	vector_type operator-(const Base& _v) const 
+	{
+		return vector_type(*this) -= _v;
+	}
+
+	//! \brief unary minus
+	//! \return result
+	inline 
+	vector_type operator-(void) const 
+	{
+		vector_type v;
+		for (std::size_t i=0; i<N; ++i)
+		{
+			v.Base::elems[i] = -Base::elems[i];
+		}
+		return v;
+	}
+
+
+	//! \brief cross product: only defined for Vec3* as specialization
+	//! \param[in] _rhs : point
+	//! \return result 
+	inline 
+	OMeshArrayAdaptor<T,3> operator%(const OMeshArrayAdaptor<T,3>& _rhs) const
+	{
+		return
+		OMeshArrayAdaptor<T,3>( Base::elems[1]*_rhs.Base::elems[2]-Base::elems[2]*_rhs.Base::elems[1],
+	                            Base::elems[2]*_rhs.Base::elems[0]-Base::elems[0]*_rhs.Base::elems[2],
+	                            Base::elems[0]*_rhs.Base::elems[1]-Base::elems[1]*_rhs.Base::elems[0]);
+	}
+
+
+	//! \brief compute scalar product
+	//! \param[in] _rhs : point
+	//! \return result 
+	inline 
+	Scalar operator|(const vector_type& _rhs) const 
+	{
+		Scalar p(0);
+		for (std::size_t i=0; i<N; ++i)
+		{
+			p += Base::elems[i] * _rhs.Base::elems[i];
+		}
+		return p;
+	}
+
+
+
+	//-------- euclidean norm
+
+	//! \brief compute euclidean norm
+	//! \return result
+	inline 
+	Scalar norm() const { return (Scalar)std::sqrt(sqrnorm()); }
+
+	/// \brief compute euclidean norm // OpenSG interface
+	//! \return result
+	inline 
+	Scalar length() const { return norm(); } 
+
+
+	//! \brief compute squared euclidean norm
+	//! \return result
+	inline 
+	Scalar sqrnorm() const 
+	{
+		Scalar s(0);
+		for (std::size_t i=0; i<N; ++i)
+		{
+			s += Base::elems[i] * Base::elems[i];                   
+		}
+		return s;
+	}
+
+
+	//! \brief normalize vector
+	//! \return normalized vector
+	inline 
+	vector_type& normalize() 
+	{
+		*this /= norm();
+		return *this;
+	}
+
+	//! \brief normalize vector
+	//! \return normalized vector and avoids div by zero 
+	inline 
+	vector_type& normalize_cond() 
+	{
+		Scalar n = norm();
+		if (n != (Scalar)0.0)
+		{
+			*this /= n;
+		}
+		return *this;
+	}
+
+	//--------- max, min, mean
+
+	//! \brief max
+	//! \return the maximal component
+	inline 
+	Scalar max() const 
+	{
+		Scalar m(Base::elems[0]);
+		for(int i=1; i<N; ++i) if(Base::elems[i]>m) m=Base::elems[i];
+		return m;
+	}
+
+
+	//! \brief min
+	//! \return the minimal component
+	inline 
+	Scalar min() const 
+	{
+		Scalar m(Base::elems[0]);
+		for(int i=1; i<N; ++i) if(Base::elems[i]<m) m=Base::elems[i];
+		return m;
+	}
+
+	//! \brief mean
+	//! \return arithmetic mean
+	inline 
+	Scalar mean() const 
+	{
+		Scalar m(Base::elems[0]);
+		for(int i=1; i<N; ++i) m+=Base::elems[i];
+		return m/Scalar(N);
+	}
+
+	//! \brief minimize values: same as *this = min(*this, _rhs), but faster
+	//! \return result 
+	inline 
+	vector_type minimize(const vector_type& _rhs) 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			if (_rhs[i] < Base::elems[i]) Base::elems[i] = _rhs[i];
+		}
+		return *this;
+	}
+
+	//! \brief maximize values: same as *this = max(*this, _rhs), but faster
+	//! \param[in] _rhs : point
+	//! \return result
+	inline 
+	vector_type maximize(const vector_type& _rhs) 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			if (_rhs[i] > Base::elems[i]) Base::elems[i] = _rhs[i];
+		}
+		return *this;
+	}
+
+
+	//! \brief component-wise min
+	//! \param[in] _rhs : point
+	//! \return result
+	inline 
+	vector_type min(const vector_type& _rhs) 
+	{
+		return vector_type(*this).minimize(_rhs);
+	}
+
+	//! \brief component-wise max
+	//! \param[in] _rhs : point
+	//! \return result
+	inline 
+	vector_type max(const vector_type& _rhs) 
+	{
+		return vector_type(*this).maximize(_rhs);
+	}
+
+
+	//---------- misc functions
+
+
+	//! \brief component-wise apply function object with Scalar operator()(Scalar).
+	//! \param[in] _func : functor(Scalar)
+	//! \return result
+	template<typename Functor>
+	inline 
+	vector_type apply(const Functor& _func) const 
+	{
+		vector_type result;
+		for (std::size_t i=0; i<N; ++i)
+		{
+			result[i] = _func(Base::elems[i]);
+		}
+		return result;
+	}
+
+
+	//! \brief store the same value in each component (e.g. to clear all entries)
+	//! \param[in] _s : Scalar
+	//! \return result
+	vector_type& vectorize(const Scalar& _s) 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			Base::elems[i] = _s;
+		}
+		return *this;
+	}
+
+
+	//! \brief store the same value in each component
+	//! \param[in] _s : Scalar
+	//! \return result
+	static vector_type vectorized(const Scalar& _s) 
+	{
+		return vector_type().vectorize(_s);
+	}
+
+
+	//! \brief lexicographical comparison
+	//! \param[in] _rhs : point
+	//! \return true or false
+	bool operator<(const vector_type& _rhs) const 
+	{
+		for (std::size_t i=0; i<N; ++i)
+		{
+			if (Base::elems[i] != _rhs.Base::elems[i]) return (Base::elems[i] < _rhs.Base::elems[i]);
+		}
+		return false;
+	}
+
+
+
+};  // End of class OMeshArrayAdaptor
+
+
+//! \brief read the space-separated components of a vector from a stream
+//! \param[in] is : istream
+//! \param[in] vec : point
+//! \return istream
+
+template <typename T, std::size_t N>
+inline 
+std::istream& operator>>(std::istream& is, OMeshArrayAdaptor<T,N>& vec)
+{
+	for (std::size_t i=0; i<N; ++i)
+	{ 
+		is >> vec[i];
+	}
+	return is;
+}
+
+
+//! \brief output a vector by printing its space-separated components
+//! \param[in] os : ostream
+//! \param[in] vec : point
+//! \return ostream
+
+template <typename T, std::size_t N>
+inline 
+std::ostream& operator<<(std::ostream& os, const OMeshArrayAdaptor<T,N>& vec)
+{
+	for(std::size_t i=0; i<N-1; ++i) os << vec[i] << " ";
+	os << vec[N-1];
+	return os;
+}
+
+
+
+//! \brief symmetric version of the dot product
+//! \param[in] v1 : point
+//! \param[in] v2 : point
+//! \return result
+
+inline 
+OMeshArrayAdaptor<float64,3>::Scalar dot(const OMeshArrayAdaptor<float64,3>& v1, const OMeshArrayAdaptor<float64,3>& v2) 
+{
+	return (v1 | v2); 
+}
+
+
+
+//! \brief symmetric version of the cross product
+//! \param[in] v1 : point
+//! \param[in] v2 : point
+//! \return result
+
+inline 
+OMeshArrayAdaptor<float64,3> cross(const OMeshArrayAdaptor<float64,3>& v1, const OMeshArrayAdaptor<float64,3>& v2) 
+{
+	return (v1 % v2);
+}
+
+/*!
+ * \endcond
+ */
+
+
+
+
+
+
+
+
+
+
+//!
+//! \brief TriMeshTraits defines basic traits for TriMesh
+//!
+//! \sa TriMesh
+//!
+struct TriMeshTraits : public OpenMesh::DefaultTraits 
+{
+	//! \brief defines vertex coordinates type as VertexPoint
+	typedef imageplus::OMeshArrayAdaptor<float64,3> Point;
+	//! \brief defines normals type as VertexPoint
+	typedef imageplus::OMeshArrayAdaptor<float64,3> Normal;
+
+	// current implementation uses OpenMesh Array type for color instead of OMeshArrayAdaptor.
+	// defining color as OMeshArrayAdaptor will not compile in certain cases because several cast functions are needed, and they are not implemented for OMeshArrayAdaptor
+	//! \brief defines color type as VertexPoint
+	//typedef imageplus::OMeshArrayAdaptor<uint8,3> Color;
+	//! \brief attributes for vertices : Normal and Color
+
+	VertexAttributes( OpenMesh::Attributes::Normal |  OpenMesh::Attributes::Color );
+	//! \brief attributes for faces : Normal 
+	FaceAttributes( OpenMesh::Attributes::Normal );
+	
+};
+
+//!
+//! \brief Triangular Mesh Class. Definition of the basic Mesh class for Imageplus using OpenMesh.  
+//!
+//!  
+//!  This typedef defines a basic type of OpenMesh triangular mesh 
+//!  using imageplus::modelling3d::VertexPoint as type for vertex coordinates and normals.
+//!  
+//!  Look at OpenMesh web page <A HREF="http://www.openmesh.org">OpenMesh</A> for documentation. 
+//!
+//! Simple guidelines:
+//! 
+//! To read a mesh from a file:  OpenMesh supports several file formats: OBJ, PLY, OFF, ... but some of them are in development. I recommend OBJ
+//! \code
+//!     
+//!     TriMesh mesh;
+//!     
+//!     /// READMESH    
+//!     OpenMesh::IO::Options opt;
+//!     if ( ! OpenMesh::IO::read_mesh(mesh,"mymesh.obj", opt))
+//!     {
+//!         std::cerr << "Error loading mesh from file " << string(argv[1]) << std::endl;
+//!         return 1;
+//!     }
+//!
+//!
+//! \endcode
+//! 
+//!  To iterate over mesh entities use iterators:
+//!
+//!  \code
+//!     TriMesh mesh;
+//!
+//!     iterate over all vertices
+//!        for (TriMesh::VertexIter v_it=mesh.vertices_begin(); v_it!=mesh.vertices_end(); ++v_it) 
+//!   ...; // do something with *v_it, v_it->, or v_it.handle()
+//!
+//!
+//!  \endcode
+//!   
+//!   Look at <A HREF="http://www.openmesh.org">OpenMesh</A> web page  for more documentation about mesh iterators.  
+//!
+//! \todo Create an example
+//!
+//! \author Marcel Alcoverro <marcel@gps.tsc.upc.edu>
+//! \date   21-12-2009
+//!
+typedef OpenMesh::TriMesh_ArrayKernelT<TriMeshTraits> TriMesh;
+
+
+
+//!
+//! \brief Draw Mesh using OpenGL. This version uses mesh vertex colors to colorize the mesh. 
+//! 
+//! \param[in] mesh : The mesh
+//!
+//! \author Marcel Alcoverro <marcel@gps.tsc.upc.edu>
+//! \date   21-12-2009
+//!
+void draw_mesh(TriMesh &mesh);
+
+
+
+//!
+//! \brief Draw Mesh using OpenGL. The mesh is colorized with a given color.  
+//! 
+//! \param[in] mesh     : The mesh
+//! \param[in] r        : red value [0,1]
+//! \param[in] g        : green value [0,1]
+//! \param[in] b        : blue value [0,1]
+//! \param[in] drawmode : Solid, Transparent or HiddenLine
+//!
+//! \author Marcel Alcoverro <marcel@gps.tsc.upc.edu>
+//! \date 21-12-2009
+//!
+void draw_mesh(TriMesh &mesh, uint8 r, uint8 g, uint8 b, DrawMode drawmode =  Solid, float64 alpha=1.0);
+
+//!
+//! \brief Set vertices rgb color 
+//! 
+//! \param[in] mesh   : The mesh
+//! \param[in] r      : red value
+//! \param[in] g      : green value
+//! \param[in] b      : blue value
+//!
+//! \return colorized mesh.
+//!
+//! \author Marcel Alcoverro <marcel@gps.tsc.upc.edu>
+//! \date   21-12-2009
+//!
+TriMesh colorize_vertices(const TriMesh &mesh,  uint8 r, uint8 g, uint8 b);
+
+
+void read_mesh(std::string filename, TriMesh & mesh);
+
+
+void write_mesh(std::string filename, TriMesh &mesh);
+
+}
+#endif // USE_OPENMESH
+
+namespace imageplus 
+{
+    //!
+    //! \brief FaceVertexMesh Class. Contains a list of vertex 3D positions, a list with 
+    //!        the associated vertex colors, and a list of faces referred to their respective vertices.
+    //!  
+    //!
+    //! \author Xavier Suau <xavier.suau@upc.edu>
+    //! \date 19-03-2010
+    //!
+    //! \todo calss members should be private!!
+    //!
+    class FaceVertexMesh
+    {
+    public:
+    
+    	
+    	typedef std::vector<Point3D>::iterator VertexIter; 
+    	typedef std::vector<Coord3D<int64> >::iterator FaceIter;
+    	
+        FaceVertexMesh()
+        {   }
+    
+        FaceVertexMesh( int64 n_vertices, int64 n_faces )
+        {
+            _vertices.reserve(n_vertices);
+            _colors.reserve(n_vertices);
+            _faces.reserve(n_faces);
+            _face_normals.reserve(n_faces);
+            _vertex_normals.reserve(n_vertices);
+            _vertex_faces.reserve(n_vertices);
+        }
+        
+        //! \brief Add vertex to list (default color)
+        //!
+        //! \param[in] v : vertex
+        //!
+        //! \author Xavier Suau <xavier.suau@upc.edu>
+        //! \date 19-03-2010
+        //!
+        void add_vertex( Point3D v );
+        
+        //! \brief Add vertex with color to list
+        //!
+        //! \param[in] v : vertex
+        //! \param[in] c : color
+        //!
+        //! \author Xavier Suau <xavier.suau@upc.edu>
+        //! \date 19-03-2010
+        //!
+        void add_vertex( Point3D v, Coord3D<uint8> c );
+    
+        //! \brief Add color to list
+        //!
+        //! \param[in] c : color
+        //!
+        //! \author Xavier Suau <xavier.suau@upc.edu>
+        //! \date 19-03-2010
+        //!
+        void add_color( Coord3D<uint8> c );
+    
+        //! \brief Add face to list
+        //!
+        //! \param[in] f : face
+        //!
+        //! \author Xavier Suau <xavier.suau@upc.edu>
+        //! \date 19-03-2010
+        //!
+        void add_face( Coord3D<int64> f );
+    
+        //! \brief Add face normal to list
+        //!
+        //! \param[in] n : face normal
+        //!
+        //! \author Jordi Salvador <jordi.salvador@upc.edu>
+        //! \date 14-04-2010
+        //!
+        void add_face_normal( const Point3D & n );
+        
+        //! \brief Get vertex 
+        //!
+        //! \param[in] ind : index
+        //! \return vertex
+        //!
+        //! \author Xavier Suau <xavier.suau@upc.edu>
+        //! \date 19-03-2010
+        //!
+        Point3D get_vertex( int64 ind );
+    
+        //! \brief Get face
+        //! \param[in] ind : index
+        //! \return face
+        //!
+        //! \author Xavier Suau <xavier.suau@upc.edu>
+        //! \date 19-03-2010
+        //!
+        Coord3D<int64> get_face( int64 ind);
+    
+        //! \brief Get face normal
+        //! \param[in] ind : index
+        //! \return face normal
+        //!
+        //! \author Jordi Salvador <jordi.salvador@upc.edu>
+        //! \date 14-04-2010
+        //!
+        const Point3D & get_face_normal( int64 ind );
+        
+        //! \brief Get vertex color
+        //! \param[in] ind : index
+        //! \return Color
+        //!
+        //! \author Xavier Suau <xavier.suau@upc.edu>
+        //! \date 19-03-2010
+        //!
+        Coord3D<uint8> get_color( int64 ind);
+        
+        //! \brief Updates face normals
+        //!
+        //! \author Jordi Salvador <jordi.salvador@upc.edu>
+        //! \date 14-04-2010
+        //!
+        void update_normals();
+        
+        Point3D compute_cog() ;
+        
+        void reset() ;
+
+    //private:
+        
+        std::vector<Point3D>            _vertices;
+        std::vector<Coord3D<int64> >    _faces;
+        std::vector<Coord3D<uint8> >    _colors;
+        std::vector<Point3D>            _face_normals;
+        std::vector<Point3D> 				_vertex_normals;
+        std::vector< std::vector<int64> >	_vertex_faces;
+
+
+    };
+    
+    //!
+    //! \brief Draw FaceVertexMesh using OpenGL. This version uses mesh vertex colors to colorize the mesh. 
+    //! 
+    //! \param[in] fvmesh : The Mesh 
+    //!
+    //! \author Xavier Suau <xavier.suau@upc.edu>
+    //! \date 19-03-2010
+    //!
+    //void draw_mesh(FaceVertexMesh & fvmesh, uint8 r = 100,  uint8 g = 100, uint8 b = 100, DrawMode drawmode =  VertexOnly);
+    
+    //!
+    //! \brief Draw Mesh using OpenGL. The mesh is colorized with a given color.  
+    //! 
+    //! \param[in] mesh     : The mesh
+    //! \param[in] r        : red value [0,1]
+    //! \param[in] g        : green value [0,1]
+    //! \param[in] b        : blue value [0,1]
+    //! \param[in] drawmode : Solid, Transparent, HiddenLine, VertexOnly, VertexColors
+    //! \param[in] orig		: Mesh origin (to draw a centered mesh using OpenGL)
+    //!
+    //! \author Xavier Suau <xavier.suau@upc.edu>
+    //! \date 19-03-2010
+    //!
+    void draw_mesh(FaceVertexMesh &mesh, uint8 r = 100, uint8 g = 100, uint8 b = 100, DrawMode drawmode =  VertexColors, Point3D orig = Point3D(0.0,0.0,0.0));
+    
+    
+    //! 
+    //! \brief Writes a FaceVertexMesh to a .PLY ascii file
+    //!
+    //! \param[in] filename : Output file name
+    //! \param[in] fvmesh : Mesh to be written
+    //!
+    //! \author Xavier Suau <xavier.suau@upc.edu>
+    //! \date 19-03-2010
+    //!
+    void write_mesh(std::string filename, FaceVertexMesh &mesh);
+
+    //! 
+    //! \brief Reads a FaceVertexMesh from a .PLY ascii file
+    //!
+    //! \param[in] filename : input file name
+    //! \param[in] fvmesh : Mesh 
+    //!
+    //! \author Xavier Suau <xavier.suau@upc.edu>
+    //! \date 19-03-2010
+    //!
+
+    void  read_mesh(std::string filename, FaceVertexMesh & mesh);
+
+
+}
+
+#endif /* IMAGEPLUS_MESH_HPP_ */

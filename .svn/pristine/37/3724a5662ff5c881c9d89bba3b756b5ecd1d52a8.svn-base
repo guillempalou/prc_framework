@@ -1,0 +1,282 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file interpolation.cpp
+ */
+
+#include <string>
+#include <imageplus/math/numeric/interpolation.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+
+namespace imageplus
+{
+namespace math
+{
+namespace numeric
+{
+    template<typename T>
+    float64 interpolation( const MultiArray<T,2>&       ima,
+                           const MultiArray<bool,2>&    mask,
+                           const Point<2>&              point,
+                           const InterpolationType      interp_type,
+                           uint32&                      valid_neighbors) throw (ImagePlusNotImplemented, ImagePlusError)
+    {
+        // Get valid neighbors values and store in a vector
+        std::vector<T> neighs_vals = neighbors_values(ima, mask, point, 1);
+
+        valid_neighbors = neighs_vals.size();
+
+        float64 result = 0.0;
+
+        if (valid_neighbors != 0)
+        {
+            switch(interp_type)
+            {
+                case NEAREST_NEIGHBOR:
+                {
+                    // Computing nearest neighbor with a mask does not make much sense as it will be computationally very inneficcient
+                    // (computing distances, and so on).
+                    // We will just take the first one in the list.
+
+                    result = neighs_vals[0];
+                }
+                break;
+
+                case MEAN:
+                {
+                    typename std::vector<T>::const_iterator neigh = neighs_vals.begin();
+
+                    float64 mean = std::accumulate(neigh, neigh + valid_neighbors, 0.0);
+
+                    result = mean / valid_neighbors;
+                }
+                break;
+
+                case MEDIAN:
+                {
+                    sort(neighs_vals.begin(), neighs_vals.end());
+
+                    int64 median = valid_neighbors / 2;
+
+                    if (valid_neighbors % 2 == 0)
+                    {
+                        result = (neighs_vals[median-1]+neighs_vals[median]) / 2.0;
+                    }
+                    else
+                    {
+                        result = neighs_vals[median];
+                    }
+                }
+                break;
+
+                case LINEAR:
+                {
+                    typename std::vector<T>::const_iterator neigh_val = neighs_vals.begin();
+
+                    bool integer_position = (floor(point.x()) == point.x() && floor(point.y()) == point.y());
+
+                    if (integer_position)
+                    {
+                        result = static_cast<float64>(std::accumulate(neighs_vals.begin(), neighs_vals.end(), 0.0)) / valid_neighbors;
+                    }
+                    else
+                    {
+                        float64 sum_weights = 0.0;
+
+                        // Get neighbors coordinates at distance  and store them in a vector
+                        std::vector< Coord2D<> > neighs = neighbors(ima, mask, point, 1);
+
+                        for (std::vector< Coord2D<> >::const_iterator neigh = neighs.begin(); neigh != neighs.end(); ++neigh)
+                        {
+                            float64 weight = (1 - std::abs(point.x()-(float64)neigh->x())) *
+                                             (1 - std::abs(point.y()-(float64)neigh->y()));
+
+                            result += weight * (*neigh_val);
+                            neigh_val++;
+
+                            sum_weights += weight;
+                        }
+
+                        if (sum_weights < 1.0e-15)
+                        {
+                            //string error = "interpolation(): point (" + point.x() + "," + point.y() + ") has no valid neighbors";
+                            throw ImagePlusError("No valid neighborhs");
+                        }
+                        result /= sum_weights;
+                    }
+                }
+                break;
+
+                case BICUBIC:
+                default:
+                    throw ImagePlusNotImplemented("This method is not implemented yet.");
+            }
+        }
+        return result;
+    }
+
+    template<typename T>
+    MultiArray<T,2> interpolation( const MultiArray<T,2>&           ori,
+                                   const MultiArray<bool,2>&        mask,
+                                   const MultiArray<Point<2>,2>&    points,
+                                   MultiArray<bool,2>&              out_mask,
+                                   InterpolationType                method ) throw ( ImagePlusNotImplemented,
+                                                                                     ImagePlusError )
+    {
+        // Ensure dimensions are correct
+        compatible (ori, mask);
+        compatible (points, out_mask);
+
+        uint64 size_X = points.dims(0);
+        uint64 size_Y = points.dims(1);
+
+        MultiArray<T,2> out(size_X, size_Y);
+
+        bool upsampling = size_X >= ori.dims(0) && size_Y >= ori.dims(1);
+
+        for(uint64 j = 0; j < size_Y; j++)
+        for(uint64 i = 0; i < size_X; i++)
+        {
+            if (out_mask[i][j])
+            {
+                bool integer_position = (floor(points[i][j].x()) == points[i][j].x() &&
+                                         floor(points[i][j].y()) == points[i][j].y());
+
+                // Do not interpolate original data points when upsampling
+                // When downsampling, original data points must be reevaluated 
+                if (upsampling && integer_position)
+                {
+                    if (mask[static_cast<int64>(points[i][j].x())][static_cast<int64>(points[i][j].y())])
+                    {
+                        out[i][j] = ori[static_cast<int64>(points[i][j].x())][static_cast<int64>(points[i][j].y())];
+                    }
+                    else
+                    {
+                        out_mask[i][j] = false;
+                        out[i][j] = 0; // Just to avoid having uninitialized values
+                    }
+                    continue;
+                }
+
+                uint32 num_neighbors;
+                float64 result = interpolation (ori, mask, points[i][j], method, num_neighbors);
+
+                if (num_neighbors == 0)
+                {
+                    out_mask[i][j] = false;
+                    out[i][j]      = 0; // Just to avoid having uninitialized values
+                }
+                else
+                {
+                    if (std::numeric_limits<T>::is_integer)
+                    {
+                        out[i][j] = mnint<T>(result);
+                    }
+                    else
+                    {      
+                        out[i][j] = static_cast<T>(result);
+                    }
+                }
+            }
+        }
+
+        return out;
+    }
+
+    template<typename T, std::size_t N>
+    Image<T,N> interpolation( const Image<T,N>&             ori,
+                              const ImageMask&              mask,
+                              const MultiArray<Point<2>,2>& points,
+                              ImageMask&                    out_mask,
+                              InterpolationType             method ) throw ( ImagePlusNotImplemented,
+                                                                             ImagePlusError )
+    {
+        uint64 size_X = points.dims(0);
+        uint64 size_Y = points.dims(1);
+
+        Image<T,N> out(size_X, size_Y);
+
+        bool upsampling = size_X >= ori.size_x() && size_Y >= ori.size_y();
+
+        for (uint64 channel = 0; channel < N; channel++)
+        {
+            for(uint64 j = 0; j < size_Y; j++)
+            for(uint64 i = 0; i < size_X; i++)
+            {
+                if (out_mask[i][j])
+                {
+                    bool integer_position = (floor(points[i][j].x()) == points[i][j].x() &&
+                                             floor(points[i][j].y()) == points[i][j].y());
+
+                    // Do not interpolate original data points when upsampling
+                    // When downsampling, original data points must be reevaluated
+                    if (upsampling && integer_position)
+                    {
+                        if (mask[static_cast<int64>(points[i][j].x())][static_cast<int64>(points[i][j].y())])
+                        {
+                            out(channel)[i][j] = ori(channel)[static_cast<int64>(points[i][j].x())][static_cast<int64>(points[i][j].y())];
+                        }
+                        else
+                        {
+                            out_mask[i][j] = false;
+                            out(channel)[i][j] = 0; // Just to avoid having uninitialized values
+                        }
+                        continue;
+                    }
+
+                    uint32 num_neighbors;
+                    float64 result = interpolation (ori(channel), mask(0), points[i][j], method, num_neighbors);
+
+                    if (num_neighbors == 0)
+                    {
+                        out_mask[i][j] = false;
+                        out(channel)[i][j]      = 0; // Just to avoid having uninitialized values
+                    }
+                    else
+                    {
+                        if (std::numeric_limits<T>::is_integer)
+                        {
+                            out(channel)[i][j] = mnint<T>(result);
+                        }
+                        else
+                        {
+                            out(channel)[i][j] = static_cast<T>(result);
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+} // numeric
+} // math
+} // imageplus
+
+
+namespace imageplus
+{
+namespace math
+{
+namespace numeric
+{
+    template float64 interpolation (const MultiArray<uint8,2>& ima,   const MultiArray<bool,2>& mask, const Point<2>& point, const InterpolationType interp_type, uint32& valid_neighbors) throw (ImagePlusNotImplemented);
+    template float64 interpolation (const MultiArray<int64,2>& ima,   const MultiArray<bool,2>& mask, const Point<2>& point, const InterpolationType interp_type, uint32& valid_neighbors) throw (ImagePlusNotImplemented);
+    template float64 interpolation (const MultiArray<float64,2>& ima, const MultiArray<bool,2>& mask, const Point<2>& point, const InterpolationType interp_type, uint32& valid_neighbors) throw (ImagePlusNotImplemented);
+
+    template MultiArray<uint8,2>   interpolation (const MultiArray<uint8,2>& ori,   const MultiArray<bool,2>& mask, const MultiArray<Point<2>,2>& points, MultiArray<bool,2>& out_mask, InterpolationType method) throw(ImagePlusNotImplemented);
+    template MultiArray<int64,2>   interpolation (const MultiArray<int64,2>& ori,   const MultiArray<bool,2>& mask, const MultiArray<Point<2>,2>& points, MultiArray<bool,2>& out_mask, InterpolationType method) throw(ImagePlusNotImplemented);
+    template MultiArray<float64,2> interpolation (const MultiArray<float64,2>& ori, const MultiArray<bool,2>& mask, const MultiArray<Point<2>,2>& points, MultiArray<bool,2>& out_mask, InterpolationType method) throw(ImagePlusNotImplemented);
+
+    template Image<uint8,1>   interpolation (const Image<uint8,1>& ori,   const ImageMask& mask, const MultiArray<Point<2>,2>& points, ImageMask& out_mask, InterpolationType method) throw(ImagePlusNotImplemented,ImagePlusError);
+    template Image<int64,1>   interpolation (const Image<int64,1>& ori,   const ImageMask& mask, const MultiArray<Point<2>,2>& points, ImageMask& out_mask, InterpolationType method) throw(ImagePlusNotImplemented,ImagePlusError);
+    template Image<float64,1> interpolation (const Image<float64,1>& ori, const ImageMask& mask, const MultiArray<Point<2>,2>& points, ImageMask& out_mask, InterpolationType method) throw(ImagePlusNotImplemented,ImagePlusError);
+
+    template Image<uint8,3>   interpolation (const Image<uint8,3>& ori,   const ImageMask& mask, const MultiArray<Point<2>,2>& points, ImageMask& out_mask, InterpolationType method) throw(ImagePlusNotImplemented,ImagePlusError);
+    template Image<int64,3>   interpolation (const Image<int64,3>& ori,   const ImageMask& mask, const MultiArray<Point<2>,2>& points, ImageMask& out_mask, InterpolationType method) throw(ImagePlusNotImplemented,ImagePlusError);
+    template Image<float64,3> interpolation (const Image<float64,3>& ori, const ImageMask& mask, const MultiArray<Point<2>,2>& points, ImageMask& out_mask, InterpolationType method) throw(ImagePlusNotImplemented,ImagePlusError);
+} // numeric
+} // math
+} // imageplus

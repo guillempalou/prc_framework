@@ -1,0 +1,220 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file texture_codec.hpp
+ *
+ * General class for texture codecs
+ */
+
+#ifndef IMAGEPLUS_CODING_TEXTURE_TEXTURE_CODEC_HPP
+#define IMAGEPLUS_CODING_TEXTURE_TEXTURE_CODEC_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readbitstream.hpp>
+#include <imageplus/io/writebitstream.hpp>
+#include <imageplus/coding/texture/texture_types.hpp>
+
+namespace imageplus
+{
+namespace coding
+{
+namespace texture
+{
+    //!
+    //! \brief base class to image texture codecs
+    //!
+    //! This class is used as a base class for texture codecs in ImagePlus. You should not instantiate
+    //! this class but create new encoders as classes by inheritance (check ortho_basis.hpp as an example)
+    //! Derived classes should always implement method implementation()
+    //!
+    //! Base class  is a class template. It has a template of the derived class
+    //! because it is one way to implement virtual function templates in C++. Check the
+    //! wikipedia <a href="http://en.wikipedia.org/wiki/Curiously_recurring_template_pattern">article</a> for
+    //! a more detailed explanation of this solution.
+    //! See class Filter for an example of how to use this derived classes
+    //!
+    //! To define a texture encoder, create a new derived class specializing the template with the
+    //! derived class itself (see file ortho_basis.hpp).
+    //! Derived classes must have a two public methods called <b>encoding()</b>
+    //! that performs the actual encoding and <b>decoding()</b> that performs the decoding.
+    //! The <b>encode()</b> and <b>decode()</b> methods defined in the base class
+    //! do nothing else than calling <b>encoding()</b> and <b>decoding()</b>.
+    //! Note that the <b>encoding(), decoding()</b> methods are public only for practical purposes and it
+    //! must NEVER be used directly.
+    //!
+    //! This solution allows to use texture encoders objects as parameters in functions
+    //!
+    //! \tparam Derived : The derived class of the encoder
+    //!
+    //! \author Josep Ramon Morros  - 2009-02 - Creation
+    //! \author Javier Ruiz Hidalgo - 2009-02 - Creation
+    //!
+    template<class Derived>
+    class TextureCodec
+    {
+    public:
+
+        //!
+        //! \brief Default constructor, empty encoder
+        //!
+        TextureCodec()
+        :   _name("Base Texture Encoder")
+        {}
+
+        //!
+        //! \brief Constructor, empty encoder
+        //!
+        //! \param[in] name: Encoder name
+        //!
+        TextureCodec( const std::string& name )
+        :   _name(name)
+        {}
+
+        //!
+        //! \brief Encodes an image
+        //!
+        //! \tparam image_type     : Type of the data
+        //! \tparam num_channels   : Number of color channels
+        //! \tparam partition_type : Data type for the partition image
+        //!
+        //! \param[in]  ori           : Image to encode
+        //! \param[in]  label         : Partition of image ori
+        //! \param[in]  qmap          : Multiarray defining the quantizer for each region. Each particular texture coding method must implement its quantization strategy
+        //! \param[out] coeffs        : Quantized texture coefficients coeffs[reg][chan][c] returns the cth coefficient for region reg anc color channel chan
+        //!
+        //! \return Decoded image
+        //!
+        template< typename    image_type,
+                  std::size_t num_channels,
+                  typename    partition_type >
+        Image<image_type,num_channels> encode( const Image<image_type,num_channels>& ori,
+                                               const ImagePartition<partition_type>& label,
+                                               const MultiArray<uint8,1>&            qmap,
+                                               QTextureCoeffs<num_channels>&         coeffs ) const throw (ImagePlusError)
+        {
+            return static_cast<const Derived*>(this)->encoding(ori, label, qmap, coeffs);
+        }
+
+        //!
+        //! \brief Decodes a set of texture coeffs
+        //!
+        //! \tparam image_type     : Type of the data
+        //! \tparam num_channels   : Number of color channels
+        //! \tparam partition_type : Data type for the partition image
+        //!
+        //! \param[in]  label         : Partition of image
+        //! \param[out] coeffs        : Quantized texture coefficients coeffs[reg][chan][c] returns the cth coefficient for region reg anc color channel chan
+        //! \param[out] rec           : Reconstructed image
+        //!
+        template< typename    image_type,
+                  std::size_t num_channels,
+                  typename    partition_type >
+        void decode( const ImagePartition<partition_type>& label,
+                     const QTextureCoeffs<num_channels>&   coeffs,
+                     Image<image_type,num_channels>&       rec ) const throw (ImagePlusError)
+        {
+            static_cast<const Derived*>(this)->decoding(label, coeffs, rec);
+        }
+
+        //!
+        //! \brief Compress method
+        //!
+        //! \tparam num_channels   : Number of color channels
+        //! \tparam partition_type : Data type for the partition image
+        //!
+        //! \param[in]  label     : Partition of image
+        //! \param[out] coeffs    : Quantized texture coefficients coeffs[reg][chan][c] returns the cth coefficient for region reg anc color channel chan
+        //! \param[out] filename  : Bitstream to write data
+        //!
+        //! \return Size of compressed data (bits)
+        //!
+        template<std::size_t num_channels, typename partition_type>
+        uint64 compress(const ImagePartition<partition_type>& label,
+                        const QTextureCoeffs<num_channels>&   coeffs,
+                        const std::string&                    filename ) throw (ImagePlusError)
+        {
+            io::WriteBitStream bs(filename);
+            uint64 b = compress(label, coeffs, bs);
+            bs.close();
+            return b;
+        }
+
+        //!
+        //! \brief Compress method
+        //!
+        //! \tparam num_channels   : Number of color channels
+        //! \tparam partition_type : Data type for the partition image
+        //!
+        //! \param[in]  label     : Partition of image
+        //! \param[out] coeffs    : Quantized texture coefficients coeffs[reg][chan][c] returns the cth coefficient for region reg anc color channel chan
+        //! \param[out] bs        : Bitstream to write data
+        //!
+        //! \return Size of compressed data (bits)
+        //!
+        template<std::size_t num_channels, typename partition_type>
+        uint64 compress( const ImagePartition<partition_type>& label,
+                         const QTextureCoeffs<num_channels>&   coeffs,
+                         io::WriteBitStream&                   bs ) throw (ImagePlusError)
+        {
+            return static_cast<Derived*>(this)->compressing(label, coeffs, bs);
+        }
+
+        //!
+        //! \brief Decompress method
+        //!
+        //! \tparam num_channels   : Number of color channels
+        //! \tparam partition_type : Data type for the partition image
+        //!
+        //! \param[in]  label     : Partition of image
+        //! \param[out] coeffs    : Quantized texture coefficients coeffs[reg][chan][c] returns the cth coefficient for region reg anc color channel chan
+        //! \param[out] filename  : Bitstream to read data
+        //!
+        template< std::size_t num_channels, typename partition_type >
+        void decompress( const ImagePartition<partition_type>& label,
+                         std::string&                          filename,
+                         QTextureCoeffs<num_channels>&         coeffs ) throw (ImagePlusError)
+        {
+            io::ReadBitStream bs(filename);
+            decompress(label, bs,coeffs);
+            bs.close();
+        }
+
+        //!
+        //! \brief Decompress method
+        //!
+        //! \tparam num_channels   : Number of color channels
+        //! \tparam partition_type : Data type for the partition image
+        //!
+        //! \param[in]  label     : Partition of image
+        //! \param[out] coeffs    : Quantized texture coefficients coeffs[reg][chan][c] returns the cth coefficient for region reg anc color channel chan
+        //! \param[out] bs        : Bitstream to read data
+        //!
+        template< std::size_t num_channels, typename partition_type >
+        void decompress(const ImagePartition<partition_type>& label,
+                        io::ReadBitStream&                    bs,
+                        QTextureCoeffs<num_channels>&         coeffs ) throw (ImagePlusError)
+        {
+            static_cast<Derived*>(this)->decompressing(label, bs, coeffs);
+        }
+
+        /*!
+         * \returns the encoder name
+         */
+        const std::string& name() const
+        {
+            return _name;
+        }
+
+    protected:
+
+        //! Stores the encoder name
+        std::string _name;
+    };
+} // ns texture
+} // ns coding
+} // ns imageplus
+
+#endif // IMAGEPLUS_CODING_TEXTURE_TEXTURE_CODEC_HPP

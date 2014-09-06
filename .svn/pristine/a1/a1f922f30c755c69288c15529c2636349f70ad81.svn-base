@@ -1,0 +1,28 @@
+/*! \page validation Validation System
+
+<div align="right"> 
+<em>
+"In computer programming, unit testing is a procedure used to validate that individual units of source code 
+are working properly. A <tt>unit</tt> is the smallest testable part of an application. 
+In procedural programming a unit may be an individual program, function, procedure, etc., 
+while in object-oriented programming, the smallest unit is a method; which may belong to a base/super class, 
+abstract class or derived/child class."\n
+</em>
+from <a href="http://en.wikipedia.org/wiki/Unit_test">Wikipedia</a>
+</div>
+
+If you are new to the unit testing world, please take a minute to read the
+<a href="http://www.boost.org/libs/test/doc/html/utf/tutorials.html">hello testing tutorials</a>
+of the <a href="http://www.boost.org/libs/test">Boost Test Library</a>   
+
+So, now we must agree that <b>we need to test while developing</b>, right? \n
+For this reason ImagePlus has a validation (or test) system based on the 
+<a href="http://www.boost.org/libs/test">Boost Test Library</a> to:
+- simplify tests addition
+- simplify tests development
+- create template and parametric tests
+- run desired tests in build-time
+- use test data in a uniformed path
+
+\todo how to test?
+*/

@@ -1,0 +1,85 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file numeric_util.test
+ */
+
+#include <iostream>
+#include <imageplus/core.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+
+
+#include <boost/test/floating_point_comparison.hpp>
+
+
+// TODO: Test commented aout because it fails on assert in mnint functions  
+
+
+BOOST_AUTO_TEST_SUITE ( numericutilSuite );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+typedef boost::mpl::list<float32,float64> DataTypesF;
+typedef boost::mpl::list<int64, float64> DataTypesT;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( mnintMethod1, T, DataTypesF )
+{
+    T val1 = static_cast<T>(3.1);
+    T val2 = static_cast<T>(-3.1);
+    T val3 = static_cast<T>(3.7);
+    T val4 = static_cast<T>(-3.7);
+
+    float64 f1 = mnint<float64>(val1);
+    BOOST_CHECK_CLOSE(f1,static_cast<float64>(3),1.e-7);
+    float64 f2 = mnint<float64>(val2);
+    BOOST_CHECK_CLOSE(f2,static_cast<float64>(-3),1.e-7);
+    float64 f3 = mnint<float64>(val3);
+    BOOST_CHECK_CLOSE(f3,static_cast<float64>(4),1.e-7);
+    float64 f4 = mnint<float64>(val4);
+    BOOST_CHECK_CLOSE(f4,static_cast<float64>(-4),1.e-7);
+
+    int64   i1 = mnint<int64>(val1);
+    BOOST_CHECK_EQUAL(i1,static_cast<int64>(3));
+    int64   i2 = mnint<int64>(val2);
+    BOOST_CHECK_EQUAL(i2,static_cast<int64>(-3));
+    int64   i3 = mnint<int64>(val3);
+    BOOST_CHECK_EQUAL(i3,static_cast<int64>(4));
+    int64   i4 = mnint<int64>(val4);
+    BOOST_CHECK_EQUAL(i4,static_cast<int64>(-4));
+
+    uint8   ui1 = mnint<uint8>(val1);
+    BOOST_CHECK_EQUAL(ui1,static_cast<uint8>(3));
+    uint8   ui3 = mnint<uint8>(val3);
+    BOOST_CHECK_EQUAL(ui3,static_cast<uint8>(4));
+
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( mnintMethod2, T, DataTypesT )
+{
+    T val1 = static_cast<T>(3);
+    T val2 = static_cast<T>(-3);
+
+    float64 f1 = mnint<float64>(val1);
+    BOOST_CHECK_CLOSE(f1,static_cast<float64>(3),1.e-7);
+    float64 f2 = mnint<float64>(val2);
+    BOOST_CHECK_CLOSE(f2,static_cast<float64>(-3),1.e-7);
+
+    int64   i1 = mnint<int64>(val1);
+    BOOST_CHECK_EQUAL(i1,static_cast<int64>(3));
+    int64   i2 = mnint<int64>(val2);
+    BOOST_CHECK_EQUAL(i2,static_cast<int64>(-3));
+
+    uint8   ui1 = mnint<uint8>(val1);
+    BOOST_CHECK_EQUAL(ui1,static_cast<uint8>(3));
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

@@ -1,0 +1,125 @@
+/*
+ * hierarchical_partition.cpp
+ *
+ *  Created on: Aug 17, 2012
+ *      Author: guillem
+ */
+
+/*
+ * partition_test.cpp
+ *
+ *  Created on: Aug 2, 2012
+ *      Author: guillem
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+//#include <imageplus/gma/signals/space_partition.hpp>
+#include <imageplus/core/regions/hierarchical_region.hpp>
+
+//#include <imageplus/gma/representations/hierarchical_region_partition.hpp>
+//#include <imageplus/gma/tictoc.hpp>
+
+using namespace imageplus;
+
+int main() {
+
+	/*typedef ImageSignal<float64,1> ImageType;
+	typedef VideoSignal<float64,1> VideoType;
+
+	typedef ImageType::coord_type coord2d;
+	typedef VideoType::coord_type coord3d;
+
+	typedef SpaceRegion<coord2d> SpaceRegion2D;
+	typedef SpaceRegion<coord3d> SpaceRegion3D;
+
+	typedef HierarchicalRegion<coord2d> Region2D;
+	typedef HierarchicalRegion<coord3d> Region3D;
+
+	uint64 N = 10;
+	uint64 Nv = 10;
+	ImageType image(N,N);
+	VideoType video(Nv,Nv,Nv);
+
+	SpacePartition<uint64, 2> p_2d(N,N);
+	SpacePartition<uint64, 3> p_3d(Nv,Nv,Nv);
+
+	uint64 A = 0.4*Nv;
+	uint64 B = 0.6*Nv;
+	for (uint64 i = A; i <= B; i++) {
+		for (uint64 k = A; k <= B; k++) {
+			if (i==A || i == B || k == A || k == B) image(i,k) = 2;
+		}
+	}
+
+	p_2d.set_flatzone_labels<Connectivity2D4>(image);
+
+	for (uint64 i = A; i <= B; i++) {
+		for (uint64 k = A; k <= B; k++) {
+			for (uint64 j = A; j <= B; j++) {
+				if (i==A || i == B || k == A || k == B || j == A || j == B) video(i,k,j) = 2;
+			}
+		}
+	}
+
+	p_3d.set_flatzone_labels<Connectivity3D6>(video);
+
+	HierarchicalRegionPartition<Region2D> hp_2d;
+	hp_2d.init(p_2d);
+
+	hp_2d.merge_regions(1,2,4);
+	hp_2d.merge_regions(3,4,5);
+
+	HierarchicalRegionPartition<Region3D> hp_3d;
+	hp_3d.init(p_3d);
+
+	hp_3d.merge_regions(1,2,4);
+	hp_3d.merge_regions(3,4,5);
+
+	//! Stress test
+
+	uint64 bigN = 1000;
+	SpacePartition<uint64,2> big_2d(bigN,bigN);
+	big_2d.set_unique_labels();
+
+	//uint64 bigNv = 100;
+	//SpacePartition<uint64,3> big_3d(bigNv,bigNv,bigNv);
+	//big_3d.set_unique_labels();
+
+	TicToc t;
+
+	t.tic("allocate");
+
+	HierarchicalRegionPartition<Region2D> bigp_2d;
+	t.toc("allocate",true,true);
+
+	t.tic("init");
+	bigp_2d.init(big_2d);
+	t.toc("init",true,true);
+
+	t.tic("mergings");
+	uint64 label = bigp_2d.max_label();
+	uint64 s = 1;
+	uint64 f = label+1;
+	for (; s+1 < f; f++, s+=2) {
+		//std::cout << "merging " << s << " " << s+1 << " to " << f << std::endl;
+		bigp_2d.merge_regions(s,s+1,f);
+	}
+	std::cout << "A total of " << label-1 << " mergings" << std::endl;
+	t.toc("mergings",true,true);
+
+	HierarchicalRegionPartition<Region3D> bigp_3d;
+	bigp_3d.init(big_3d);
+	label = bigp_3d.max_label();
+	s = 1;
+	f = label+1;
+	std::cout << "Regions " << label << std::endl;
+	for (; s+1 < f; f++, s+=2) {
+		bigp_3d.merge_regions(s,s+1,f);
+	}
+	*/
+}
+
+
+
+

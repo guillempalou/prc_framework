@@ -1,0 +1,137 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file writesequence.hpp
+ * 
+ * Class to write a sequence of images to disk
+ */
+
+#ifndef IMAGEPLUS_IO_WRITESEQUENCE_HPP
+#define IMAGEPLUS_IO_WRITESEQUENCE_HPP
+
+#include <boost/format.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+namespace imageplus
+{
+    namespace io
+    {
+        /*!
+         * \brief Class to write a sequence of images to disk
+         * 
+         * \todo Add support for video files
+         * \todo Add control of existing directories or files
+         * \todo Add control if filanames is not specified
+         * 
+         * \author Albert Gil Moreno <albert.gil@upc.edu>
+         * \date   2010-11-03
+         */
+        class WriteSequence
+        {
+            public:
+
+                /*!
+                 * \brief Default contructor
+                 * 
+                 * Note that it has been only defined to be able to have a std container of
+                 * WriteSequence objects.
+                 */
+                WriteSequence();
+
+                /*!
+                 * \brief Main contructor
+                 * 
+                 * It calls the \ref open method.
+                 * 
+                 * \param[in]  filenames : string with filenames of images in disk (printf style)
+                 * \param[in] startframe : starting frame number
+                 * \param[in]       skip : Number of frames to skip (default 0 so no skipping)
+                 */
+                WriteSequence( const std::string& filenames, uint64 startframe = 0, uint64 skip = 0);
+
+                /*!
+                 * \brief Destructor
+                 */
+                ~WriteSequence();
+
+                /*!
+                 * \brief Opens the of images for writting (printf style)
+                 * 
+                 * \param[in]  filenames : string with filenames of images in disk (printf style)
+                 * \param[in] startframe : starting frame number
+                 * \param[in]       skip : Number of frames to skip (default 0 so no skipping)
+                 */
+                void open( const std::string& filenames, uint64 startframe = 0, uint64 skip = 0);
+                
+                /*!
+                 * \brief Writes the input image to disk as part of the sequence
+                 * 
+                 * \param[in] image : the image to write
+                 * 
+                 * \return itself, just to be able to concatenate writings
+                 */
+                template< typename ImageModel >
+                WriteSequence& operator<<( const ImageModel& image ) throw (ImagePlusError)
+                {
+                    switch (_format)
+                    {
+                        case IMAGES_PRINTF:
+                        {
+                            std::string fname = boost::str( boost::format(_filename) % _framecount );
+                            WriteImage wima(fname); wima << image;
+                            break;
+                        }
+                        default:
+                        {
+                            throw ImagePlusError("Format not supported");
+                        }
+                    }
+                    
+                    // Increase the number for next frame
+                    _framecount += 1 + _skip;
+                    
+                    return *this;
+                }
+
+                /*!
+                 * \return the start frame number of the sequence
+                 */
+                uint64 startframe() const;
+
+                /*!
+                 * \return the format of the sequence
+                 */
+                SeqFormat format() const;
+                
+                /*!
+                 * \return the number of images to be skipped
+                 */
+                uint64 skip() const
+                {
+                    return _skip;
+                }
+                
+            private:
+                
+                //! Stores filename of the sequence on disk
+                std::string _filename;
+                
+                //! Variable to keep track of the frame to be write next
+                uint64 _framecount;
+                
+                //! Stores the start frame of the sequence
+                uint64 _startframe;
+                
+                //! Enumerate with the input format of the sequence
+                SeqFormat _format;
+                
+                //! Stores the skip frame of the sequence
+                uint64 _skip;
+        };
+    } // namespace io
+} //namespace imageplus
+
+#endif

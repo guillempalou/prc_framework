@@ -1,0 +1,79 @@
+/*
+ * example_cut2.cpp
+ *
+ *  Created on: May 17, 2013
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/graph_cuts/gco/GCoptimization.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+
+using namespace imageplus;
+using namespace imageplus::graph_cuts;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+int64 	N = 100;
+float64 lambda = 5;
+int64 R = 100;
+
+typedef ImageSignal<float64,1>		ImageType;
+
+
+float64 data_cost(int p, int l, void *extraData) {
+	ImageType* img = (ImageType*) extraData;
+	//std::cout << "Pixel " << p/N << " " << p%N << " " << (*img)(p/N,p%N)(0);
+	return std::fabs(255*l - (*img)(p/N,p%N)(0));
+}
+
+float64 smooth_cost(int p1, int p2, int l1, int l2) {
+	return lambda*(l1!=l2);
+}
+
+int main() {
+
+	ImageType img(N,N);
+	for (ImageType::iterator p = img.begin(); p != img.end(); ++p) {
+		(*p)(0) = 255*std::round(p.pos()(0)*1.0/N);
+		if ((*p)(0)==0)
+			(*p)(0)+=rand()%R;
+		else
+			(*p)(0)-=rand()%R;
+		//std::cout << p.pos().transpose() << " " << (*p).transpose() << std::endl;
+	}
+
+	img.write("original.png");
+
+	GCoptimizationGeneralGraph g(N*N,2);
+
+	for (int64 i = 0; i < N; i++) {
+		for (int64 k = 0; k < N; k++) {
+			int64 dir[4][2]= {{-1,0},{1,0},{0,-1},{0,1}};
+			for (uint64 j = 0; j < 4; j++) {
+				int64 nx = i+dir[j][0];
+				int64 ny = k+dir[j][1];
+				if (nx >= 0 && nx < N && ny >= 0 && ny < N) {
+					g.setNeighbors(i+k*N,nx+ny*N);
+				}
+			}
+		}
+	}
+
+	g.setDataCost(data_cost,(void*)&img);
+	g.setSmoothCost(smooth_cost);
+
+	printf("Before optimization energy is %f\n",g.compute_energy());
+	g.expansion(2);// run expansion for 2 iterations. For swap use gc->swap(num_iterations);
+	printf("After optimization energy is %f\n",g.compute_energy());
+
+	for (int64 i = 0; i < N; i++) {
+		for (int64 k = 0; k < N; k++) {
+			img(i,k)(0)=255*g.whatLabel(N*i+k);
+		}
+	}
+
+	img.write("final.png");
+
+}

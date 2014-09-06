@@ -1,0 +1,90 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file lu_decomposition.hpp
+//!
+//!  LU decomposition
+//!
+
+#ifndef IMAGEPLUS_MATH_NUMERIC_LU_DECOMPOSITION_HPP
+#define IMAGEPLUS_MATH_NUMERIC_LU_DECOMPOSITION_HPP
+
+
+#include <imageplus/core.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+    
+            //!
+            //! \brief Linear equations system solve
+            //!
+            //! \author Adolfo López <alopez@gps.tsc.upc.edu>
+            //!
+            //! \date 18-02-2008
+            //!
+            //! The function solves a linear system defined by a squared matrix of coefficients (in1), and a vector
+            //! of independent terms. LU decomposition of the matrix is used.
+            //!
+            //! Example:
+            //! Consider the following system:
+            //!
+            //!   4x+3y=1;
+            //!   6x+3y=0;
+            //! 
+            //!  \code
+            //!  MultiArray<float64,2> a(2,2);
+            //!  MultiArray<float64,2> sol(2,2);
+            //!  MultiArray<float64,1> indep(2), vsol(2);
+            //!  //Data
+            //!  a[0][0]=4; a[0][1]=6; a[1][0]=3; a[1][1]=3;
+            //!  indep[0]=1;indep[1]=0;
+            //!  
+            //!  vsol=lu_solve(a,indep);
+            //!  
+            //!  \endcode
+            //!  vsol contains x=-0.5, y=1;
+            //!  Note that the proper instantiation of this method is float64
+            //!
+            //!  The algorithm is based on Boost efficient LU decomposition.
+            //!
+            //! \param[in] in1 : Matrix with the coefficients
+            //! \param[in] in2 : Vector with independent terms
+            //!
+            //! \return a MultiArray vector with the solution. ImagePlusError Exception is thrown in case of
+            //! singular in1 matrix.
+            //! 
+            template<typename T>
+            MultiArray<T,1> lu_solve( const MultiArray<T,2>& in1, const MultiArray<T,1>& in2) throw (ImagePlusError);
+    
+    
+            //!
+            //! \brief Determinant of a square matrix
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 30-03-2008
+            //!
+            //! The function computes the determinant of a matrix.
+            //! The algorithm is based on Boost efficient LU decomposition.
+            //!
+            //! \param[in] m : Input matrix (2D MultiArray)
+            //!
+            //! \return Determinant of the matrix
+            //! 
+            template<typename T>
+            float64 lu_det(const MultiArray<T,2>& m) throw(ImagePlusError); 
+            
+        }
+    }
+}
+
+
+#endif // IMAGEPLUS_MATH_NUMERIC_LU_DECOMPOSITION_HPP

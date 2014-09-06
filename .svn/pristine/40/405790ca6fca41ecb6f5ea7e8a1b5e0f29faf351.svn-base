@@ -1,0 +1,1494 @@
+
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file contour_shape.hpp
+//!
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/core/mask.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+#include <imageplus/filters/gaussian.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+
+
+
+#ifndef IMAGEPLUS_DESCRIPTORS_GEOMETRY_CONTOUR_SHAPE_HPP
+#define IMAGEPLUS_DESCRIPTORS_GEOMETRY_CONTOUR_SHAPE_HPP
+
+#define CONTOURSHAPE_T 0.000001
+#define CONTOURSHAPE_MAXCSS 10
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+    
+        //!
+        //! Contour Shape descriptor is based on the Curvature Scale-Space(CSS) representation of the contour. 
+        //! The CSS representation descomposes the contour into convex and concave sections by determining the inflection points (e.g. points at which curvature is zero)
+        //! This is done in a multiresolution fashion, where the contour is analyzed at various scales, obtained by a smoothing process.
+        //! The descriptor consists of the eccentricity and circularity values of the original and filtered contour, the index indicating the number of peaks in the CSS image, the magnitude of the largest peak and the x-positions, y-positions and height on the remaining peaks (positions are relative to the highest and height is related to the previous peak's height)
+        //!
+        //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+        //!
+        //! \date 09-10-2009 
+        template<class PositionModel>
+        class ContourShapeMPEG7 : public DescriptorBase
+        {
+        public:
+            //! Type of coordinate
+            typedef PositionModel CoordType;
+            
+            //!
+            //! \brief Default constructor
+            //!
+            ContourShapeMPEG7() : DescriptorBase("ContourShapeMPEG7",false), _circularity(), _eccentricity(), _circularity_smoothed(), _eccentricity_smoothed(), _peaks_x(), _max_peak_y(), _peaks_y()
+            {
+        
+            }        
+            
+            //! \brief It computes CSS Image and its parameters.
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {        
+                const ContourMask<CoordType>& desc = peer_descs->calculate(new ContourMask<CoordType>(), first, last);
+                ImaVolMask<2> mask = desc.value();
+
+                std::vector<float64> x;
+                std::vector<float64> y;
+
+                if(mask.size_x()>1 && mask.size_y()>1)
+                {
+                    //Arc_length parameterization
+                    _arclength_param(mask,x,y,256);
+                    _peaks_extraction(x,y,256);
+                }
+            }
+            
+            //! \brief Returns the eccentricity of the original contour
+            //!
+            //! \return The eccentricity of the original contour
+            const uint8 eccentricity() const
+            {
+                return _eccentricity;
+            }
+            
+            //! \brief Returns the eccentricity of the filtered contour
+            //!
+            //! \return The eccentricity of the filtered contour
+            const uint8 eccentricity_smoothed() const
+            {
+                return _eccentricity_smoothed;
+            }
+            
+            //! \brief Returns the circularity of the original contour
+            //!
+            //! \return The circularity of the original contour
+            const uint8 circularity() const
+            {
+                return _circularity;
+            }
+            
+            //! \brief Returns the circularity of the filtered contour
+            //!
+            //! \return The circularity of the filtered contour
+            const uint8 circularity_smoothed() const
+            {
+                return _circularity_smoothed;
+            }
+            
+            //! \brief Returns the localization of the peaks
+            //!
+            //! \return The localization of the peaks
+            const std::vector<uint8>& peaks_x() const
+            {
+                return _peaks_x;
+            }
+            
+            //! \brief Returns the height of the maximum peak
+            //!
+            //! \return The height of the maximum peak
+            const uint8& max_peak_y() const
+            {
+                return _max_peak_y;
+            }
+            
+            //! \brief Returns the height of the peaks
+            //!
+            //! \return The height of the peaks
+            const std::vector<uint8>& peaks_y() const
+            {
+                return _peaks_y;
+            }
+            
+            
+            
+            
+        #ifdef USE_XML    
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "ContourShapeType";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem;
+                XERCES_CPP_NAMESPACE::DOMText* textElem;
+                std::string append, append2;
+                std::string space(" ");
+                
+                dataElem = doc->createElement(io::fromNative("GlobalCurvature").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>((uint16)_circularity);
+                append2 = boost::lexical_cast<std::string>((uint16)_eccentricity);
+                append = append + space + append2;
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+                
+                dataElem = doc->createElement(io::fromNative("PrototypeCurvature").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>((uint16)_circularity_smoothed);
+                append2 = boost::lexical_cast<std::string>((uint16)_eccentricity_smoothed);
+                append = append + space + append2;
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+                
+                
+                dataElem = doc->createElement(io::fromNative("HighestPeakY").c_str());
+                vdElem->appendChild(dataElem);
+                append = boost::lexical_cast<std::string>((uint16)_max_peak_y);
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+                
+                uint64 num_peaks = _peaks_x.size();
+                if(num_peaks > 63)
+                {
+                    num_peaks = 63;
+                }
+                
+                for(std::size_t i=0; i < num_peaks; i++)
+                {
+                    dataElem = doc->createElement(io::fromNative("Peak").c_str());
+                    vdElem->appendChild(dataElem);
+                    
+                    append = boost::lexical_cast<std::string>((uint16)_peaks_x[i]);
+                    dataElem->setAttribute(io::fromNative("peakX").c_str(), io::fromNative(append.c_str()).c_str());
+                    append = boost::lexical_cast<std::string>((uint16)_peaks_y[i]);
+                    dataElem->setAttribute(io::fromNative("peakY").c_str(), io::fromNative(append.c_str()).c_str());
+                }
+            }
+
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \returns true if the descriptor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "ContourShapeType");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("ContourShapeType not found");
+                }
+                else
+                {
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = io::xml_get_check_son(curr_node, "GlobalCurvature");
+                    std::string text = io::xml_get_text_son(curr_node2, curr_node2);
+                    std::string value;
+                    int pos = 0;
+                    while(text[pos]!=' ')
+                    {
+                        value.push_back(text[pos]);
+                        pos++;
+                    }
+                    pos++;
+                    sscanf(value.c_str(), "%hhu", &_circularity);
+                    std::string value_aux;
+                    std::string::iterator it;
+                    for(it=text.begin()+pos;it!=text.end();++it)
+                    {
+                        value_aux.push_back(*it);
+                    }
+                    sscanf(value_aux.c_str(), "%hhu", &_eccentricity);
+                      
+                    curr_node2 = io::xml_get_check_son(curr_node, "PrototypeCurvature");
+                    text = io::xml_get_text_son(curr_node2, curr_node2);
+                    value.erase(value.begin(),value.end());
+                    pos = 0;
+                    while(text[pos]!=' ')
+                    {
+                        value.push_back(text[pos]);
+                        pos++;
+                    }
+                    pos++;
+                    sscanf(value.c_str(), "%hhu", &_circularity_smoothed);
+                    value_aux.resize(0);
+                    for(it=text.begin()+pos;it!=text.end();++it)
+                    {
+                        value_aux.push_back(*it);
+                    }
+                    sscanf(value_aux.c_str(), "%hhu", &_eccentricity_smoothed);
+                    
+                    curr_node2 = io::xml_get_check_son(curr_node, "HighestPeakY");
+                    text = io::xml_get_text_son(curr_node2, curr_node2);
+                    sscanf(value.c_str(), "%hhu", &_max_peak_y);
+                    
+                    XERCES_CPP_NAMESPACE::DOMNodeList *child_list;
+                    int64 num_children;
+                    // Gets the list of children
+                    child_list = curr_node->getChildNodes();
+                    // Gets the number of children
+                    num_children = child_list->getLength();
+                    XERCES_CPP_NAMESPACE::DOMNode *son;
+                    for(int64 ii=0; ii<num_children; ii++ )
+                    {  
+                        son = child_list->item(ii);
+                        if(son->getNodeType() == XERCES_CPP_NAMESPACE::DOMNode::ELEMENT_NODE)
+                        {
+                            char* name = xercesc::XMLString::transcode(son->getNodeName());
+                            if(strcmp(name, "Peak") == 0)
+                            {
+                                uint8 peak_val;
+                                XERCES_CPP_NAMESPACE::DOMNamedNodeMap *node_attr = son->getAttributes();
+                                XERCES_CPP_NAMESPACE::DOMNode* curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("peakX"));
+                                sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%hhu", &peak_val);
+                                _peaks_x.push_back(peak_val);
+                                curr_node3 = node_attr->getNamedItem(xercesc::XMLString::transcode("peakY"));
+                                sscanf(xercesc::XMLString::transcode(curr_node3->getNodeValue()), "%hhu", &peak_val);
+                                _peaks_y.push_back(peak_val);
+                            }
+                        }
+                    }
+                    read = true;
+                }
+                return read;
+            }
+        #endif
+                      
+        private:
+            
+                        
+            //! \brief It computes the arc length parameterization of the contour
+            //!
+            //! \param[in] mask     : Mask of the border pixels of the region
+            //! \param[out] x       : x parameterization of the contour
+            //! \param[out] y       : y parameterization of the contour
+        	//! \param[in] n        : Number of equidistant points of the contour to save 
+            //!
+            void _arclength_param(ImaVolMask<2>& mask, std::vector<float64>& x,std::vector<float64>& y, uint64 n = 256)
+            {
+            	std::vector<int64> x_aux;
+            	std::vector<int64> y_aux;
+            	
+            	boost::array<std::size_t, 2> borders2d = {{1,1}};
+                Border<ImaVolMask<2> >& mask_with_border = calc_descriptor(new Border<ImaVolMask<2> >(borders2d, false), mask);
+                Coord<int64, 2> pos = *(mask_with_border.begin());
+                
+                //We add the first position
+                x_aux.push_back(pos[0]);
+                y_aux.push_back(pos[1]);
+               
+                boost::array<Coord<int64, 2>, 8> neighbor;
+                neighbor[0][0]=-1;
+                neighbor[0][1]=-1;
+                neighbor[1][0]= 0;
+                neighbor[1][1]=-1;
+                neighbor[2][0]= 1;
+                neighbor[2][1]=-1;
+                neighbor[3][0]= 1;
+                neighbor[3][1]= 0;
+                neighbor[4][0]= 1;
+                neighbor[4][1]= 1;
+                neighbor[5][0]= 0;
+                neighbor[5][1]= 1;
+                neighbor[6][0]=-1;
+                neighbor[6][1]= 1;
+                neighbor[7][0]=-1;
+                neighbor[7][1]= 0;
+                
+                
+                uint8 aux=0;
+                do
+                {
+                    uint8 ii=0;
+                    for(;ii<8;ii++)
+                    {
+                    	if(mask_with_border(0)(pos+neighbor[(aux+ii)%8]))
+                    	{
+                    		
+                    		pos = pos + neighbor[(aux+ii)%8];
+                    		x_aux.push_back(pos[0]);
+                    		y_aux.push_back(pos[1]);
+                    		aux = (aux+ii+5)%8;
+                    		break;
+                    	}
+                    }
+                    if (ii == 8)
+                      break;
+                    else if ((pos[0]==x_aux[0])&&(pos[1]==y_aux[0]))
+                    {
+                    	break;
+                    }
+                }while(1);
+                
+                float64 per = 0.0;
+                std::vector<float64> dst;
+                uint64 size = x_aux.size();
+                for (uint64 i1 = 1; i1 < size; i1++)
+                {
+                  uint64 i2=i1-1;
+                  int64 dx = x_aux[i1] - x_aux[i2];
+                  int64 dy = y_aux[i1] - y_aux[i2];
+                  dst.push_back(std::sqrt((float64)(dx*dx + dy*dy)));
+                  per += dst[i1-1];
+                }
+                
+                float64 del = per / (float64)n;
+                uint64 cur = 0;
+                float64 oldd = dst[cur];
+                x.push_back(x_aux[0]);
+                y.push_back(y_aux[0]);
+                for (uint64 jj = 1; jj < n; jj++)
+                {
+                	if (oldd > del)
+                	{
+                		float64 f = del / oldd;
+                		oldd -= del;
+                		uint64 i1=(cur+1)%size;
+                		float64 xs = f*(x_aux[i1] - x[jj-1]);
+                		float64 ys = f*(y_aux[i1] - y[jj-1]);
+                		x.push_back(x[jj-1] + xs);
+                		y.push_back(y[jj-1] + ys);
+                	}
+                	else
+                	{
+                		float64 newd = oldd + dst[++cur];
+                		while (newd < del)
+                			newd += dst[++cur];
+                		oldd = newd - del;
+                		float64 f = (dst[cur] - oldd) / dst[cur];
+                		uint64 i1=(cur+1)%size;
+                		float64 xs = f*(x_aux[i1] - x_aux[cur]);
+                		float64 ys = f*(y_aux[i1] - y_aux[cur]);
+                		x.push_back(x_aux[cur] + xs);
+                		y.push_back(y_aux[cur] + ys);
+                	}
+                }
+            }
+            
+            //! \brief It computes the parameters of the ContourShape Descriptor
+            //!
+            //! \param[in] x       : x parameterization of the contour
+            //! \param[in] y       : y parameterization of the contour
+        	//! \param[in] np      : Number of equidistant points of the contour
+            //!
+            void _peaks_extraction(std::vector<float64>& x,std::vector<float64>& y, uint64 np = 256)
+            {
+            	
+            	std::vector<float64> dx;
+            	std::vector<float64> dy;
+            	std::vector<float64> d2x;
+            	std::vector<float64> d2y;
+            	std::vector<float64> u_norm;
+            	std::vector<float64> curv;
+            	std::vector<float64> newMinima;
+            	std::vector<float64> newMaxima;
+            	std::vector<float64> oldMinima;
+            	std::vector<float64> oldMaxima;
+            	std::vector<float64> peaks_x;
+            	std::vector<float64> peaks_y;
+            	uint64 nPeaks=0;
+            	dx.resize(np);
+            	dy.resize(np);
+            	d2x.resize(np);
+            	d2y.resize(np);
+            	u_norm.resize(np);
+            	curv.resize(np);
+            	uint64 newNmin,newNmax,oldNmin,oldNmax;
+            	newNmin = newNmax = oldNmin = oldNmax = 0;
+            	
+        	    dx[0] = x[0] - x[np-1];
+       	    	dy[0] = y[0] - y[np-1];
+            	for (uint64 n1 = 1; n1 < np; n1++)
+            	{
+            	    dx[n1] = x[n1] - x[n1-1];
+            	    dy[n1] = y[n1] - y[n1-1];
+            	}
+
+            	uint64 rec = 0;
+            	uint64 maxrec = (uint64)(0.262144 * np * np);
+            	do
+            	{
+            	    if (newNmin > 0)
+            	    	oldMinima = newMinima;
+            	    oldNmin = newNmin;
+
+            	    if (newNmax > 0)
+            	    	oldMaxima = newMaxima;
+            	    oldNmax = newNmax;
+            		d2x[0]=dx[0]-dx[np-1];
+	        		d2y[0]=dy[0]-dy[np-1];
+	        		float64 len = std::sqrt(dx[0]*dx[0] + dy[0]*dy[0]);
+	        		u_norm[0]=0.0;
+	            	for (uint64 i1 = 1; i1 < np; i1++)
+	            	{
+	            	    u_norm[i1]=len;
+	            		d2x[i1] = dx[i1] - dx[i1-1];
+	            	    d2y[i1] = dy[i1] - dy[i1-1];
+	            	    len += std::sqrt(dx[i1]*dx[i1] + dy[i1]*dy[i1]);
+	            	}
+	            	
+	            	float64 ilen = 1.0/len;
+	                for (uint64 i1 = 0; i1 < np; i1++)
+	                {
+	                	u_norm[i1] *= ilen;
+	                	curv[i1] = dx[i1]*d2y[i1] - dy[i1]*d2x[i1];
+	                }
+	                newNmin = newNmax = 0;
+	                newMinima.resize(0);
+	                newMaxima.resize(0);
+	                float64 old_curv, old_u;
+	                float64 new_u = u_norm[0];
+	                float64 new_curv = curv[0];
+	                for (uint64 j1 = 0; j1 < np; j1++)
+	                {
+	                	int j1w = (j1+1)%np;
+	                	old_curv = new_curv;
+	                	old_u = new_u;
+	                	new_u = u_norm[j1w];
+	                	new_curv = curv[j1w];
+	                	if ((old_curv < -CONTOURSHAPE_T) && (new_curv >= -CONTOURSHAPE_T))
+	                	{
+	                		for (uint64 j2 = j1+1; j2 < j1+np; j2++)
+	                		{
+	                			uint64 j2w = j2%np;
+	                			if (curv[j2w] < -CONTOURSHAPE_T)
+	                				break;
+	                			if (curv[j2w] >= CONTOURSHAPE_T)
+	                			{
+	                				float64 du = u_norm[j2w] - old_u;
+	                				while (du < 0.0) du += 1.0;
+	                				float64 min = -old_curv*du / (curv[j2w] - old_curv) + old_u;
+	                				while (min > 1.0) min -= 1.0;
+	                				newMinima.push_back(min);
+	                				newNmin++;
+	                				break;
+	                			}
+	                		}
+	                	}
+	                	if ((old_curv >= CONTOURSHAPE_T) && (new_curv < CONTOURSHAPE_T))
+	                	{
+	                		for (uint64 j2 = j1+1; j2 < j1+np; j2++)
+	                		{
+	                			uint64 j2w = j2%np;
+	                			if (curv[j2w] >= CONTOURSHAPE_T)
+	                				break;
+	
+	                			if (curv[j2w] < -CONTOURSHAPE_T)
+	                			{
+	                				double du = u_norm[j2w] - old_u;
+	                				while (du < 0.0) du += 1.0;
+	                				float64 max = -old_curv*du / (curv[j2w] - old_curv) + old_u;
+	                				while (max > 1.0) max -= 1.0;
+	                				newMaxima.push_back(max);
+	                				newNmax++;
+	                				break;
+	                			}
+	                		}
+	                  	}
+	                }
+
+	                std::vector<float64> dx_smoothed;
+	                std::vector<float64> dy_smoothed;
+	                dx_smoothed.resize(np);
+	                dy_smoothed.resize(np);
+	                dx_smoothed[0]=0.25*(dx[np-1]+2.0*dx[0]+dx[1]);
+	                dy_smoothed[0]=0.25*(dy[np-1]+2.0*dy[0]+dy[1]);
+	                for (uint64 i1 = 1; i1 < np-1; i1++)
+	                {
+	                	dx_smoothed[i1] = 0.25*(dx[i1-1] + 2.0*dx[i1] + dx[i1+1]);
+	                	dy_smoothed[i1] = 0.25*(dy[i1-1] + 2.0*dy[i1] + dy[i1+1]);
+	                }
+	                dx_smoothed[np-1] = 0.25*(dx[np-2] + 2.0*dx[np-1] + dx[0]);
+	                dy_smoothed[np-1] = 0.25*(dy[np-2] + 2.0*dy[np-1] + dy[0]);
+	                
+	                for(uint64 ii = 0; ii < np; ii++)
+	                {
+	                	dx[ii]=dx_smoothed[ii];
+	                	dy[ii]=dy_smoothed[ii];
+	                }
+	                
+	                if ((newNmin < oldNmin) && (newNmax < oldNmax) && (oldNmin <= (CONTOURSHAPE_MAXCSS)) && (oldNmax <= (CONTOURSHAPE_MAXCSS)))
+	                {
+	                	for (uint64 ii = 0; ii < newNmin; ii++)
+	                    {
+	                    	uint64 idx = 0;
+		                    float64 diff = 9999.9;
+		                    for (uint64 jj = 0; jj < oldNmin; jj++)
+		                    {
+		                    	float64 d = newMinima[ii] - oldMinima[jj];
+		                    	if (d<0) d=-d;
+		                    	if (d > 0.5) d = 1.0 - d;
+		                    	if (d < diff)
+		                    	{
+		                    		idx = jj;
+		                    		diff = d;
+		                    	}
+		                    }
+		                    oldNmin--;
+		                    oldMinima.erase(oldMinima.begin()+idx);
+	                    }
+
+	                    for (uint64 ii = 0; ii < newNmax; ii++)
+	                    {
+	                    	uint64 idx = 0;
+		                    float64 diff = 9999.9;
+		                    for (uint64 jj = 0; jj < oldNmax; jj++)
+		                    {
+		                    	float64 d = newMaxima[ii] - oldMaxima[jj];
+		                        if (d<0) d=-d;
+		                        if (d > 0.5) d = 1.0 - d;
+		                        if (d < diff)
+		                        {
+		                          idx = jj;
+		                          diff = d;
+		                        }
+		                    }
+		                    oldNmax--;
+		                    oldMaxima.erase(oldMaxima.begin()+idx);
+	                    }
+
+	                    while (oldNmin)
+	                    {
+	                    	uint64 idx = 0;
+	                    	float64 diff = 9999.9;
+	                    	for (uint64 ii = 0; ii < oldNmax; ii++)
+	                    	{
+	                    		float64 d = oldMaxima[ii] - oldMinima[0];
+	                    		if(d<0) d=-d;
+	                        	if (d > 0.5) d = 1.0 - d;
+	                        	if (d < diff)
+	                        	{
+	                        		idx = ii;
+	                        		diff = d;
+	                        	}
+	                    	}
+
+	                    	float64 x_mid = 0.5 * (oldMinima[0] + oldMaxima[idx]);
+	                    	float64 d_aux = oldMinima[0] - oldMaxima[idx];
+	                    	if(d_aux<0) d_aux=-d_aux;
+	                    	if (d_aux > 0.5)
+	                    	{
+	                    		if (x_mid > 0.5) x_mid -= 0.5;
+	                    		else         x_mid += 0.5;
+	                    	}
+	                    	uint64 xidx = 0;
+	                    	diff = u_norm[0] - x_mid;
+	                    	if(diff < 0) diff = -diff;
+	                    	if (diff > 0.5) diff = 1.0 - diff;
+	                    	for (uint64 ii = 1; ii < np; ii++)
+	                    	{
+	                    		float64 d = u_norm[ii] - x_mid;
+	                    		if(d<0) d=-d;
+	                    		if (d > 0.5) d = 1.0 - d;
+	                    		if (d < diff)
+	                    		{
+	                    			diff = d;
+	                    			xidx = ii;
+	                    		}
+	                    	}
+	                    	
+	                    	peaks_x.insert(peaks_x.begin(),xidx);
+	                    	peaks_y.insert(peaks_y.begin(),rec);
+	                    	if(peaks_x.size() > CONTOURSHAPE_MAXCSS)
+	                    	{
+	                    		peaks_x.pop_back();
+	                    		peaks_y.pop_back();
+	                    	}
+	                    	if (nPeaks < CONTOURSHAPE_MAXCSS)
+	                    		nPeaks++;
+
+	                    	
+	                    	oldMinima.erase(oldMinima.begin());
+	                    	oldNmin--;
+                    		oldMaxima.erase(oldMaxima.begin()+idx);
+                    		oldNmax--;
+	                    }
+	                    
+	                    float64 xc = 0.0;
+	                    float64 yc = 0.0;
+	                    float64 len = 0;
+	                    std::vector<float64> x_interm;
+	                    std::vector<float64> y_interm;
+	                    x_interm.resize(np);
+	                    y_interm.resize(np);
+	                    for (uint64 ii = 0; ii < np; ii++)
+	                    {
+	                    	len += std::sqrt(dx[ii]*dx[ii] + dy[ii]*dy[ii]);
+	                    	xc += dx[ii];
+	                    	yc += dy[ii];
+	                    	x_interm[ii] = xc;
+	                    	y_interm[ii] = yc;
+	                    }
+	                }
+	                rec++;
+            	}while((rec < maxrec) && (newNmin > 0) && (newNmax > 0));
+            	
+            	float64 xc = 0.0;
+                float64 yc = 0.0;
+                float64 len = 0;
+                std::vector<float64> x_final;
+                std::vector<float64> y_final;
+                x_final.resize(np);
+                y_final.resize(np);
+                for (uint64 ii = 0; ii < np; ii++)
+                {
+                	len += std::sqrt(dx[ii]*dx[ii] + dy[ii]*dy[ii]);
+                	xc += dx[ii];
+                	yc += dy[ii];
+                	x_final[ii] = xc;
+                	y_final[ii] = yc;
+                }
+                
+                if(nPeaks > 0)
+                {
+	                float64 nsmap = 1.0 / (np*np);
+	                for (uint64 ii = 0; ii < nPeaks; ii++)
+	                {
+	                	float64 peak_len = 0.0;
+	                	for (uint64 jj = 0; jj < peaks_x[ii]; jj++)
+	                		peak_len += std::sqrt(dx[jj]*dx[jj] + dy[jj]*dy[jj]);
+	                	peaks_x[ii] = peak_len / len;
+	                	peaks_y[ii] = 3.8 * std::pow(peaks_y[ii]*nsmap, 0.6);
+	                }
+	                
+	                float64 offset = peaks_x[0];
+	                for (uint64 ii = 0; ii < nPeaks; ii++)
+	                {
+	                	peaks_x[ii] -= offset;
+	                	if (peaks_x[ii] < 0.0)
+	                		peaks_x[ii] += 1.0;
+	                }
+	                
+	                if (peaks_y[0] < 0.09)
+	                {
+	                	nPeaks = 0;
+	                	peaks_x.resize(0);
+	                	peaks_y.resize(0);
+	                }
+	                
+	                for (uint64 ii = 1; ii < nPeaks; ii++)
+	                {
+	                	if (peaks_y[ii] < 0.05*peaks_y[0])
+	                	{
+	                		nPeaks = ii;
+	                		peaks_x.resize(nPeaks);
+	                		peaks_y.resize(nPeaks);
+	                	}
+	                }
+	                
+	                Quantizer<float64> q1(0,1.7,128);
+	                _max_peak_y = q1.bin(peaks_y[0]);
+	                Quantizer<float64> q2(0,1,8);
+	                float64 prev_peak = 0;
+	                float64 aux = 0;
+	                if (nPeaks > 1)
+	                {
+		                prev_peak = (_max_peak_y+0.5)*1.7/128.0;
+		                aux = peaks_y[1]/prev_peak;
+		                _peaks_y.push_back(q2.bin(aux));
+		                for(uint64 ii=2;ii<nPeaks;ii++)
+		                {
+		                	prev_peak =  ((_peaks_y[ii-2]+0.5)/8.0)*prev_peak;
+		                	aux = peaks_y[ii]/prev_peak;
+		                	_peaks_y.push_back(q2.bin(aux));
+		                }
+	                }
+	                Quantizer<float64> q3(0,1,64);
+	                for(uint64 ii=1; ii<nPeaks;ii++)
+	                {
+	                	_peaks_x.push_back(q3.bin(peaks_x[ii]));
+	                }
+                }
+                float64 cir, ecc;
+                _extract_curvature(x,y,cir,ecc);
+                
+                //We quantize circularity with 6 bits
+                Quantizer<float64> q4(12.0,110.0,64);
+                _circularity = q4.bin(cir);
+                
+                //We quantize eccentricity with 6 bits
+                Quantizer<float64> q5(1.0,10.0,64);
+                _eccentricity = q5.bin(ecc);
+                
+                _extract_curvature(x_final,y_final,cir,ecc);
+                _circularity_smoothed = q4.bin(cir);
+                _eccentricity_smoothed = q5.bin(ecc);
+            }
+            
+            //! \brief It computes the circularity and the eccentricity of the given contour
+            //!
+            //! \param[in] x       : x parameterization of the contour
+            //! \param[in] y       : y parameterization of the contour
+            //! \param[out] cir	   : circularity of the given contour
+            //! \param[out] ecc	   : eccentricity of the given contour	
+            void _extract_curvature(std::vector<float64> x, std::vector<float64> y, float64& cir, float64& ecc)
+            {
+                std::multimap<float64,uint64> rank;
+                rank.insert(std::pair<float64,uint64>(y[0],0));
+                uint64 np = x.size();
+                float64 xmin = x[0];
+                float64 xmax = x[0];
+                for(uint64 ii=1; ii<np; ii++)
+                {
+                	if(x[ii]<xmin) xmin = x[ii];
+                	else if(x[ii]>xmax) xmax = x[ii];
+                	rank.insert(std::pair<float64,uint64>(y[ii],ii));
+                }
+                float64 ymin = rank.begin()->first;
+                float64 ymax = rank.rbegin()->first;
+                uint64 width = (uint64)(xmax-xmin+1);
+                uint64 height = (uint64)(ymax-ymin+1);
+                ImaVolMask<2> mask(width,height);
+                
+                uint64 nedge = 0;
+                std::vector<uint64> edgelist_index;
+                std::vector<float64> edgelist_x;
+                std::vector<float64> edgelist_dx;
+
+                int ybot = (int)std::ceil(ymin - 0.5);
+                int ytop = (int)std::floor(ymax - 0.5);
+                if (ybot - (int)ymin < 0) ybot = (int)ymin;
+                if (ytop - (int)ymin >= (int)height) ytop = height - 1 + (int)ymin;
+
+                std::multimap<float64,uint64>::iterator it = rank.begin();
+                uint64 tmp =0;
+                if (ytop >= ybot)
+                {
+                    for (int yy = ybot; yy <= ytop; yy++)
+                    {
+                    	for (; (it!=rank.end())&&(it->first < (yy+0.5)) ; ++it, tmp++)
+                    	{
+                    		uint64 i1 = it->second;
+                    		uint64 i0=(i1+1)%np;
+                    		uint64 i2;
+                    		if(i1>0) i2=i1-1;
+                    		else i2=np-1;
+                    		
+                    		if (y[i0] <= yy - 0.5)
+                    		{
+                    			uint64 ee;
+                    			for (ee = 0; (ee < nedge) && (edgelist_index[ee] != i1); ee++);
+                    			if (ee < nedge)
+                    			{
+                    				edgelist_index.erase(edgelist_index.begin()+ee);
+                    				edgelist_x.erase(edgelist_x.begin()+ee);
+                    				edgelist_dx.erase(edgelist_dx.begin()+ee);
+                    				nedge--;
+                    			}
+    	                    }
+                    		else if (y[i0] >= yy + 0.5)
+                    		{
+                    			edgelist_index.push_back(i1);
+                    			float64 aux = (x[i1] - x[i0]) / (y[i1] - y[i0]);
+                    			edgelist_dx.push_back(aux);
+                    			aux = aux*(yy - y[i0])+x[i0];
+                    			edgelist_x.push_back(aux);
+                    			nedge++;
+                    		}
+
+                    		if (y[i2] <= yy - 0.5)
+                    		{
+                    			uint64 ee;
+                    			for (ee = 0; (ee < nedge) && (edgelist_index[ee] != i2); ee++);
+                    			if (ee < nedge)
+                    			{
+                    				edgelist_index.erase(edgelist_index.begin()+ee);
+                    				edgelist_x.erase(edgelist_x.begin()+ee);
+                    				edgelist_dx.erase(edgelist_dx.begin()+ee);
+                    				nedge--;
+                    			}
+                    		}
+                    		else if (y[i2] >= yy + 0.5)
+                    		{
+                    			edgelist_index.push_back(i2);
+                    			float64 aux = (x[i1] - x[i2]) / (y[i1] - y[i2]);
+                    			edgelist_dx.push_back(aux);
+                    			aux = aux*(yy - y[i2])+x[i2];
+                    			edgelist_x.push_back(aux);
+                    			nedge++;
+                    		}
+                    	}
+                    	
+                    	std::multimap<float64,uint64> edgelist;
+                    	for(uint64 ii=0; ii<nedge; ii++)
+                    	{
+                    		edgelist.insert(std::pair<float64,uint64>(edgelist_x[ii],ii));
+                    	}
+                    	
+                    	std::multimap<float64,uint64>::iterator it_edge = edgelist.begin();
+                    	std::vector<float64> edgelist_dx_tmp;
+                    	std::vector<uint64> edgelist_index_tmp;
+                    	for(uint64 kk=0;it_edge!=edgelist.end();++it_edge,kk++)
+                    	{
+                    		edgelist_x[kk]=it_edge->first;
+                    		edgelist_index_tmp.push_back(edgelist_index[kk]);
+                    		edgelist_dx_tmp.push_back(edgelist_dx[kk]);
+                    	}
+                    	it_edge=edgelist.begin();
+                    	for(uint64 kk=0;it_edge!=edgelist.end();++it_edge, kk++)
+                    	{
+                    		edgelist_index[kk]=edgelist_index_tmp[it_edge->second];
+                    		edgelist_dx[kk]=edgelist_dx_tmp[it_edge->second];
+                    	}
+                    	for(uint64 ii=0; ii<nedge-1; ii+=2)
+                    	{
+                    		int xl = (int)std::ceil(edgelist_x[ii])-(int)xmin;
+                    		if (xl < 0) xl = 0;
+                    		int xr = (int)std::ceil(edgelist_x[ii+1])-(int)xmin;
+                    		if (xr >= (int)width) xr = width - 1;
+                    		int yl = (int)(yy - (int)ymin);
+                    		for(int ff=xl; ff<=xr; ff++)
+                    		{
+                    			mask(0)[ff][yl] = true;
+                    		}
+                    		edgelist_x[ii] += edgelist_dx[ii];
+                    		edgelist_x[ii+1] += edgelist_dx[ii+1];
+                    	}
+                    }
+
+                    float64 perim = std::sqrt((x[0]-x[np-1])*(x[0]-x[np-1]) + (y[0]-y[np-1])*(y[0]-y[np-1]));
+                    for (uint64 ii = 1; ii < np; ii++)
+                    {
+                      perim += std::sqrt((x[ii]-x[ii-1])*(x[ii]-x[ii-1]) + (y[ii]-y[ii-1])*(y[ii]-y[ii-1]));
+                    }
+
+                    float64 vol = 0;
+                    float64 meanx = 0.0;
+                    float64 meany = 0.0;
+
+                    for (uint64 vy = 0; vy < height; vy++)
+                    {
+                    	for (uint64 vx = 0; vx < width; vx++)
+                    	{
+                    		if (mask(0)[vx][vy])
+                    		{
+                    			meanx+=vx;
+                    			meany+=vy;
+                    			vol++;
+                    		}
+                    	}
+                    }
+                    
+                    if(vol>1)
+                    {
+                        meanx/=vol;
+                        meany/=vol;
+                        
+                        float64 i11 = 0.0, i20 = 0.0, i02 = 0.0;
+                        for (uint64 jj = 0; jj < height; jj++)
+                        {
+                        	for (uint64 ii = 0; ii < width; ii++)
+                        	{
+                        		if (mask(0)[ii][jj])
+                        		{
+                        			i11 += (ii-meanx)*(jj-meany);
+                        			i20 += (ii-meanx)*(ii-meanx);
+                        			i02 += (jj-meany)*(jj-meany);
+                        		}
+                        	}
+                        }
+
+                        float64 temp1 = i20 + i02;
+                        float64 temp2 = std::sqrt(i20*i20 + i02*i02 - 2.0*i02*i20 + 4.0*i11*i11);
+
+                        cir = perim * perim / vol;
+                        ecc = std::sqrt((temp1 + temp2) / (temp1 - temp2));
+                    }
+                    else
+                    {
+                        uint64 pos_min_x = 0;
+                        uint64 pos_max_x = 0;
+                        float64 max_x = x[0];
+                        float64 min_x = x[0];
+                        float64 centroid_x = x[0];
+                        float64 centroid_y = y[0];
+                        std::size_t size = x.size();
+                        for(std::size_t i=1; i<size; i++)
+                        {
+                            centroid_x += x[i];
+                            centroid_y += y[i];
+                        	if(x[i]>max_x)
+                            {
+                                max_x = x[i];
+                                pos_max_x = i;
+                            }
+                            if(x[i]<min_x)
+                            {
+                                min_x = x[i];
+                                pos_min_x = i;
+                            }
+                        }
+                        
+                        //We compute the area of the smoothed curve with Riemann integration method and the perimeter as sum of the distances between the samples
+                        uint64 aux = pos_min_x;
+                        float64 area1 = 0.0;
+                        while(aux!=pos_max_x)
+                        {
+                            float64 tmp = x[(aux+1)%size]-x[aux];
+                            area1 = area1 + (y[aux]+y[(aux+1)%size])*(std::abs(tmp))*0.5;
+                            aux = (aux+1)%size;
+                        }
+                        aux = pos_max_x;
+                        float64 area2 = 0.0;
+                        while(aux!=pos_min_x)
+                        {
+                            float64 tmp = x[aux]-x[(aux+1)%size];
+                            area2 = area2 + (y[aux]+y[(aux+1)%size])*(std::abs(tmp))*0.5;
+                            aux = (aux+1)%size;
+                        }
+                        
+                        float64 area = std::abs(area2-area1);
+                        
+                        //We compute its circularity
+                        cir = (perim*perim)/area;
+                        
+                        centroid_x = centroid_x/size;
+                        centroid_y = centroid_y/size;
+                        
+                        float64 i_02 = 0.0;
+                        float64 i_11 = 0.0;
+                        float64 i_20 = 0.0;
+                        
+                        for(std::size_t i = 0; i<size; i++)
+                        {
+                            i_02 = i_02 + (y[i]-centroid_y)*(y[i]-centroid_y);
+                            i_11 = i_11 + (x[i]-centroid_x)*(y[i]-centroid_y);
+                            i_20 = i_20 + (x[i]-centroid_x)*(x[i]-centroid_x);
+                        }
+                        
+                        ecc = std::sqrt((i_20+i_02+std::sqrt(i_20*i_20+i_02*i_02-2*i_20*i_02+4*i_11*i_11))/(i_20+i_02-std::sqrt(i_20*i_20+i_02*i_02-2*i_20*i_02+4*i_11*i_11)));
+                    }
+
+                }
+                else
+                {
+                    uint64 pos_min_x = 0;
+                    uint64 pos_max_x = 0;
+                    float64 max_x = x[0];
+                    float64 min_x = x[0];
+                    float64 centroid_x = x[0];
+                    float64 centroid_y = y[0];
+                    std::size_t size = x.size();
+                    for(std::size_t i=1; i<size; i++)
+                    {
+                        centroid_x += x[i];
+                        centroid_y += y[i];
+                    	if(x[i]>max_x)
+                        {
+                            max_x = x[i];
+                            pos_max_x = i;
+                        }
+                        if(x[i]<min_x)
+                        {
+                            min_x = x[i];
+                            pos_min_x = i;
+                        }
+                    }
+                    
+                    //We compute the area of the smoothed curve with Riemann integration method and the perimeter as sum of the distances between the samples
+                    uint64 aux = pos_min_x;
+                    float64 area1 = 0.0;
+                    float64 perim = 0.0;
+                    while(aux!=pos_max_x)
+                    {
+                        float64 tmp = x[(aux+1)%size]-x[aux];
+                        area1 = area1 + (y[aux]+y[(aux+1)%size])*(std::abs(tmp))*0.5;
+                        perim = perim + std::sqrt((x[(aux+1)%size]-x[aux])*(x[(aux+1)%size]-x[aux])+(y[(aux+1)%size]-y[aux])*(y[(aux+1)%size]-y[aux]));
+                        aux = (aux+1)%size;
+                    }
+                    aux = pos_max_x;
+                    float64 area2 = 0.0;
+                    while(aux!=pos_min_x)
+                    {
+                        float64 tmp = x[aux]-x[(aux+1)%size];
+                        area2 = area2 + (y[aux]+y[(aux+1)%size])*(std::abs(tmp))*0.5;
+                        perim = perim + std::sqrt((x[(aux+1)%size]-x[aux])*(x[(aux+1)%size]-x[aux])+(y[(aux+1)%size]-y[aux])*(y[(aux+1)%size]-y[aux]));
+                        aux = (aux+1)%size;
+                    }
+                    
+                    float64 area = std::abs(area2-area1);
+                    
+                    //We compute its circularity
+                    cir = (perim*perim)/area;
+                    
+                    centroid_x = centroid_x/perim;
+                    centroid_y = centroid_y/perim;
+                    
+                    float64 i_02 = 0.0;
+                    float64 i_11 = 0.0;
+                    float64 i_20 = 0.0;
+                    
+                    for(std::size_t i = 0; i<size; i++)
+                    {
+                        i_02 = i_02 + (y[i]-centroid_y)*(y[i]-centroid_y);
+                        i_11 = i_11 + (x[i]-centroid_x)*(y[i]-centroid_y);
+                        i_20 = i_20 + (x[i]-centroid_x)*(x[i]-centroid_x);
+                    }
+                    
+                    ecc = std::sqrt((i_20+i_02+std::sqrt(i_20*i_20+i_02*i_02-2*i_20*i_02+4*i_11*i_11))/(i_20+i_02-std::sqrt(i_20*i_20+i_02*i_02-2*i_20*i_02+4*i_11*i_11)));
+                }
+
+            }
+            
+
+            
+
+            
+            //! Circularity of original contour
+            uint8 _circularity;
+            
+            //! Eccentricity of the original contour
+            uint8 _eccentricity;
+            
+            //! Circularity of filtered contour
+            uint8 _circularity_smoothed;
+            
+            //! Eccentricity of the filtered contour
+            uint8 _eccentricity_smoothed;
+            
+            //! Localization of the peaks ( according arc length parameterization ) 
+            std::vector<uint8> _peaks_x;
+            
+            //! Height of the maximum peak
+            uint8 _max_peak_y; 
+            
+            //! Height of the peaks
+            std::vector<uint8> _peaks_y;
+            
+            
+        };
+        
+        
+        //! Structure for Contour Shape Descriptor
+        struct ContourShapeContainer 
+        {
+            //! Circularity of original contour
+            uint8 circularity;
+            
+            //! Eccentricity of the original contour
+            uint8 eccentricity;
+            
+            //! Circularity of filtered contour
+            uint8 circularity_smoothed;
+            
+            //! Eccentricity of the filtered contour
+            uint8 eccentricity_smoothed;
+            
+            //! Localization of the peaks ( according arc length parameterization ) 
+            std::vector<uint8> peaks_x;
+            
+            //! Height of the maximum peak
+            uint8 max_peak_y; 
+            
+            //! Height of the peaks
+            std::vector<uint8> peaks_y;                                 
+        };
+        
+        //! Structure for Peak
+        struct PeakContainer 
+        {
+        	//! Localization of the peak
+        	float64 x;
+        	
+        	//! Height of the peak
+        	float64 y;
+        };
+        
+        //! Structure for Node
+        struct NodeContainer 
+        {
+        	//! Cost
+        	float64 cost;
+        	
+        	//! Number of rPeaks
+            uint8 nr;
+            
+            //! Number of qPeaks
+            uint8 nq;
+            
+            //! Vector of peaks
+            std::vector<PeakContainer> rPeaks;
+            
+            //! Vector of peaks
+            std::vector<PeakContainer> qPeaks;
+        };
+        
+        //! \brief Calculates the result of the dissimilarity measure between two contour shape descriptors
+        //!
+        //! \param[in] cs_query  : Contour Shape descriptor that will be compared with cs_target
+        //! \param[in] cs_target : Contour Shape descriptor that will be compared with cs_query
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 distance(ContourShapeContainer& cs_query, ContourShapeContainer& cs_target)
+        {
+        	float64 dist;
+        	float64 ecc_q = cs_query.eccentricity + 0.5;  
+        	float64 ecc_t = cs_target.eccentricity + 0.5;
+        	float64 cir_q = cs_query.circularity + 0.5;
+        	float64 cir_t = cs_target.circularity + 0.5;
+        	float64 max_ecc = ecc_q;
+        	if(ecc_t > ecc_q)
+        	{
+        		max_ecc = ecc_t;
+        	}
+        	float64 max_cir = cir_q;
+        	if(cir_t > cir_q)
+        	{
+        		max_cir = cir_t;
+        	}
+        	max_ecc += 64.0/(10.0-1.0);
+        	max_cir += 12.0*64.0/(110.0-12.0);
+        	float64 diff_ecc = ecc_q-ecc_t;
+        	if(diff_ecc<0)
+        	{
+        		diff_ecc = -diff_ecc;
+        	}
+        	float64 diff_cir = cir_q-cir_t;
+        	if(diff_cir<0)
+        	{
+        		diff_cir = -diff_cir;
+        	}
+        	if((diff_ecc > 0.6*max_ecc)||(diff_cir > max_cir))
+        	{
+        		dist = 9999;
+        	}
+        	else
+        	{
+        		dist = 0.4*diff_ecc/max_ecc + 0.3*diff_cir/max_cir;
+        		uint64 nPeaks_q = cs_query.peaks_x.size()+1;
+        		uint64 nPeaks_t = cs_target.peaks_x.size()+1;
+        		
+        		std::vector<float64> peaks_x_q;
+        		std::vector<float64> peaks_y_q;
+        		std::vector<float64> peaks_x_t;
+        		std::vector<float64> peaks_y_t;
+        		peaks_x_q.resize(nPeaks_q);
+        		peaks_y_q.resize(nPeaks_q);
+        		peaks_x_t.resize(nPeaks_t);
+        		peaks_y_t.resize(nPeaks_t);
+        		for(uint64 ii=0; ii<nPeaks_q; ii++)
+        		{
+        			if(ii==0)
+        			{
+        				peaks_x_q[ii] = 0;
+        				peaks_y_q[ii] = cs_query.max_peak_y * 1.7 / 127.0;
+        			}
+        			else
+        			{
+        				peaks_x_q[ii] = cs_query.peaks_x[ii-1] / 63.0;
+        				peaks_y_q[ii] = cs_query.peaks_y[ii-1]*peaks_y_q[ii-1]/7.0;
+        			}
+        		}
+        		for(uint64 ii=0; ii<nPeaks_t; ii++)
+        		{
+        			if(ii==0)
+        			{
+        				peaks_x_t[ii] = 0;
+        				peaks_y_t[ii] = cs_target.max_peak_y * 1.7 / 127.0;
+        			}
+        			else
+        			{
+        				peaks_x_t[ii] = cs_target.peaks_x[ii-1] / 63.0;
+        				peaks_y_t[ii] = cs_target.peaks_y[ii-1]*peaks_y_t[ii-1]/7.0;
+        			}
+        		}
+        		
+        		uint64 nNodes = 0;
+        		std::vector<NodeContainer> m_nodeList;
+        		
+        		for(uint64 i0 = 0; (i0 < nPeaks_t) && (i0 < 2); i0++)
+        		{
+        			float64 iRefX = peaks_x_t[i0];
+        			float64 iRefY = peaks_y_t[i0];
+        			
+        			for(uint64 j0 = 0; j0 < nPeaks_q; j0++)
+        			{
+        				float64 iQueryX = peaks_x_q[j0];
+        				float64 iQueryY = peaks_y_q[j0];
+        				float64 denom = iRefY;
+        				if (iRefY <= iQueryY)
+        				{
+        					denom = iQueryY;
+        				}
+        				float64 diff = iRefY - iQueryY;
+        				if(diff<0)
+        				{
+        					diff = -diff;
+        				}
+        				if(diff/denom < 0.7)
+        				{
+        					m_nodeList.resize(nNodes+2);
+        					m_nodeList[nNodes].cost = 0;
+        					m_nodeList[nNodes].nr = nPeaks_t;
+        					m_nodeList[nNodes].nq = nPeaks_q;
+        					m_nodeList[nNodes+1].cost = 0;
+        					m_nodeList[nNodes+1].nr = nPeaks_t;
+        					m_nodeList[nNodes+1].nq = nPeaks_q;
+        					
+        					for(uint64 pr=0; pr<nPeaks_t; pr++)
+        					{
+        						float64 frx = peaks_x_t[pr]-iRefX;
+        						if(frx<0)
+        							frx = frx+1;
+        						float64 fry = peaks_y_t[pr];
+        						m_nodeList[nNodes].rPeaks.resize(pr+1);
+        						m_nodeList[nNodes].rPeaks[pr].x = frx;
+        						m_nodeList[nNodes].rPeaks[pr].y = fry;
+        						m_nodeList[nNodes+1].rPeaks.resize(pr+1);
+        						m_nodeList[nNodes+1].rPeaks[pr].x = frx;
+        						m_nodeList[nNodes+1].rPeaks[pr].y = fry;
+        					}
+        					
+        					for(uint64 pq=0; pq<nPeaks_q; pq++)
+        					{
+        						float64 fqx = peaks_x_q[pq]-iQueryX;
+        						if(fqx<0)
+        							fqx = fqx+1;
+        						float64 fqy = peaks_y_q[pq];
+        						m_nodeList[nNodes].qPeaks.resize(pq+1);
+        						m_nodeList[nNodes].qPeaks[pq].x = fqx;
+        						m_nodeList[nNodes].qPeaks[pq].y = fqy;
+        						fqx = -fqx;
+        						if(fqx<0)
+        							fqx = fqx+1;
+        						m_nodeList[nNodes+1].qPeaks.resize(pq+1);
+        						m_nodeList[nNodes+1].qPeaks[pq].x = fqx;
+        						m_nodeList[nNodes+1].qPeaks[pq].y = fqy;
+        					}
+        					nNodes = nNodes + 2;
+        				}
+        			}
+        		}
+        		
+        		if(nPeaks_t == 0)
+        		{
+        			m_nodeList.resize(nNodes+1);
+					m_nodeList[nNodes].cost = 0;
+					m_nodeList[nNodes].nr = nPeaks_t;
+					m_nodeList[nNodes].nq = nPeaks_q;
+					
+					for( uint64 pq = 0; pq < nPeaks_q; pq++)
+					{
+						float64 fqx = peaks_x_q[pq];
+						float64 fqy = peaks_y_q[pq];
+						m_nodeList[nNodes].qPeaks.resize(pq+1);
+						m_nodeList[nNodes].qPeaks[pq].x = fqx;
+						m_nodeList[nNodes].qPeaks[pq].y = fqy;
+					}
+					nNodes++;
+        		}
+        		
+        		
+        		for(uint64 i1 = 0; (i1 < nPeaks_q) && (i1 < 2); i1++)
+        		{
+        			float64 iQueryX = peaks_x_q[i1];
+        			float64 iQueryY = peaks_y_q[i1];
+        			
+        			for(uint64 j1 = 0; j1 < nPeaks_t; j1++)
+        			{
+        				float64 iRefX = peaks_x_t[j1];
+        				float64 iRefY = peaks_y_t[j1];
+        				float64 denom = iRefY;
+        				if (iRefY <= iQueryY)
+        				{
+        					denom = iQueryY;
+        				}
+        				float64 diff = iRefY - iQueryY;
+        				if(diff<0)
+        				{
+        					diff = -diff;
+        				}
+        				if(diff/denom < 0.7)
+        				{
+        					m_nodeList.resize(nNodes+2);
+        					m_nodeList[nNodes].cost = 0;
+        					m_nodeList[nNodes].nr = nPeaks_q;
+        					m_nodeList[nNodes].nq = nPeaks_t;
+        					m_nodeList[nNodes+1].cost = 0;
+        					m_nodeList[nNodes+1].nr = nPeaks_q;
+        					m_nodeList[nNodes+1].nq = nPeaks_t;
+        					
+        					for(uint64 pq=0; pq<nPeaks_q; pq++)
+        					{
+        						float64 fqx = peaks_x_q[pq]-iQueryX;
+        						if(fqx<0)
+        							fqx = fqx+1;
+        						float64 fqy = peaks_y_q[pq];
+        						m_nodeList[nNodes].rPeaks.resize(pq+1);
+        						m_nodeList[nNodes].rPeaks[pq].x = fqx;
+        						m_nodeList[nNodes].rPeaks[pq].y = fqy;
+        						m_nodeList[nNodes+1].rPeaks.resize(pq+1);
+        						fqx = -fqx;
+        						if(fqx<0)
+        							fqx = fqx+1;
+        						m_nodeList[nNodes+1].rPeaks[pq].x = fqx;
+        						m_nodeList[nNodes+1].rPeaks[pq].y = fqy;
+        					}
+        					
+        					for(uint64 pr=0; pr<nPeaks_t; pr++)
+        					{
+        						float64 frx = peaks_x_t[pr]-iRefX;
+        						if(frx<0)
+        							frx = frx+1;
+        						float64 fry = peaks_y_t[pr];
+        						m_nodeList[nNodes].qPeaks.resize(pr+1);
+        						m_nodeList[nNodes].qPeaks[pr].x = frx;
+        						m_nodeList[nNodes].qPeaks[pr].y = fry;
+        						m_nodeList[nNodes+1].qPeaks.resize(pr+1);
+        						m_nodeList[nNodes+1].qPeaks[pr].x = frx;
+        						m_nodeList[nNodes+1].qPeaks[pr].y = fry;
+        					}
+        					nNodes = nNodes + 2;
+        				}
+        			}
+        		}
+        		
+        		if(nPeaks_q == 0)
+        		{
+        			m_nodeList.resize(nNodes+1);
+					m_nodeList[nNodes].cost = 0;
+					m_nodeList[nNodes].nr = nPeaks_q;
+					m_nodeList[nNodes].nq = nPeaks_t;
+					
+					for( uint64 pr = 0; pr < nPeaks_t; pr++)
+					{
+						float64 frx = peaks_x_t[pr];
+						float64 fry = peaks_y_t[pr];
+						m_nodeList[nNodes].qPeaks.resize(pr+1);
+						m_nodeList[nNodes].qPeaks[pr].x = frx;
+						m_nodeList[nNodes].qPeaks[pr].y = fry;
+					}
+					nNodes++;
+        		}
+        		
+        		if (nNodes > 0)
+        		{
+        			uint64 index = 0;
+        			while((m_nodeList[index].nr > 0) || (m_nodeList[index].nq > 0))
+        			{
+        				int ir=-1;
+        				int iq=-1;
+        				
+        				if((m_nodeList[index].nr > 0) && (m_nodeList[index].nq > 0))
+        				{
+        					ir = 0;
+        					for(uint64 mr = 1; mr < m_nodeList[index].nr; mr++)
+        					{
+        						if(m_nodeList[index].rPeaks[ir].y < m_nodeList[index].rPeaks[mr].y)
+        							ir = mr;
+        					}
+        					iq = 0;
+        					float64 xd = m_nodeList[index].rPeaks[ir].x - m_nodeList[index].qPeaks[iq].x;
+        					if(xd<0)
+        						xd = -xd;
+        					if(xd>0.5)
+        						xd = 1 - xd;
+        					float64 yd = m_nodeList[index].rPeaks[ir].y - m_nodeList[index].qPeaks[iq].y;
+        					if(yd<0)
+        						yd = -yd;
+        					float64 sqd = xd*xd+yd*yd;
+        					for(uint64 mq=1; mq < m_nodeList[index].nq; mq++)
+        					{
+        						xd = m_nodeList[index].rPeaks[ir].x - m_nodeList[index].qPeaks[mq].x;
+        						if (xd<0)
+        							xd = -xd;
+            					if(xd>0.5)
+            						xd = 1 - xd;
+            					yd = m_nodeList[index].rPeaks[ir].y - m_nodeList[index].qPeaks[mq].y;
+            					if(yd<0)
+            						yd = -yd;
+            					float64 d = xd*xd+yd*yd;
+            					if (d<sqd)
+            					{
+            						sqd=d;
+            						iq=mq;
+            					}
+        					}
+        					float64 dx = m_nodeList[index].rPeaks[ir].x - m_nodeList[index].qPeaks[iq].x;
+    						if (dx<0)
+    							dx = -dx;
+        					if(dx>0.5)
+        						dx = 1 - dx;
+        					if(dx<0.1)
+        					{
+        						float64 dy = m_nodeList[index].rPeaks[ir].y - m_nodeList[index].qPeaks[iq].y;
+        						if(dy<0)
+        							dy=-dy;
+        						m_nodeList[index].cost += std::sqrt(dx*dx+dy*dy);
+        						m_nodeList[index].nr--;
+        						m_nodeList[index].rPeaks.erase(m_nodeList[index].rPeaks.begin()+ir);
+        						m_nodeList[index].nq--;
+        						m_nodeList[index].qPeaks.erase(m_nodeList[index].qPeaks.begin()+iq);
+        					}
+        					else
+        					{
+        						m_nodeList[index].cost += m_nodeList[index].rPeaks[ir].y;
+        						m_nodeList[index].nr--;
+        						m_nodeList[index].rPeaks.erase(m_nodeList[index].rPeaks.begin()+ir);
+        					}
+        				}
+        				else if(m_nodeList[index].nr > 0)
+        				{
+        					m_nodeList[index].cost += m_nodeList[index].rPeaks[0].y;
+    						m_nodeList[index].nr--;
+    						m_nodeList[index].rPeaks.erase(m_nodeList[index].rPeaks.begin());
+        				}
+        				else // if(m_nodeList[index].nq > 0)
+        				{
+        					m_nodeList[index].cost += m_nodeList[index].qPeaks[0].y;
+    						m_nodeList[index].nq--;
+    						m_nodeList[index].qPeaks.erase(m_nodeList[index].qPeaks.begin());
+        				}
+        				
+        				index = 0;
+        				float64 minCost = m_nodeList[index].cost;
+        				for (uint64 c0 = 1; c0 < nNodes; c0++)
+        				{
+        					if(m_nodeList[c0].cost < minCost)
+        					{
+        						index = c0;
+        						minCost = m_nodeList[c0].cost;
+        					}
+        				}
+        			}
+        			float64 cost = m_nodeList[index].cost;
+        			dist = dist + cost;
+        		}
+        		
+        	}
+        	return dist;
+        }
+        
+        
+        
+
+    } // Namespace descriptors
+}// Namespace imageplus
+
+#endif
+

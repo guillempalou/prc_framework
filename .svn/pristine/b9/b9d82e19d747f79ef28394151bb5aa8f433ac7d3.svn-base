@@ -1,0 +1,170 @@
+/*
+ * metric_learning_model.hpp
+ *
+ *  Created on: Jan 9, 2013
+ *      Author: gpalou
+ */
+
+#ifndef METRIC_LEARNING_MODEL_HPP_
+#define METRIC_LEARNING_MODEL_HPP_
+
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <imageplus/descriptors/features/features_descriptor.hpp>
+#include <imageplus/bpt/models/bpt_distance_model.hpp>
+
+namespace imageplus
+{
+    namespace bpt
+    {
+
+        //! Class from which any model must inherit to work properly
+        template<class SignalModel, class RegionModel, typename order_type=float64>
+        class KernelModel : public BaseDistanceModel<SignalModel, RegionModel, order_type>
+        {
+        	typedef descriptors::FeaturesDescriptor<SignalModel>			FeaturesDescriptor;
+        	typedef descriptors::Area										AreaDescriptor;
+
+        public:
+
+        	static const uint64 dimensions = FeaturesDescriptor::dimensions;
+
+        	struct Parameters {
+
+        		bool use_kernel;
+
+        		math::Matrix xi;
+
+        		math::Vector w;
+        		math::Vector mean;
+        		math::Vector stddev;
+
+        		std::map<uint64, uint64> assignment;
+
+        		float64 sigma;
+
+        		Parameters() {
+
+        		}
+        	};
+
+        	static const Parameters default_parameters() {
+        		return Parameters();
+        	}
+
+
+        	KernelModel(const Parameters& pars = default_parameters()) {
+        		_pars = pars;
+        		_N = _pars.xi.cols();
+        		_2_sigma_sq = 2 * _pars.sigma * _pars.sigma;
+        	}
+
+        	static inline float64 kernel_distance(const math::Vector& x, const math::Vector& y, float64 s) {
+
+        		/*math::Vector lx = x.segment(0,8);
+        		math::Vector ax = x.segment(8,8);
+        		math::Vector bx = x.segment(16,8);
+
+        		math::Vector ly = y.segment(0,8);
+        		math::Vector ay = y.segment(8,8);
+        		math::Vector by = y.segment(16,8);
+
+        		float64 iL = 1-lx.cwiseMin(ly).sum();
+        		float64 iA = 1-ax.cwiseMin(ay).sum();
+        		float64 iB = 1-bx.cwiseMin(by).sum();*/
+
+        		math::Vector d(3);
+        		for (uint64 i = 0; i < 3; i++) {
+        			math::Vector xa = x.segment(8*i,8);
+        			math::Vector ya = y.segment(8*i,8);
+        			for (uint64 k = 1; k < 8; k++) {
+        				xa(k) = xa(k) - xa(k-1);
+        				ya(k) = ya(k) - ya(k-1);
+        			}
+        			d(i) = (xa-ya).cwiseAbs().sum() / 8;
+        		}
+
+
+        		//std::cout << "distance " << d.sum() << std::endl;
+
+        		return std::exp(-d.sum()/s);
+
+        		//return std::exp(-(iL+iA+iB)/s);
+        		//return std::exp(-(xa-ya).cwiseAbs().sum()/s);
+        	}
+
+            //! This function computes the order of a given link (edge of the RAG)
+            //!
+            //! \param reg1 : Region of one extremum of the link
+            //! \param reg2 : Region of the other extremum of the link
+            //! \param image : Image being processed
+            //! \param bpt : Partition at the moment of the merging
+            //! \return The order of the link
+        	template<class BPT>
+            order_type region_distance(RegionModel& reg1, RegionModel& reg2, SignalModel& image, BPT& bpt, descriptors::DescriptorManager& manager) {
+
+        		std::vector<float64> left(3,0);
+        		std::vector<float64> right(3,255); right[0] = 100;
+        		std::vector<uint64> bins(3,8);
+
+        		typename FeaturesDescriptor::Parameters::ColorParameters 	color_pars(left,right,bins);
+
+        		// Put the thresholds non-uniformly
+        		std::vector<std::vector<float64> > th;
+        		std::vector<float64> lth(8);
+        		std::vector<float64> ath(8);
+        		std::vector<float64> bth(8);
+
+        		lth[0] = 18; 	lth[1] = 29;  	lth[2] = 38; 	lth[3] = 46; 	lth[4] = 54; 	lth[5] = 62; 	lth[6] = 76; 	lth[7] = 100;
+        		ath[0] = 115; 	ath[1] = 120; 	ath[2] = 123; 	ath[3] = 125; 	ath[4] = 128; 	ath[5] = 130; 	ath[6] = 135; 	ath[7] = 255;
+        		bth[0] = 121;	bth[1] = 129;	bth[2] = 134;	bth[3] = 139;	bth[4] = 144;	bth[5] = 150;	bth[6] = 159;	bth[7] = 255;
+
+        		th.push_back(lth);
+        		th.push_back(ath);
+        		th.push_back(bth);
+
+        		color_pars.thresholds = th;
+
+        		typename FeaturesDescriptor::Parameters						pars(color_pars);
+
+            	const typename FeaturesDescriptor::type& 				mean1 = manager.calc_descriptor<FeaturesDescriptor>(image, reg1, pars);
+            	const typename FeaturesDescriptor::type& 				mean2 = manager.calc_descriptor<FeaturesDescriptor>(image, reg2, pars);
+
+            	float64 d = 0;
+            	if (_pars.use_kernel) {
+            		for (uint64 i =0 ; i < _N; i++) {
+            			//math::Vector x = (mean1 - _pars.mean).array() / _pars.stddev.array();
+            			//math::Vector y = (mean2 - _pars.mean).array() / _pars.stddev.array();
+
+            			float64 k_d = (kernel_distance(mean1, _pars.xi.col(i), _2_sigma_sq)-kernel_distance(mean2, _pars.xi.col(i), _2_sigma_sq));
+            			d += _pars.w(i)*k_d*k_d;
+            		}
+
+            		/*std::cout << "Distance " << reg1.label() << " - " << reg2.label() << " :: " << d << std::endl;
+            		std::cout << mean1.transpose() << std::endl;
+            		std::cout << mean2.transpose() << std::endl;
+            		std::cout << "------------------" << std::endl;*/
+
+            	} else {
+            		return (mean1-mean2).squaredNorm();
+            	}
+
+            	return d;
+            }
+
+        	Parameters& parameters() {
+        		return _pars;
+        	}
+
+        protected:
+
+        	uint64 _N;
+        	float64 _2_sigma_sq;
+
+        	Parameters _pars;
+
+        };
+
+    }
+}
+
+#endif /* METRIC_LEARNING_MODEL_HPP_ */

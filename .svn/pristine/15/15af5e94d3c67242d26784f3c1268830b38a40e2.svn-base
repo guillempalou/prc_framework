@@ -1,0 +1,40 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file readwritemodels.cpp
+//!
+//!  Implementation of classes for reading and writing Models to/from disk
+//!
+
+#include <string>
+
+#include <boost/filesystem.hpp>
+
+#include <imageplus/semantic/readwritemodels.hpp>
+
+using namespace imageplus;
+using namespace imageplus::semantic;
+
+imageplus::semantic::ReadWriteModels::ReadWriteModels(const std::string& filename) throw (ImagePlusError)
+{
+	open(filename);
+}
+
+void imageplus::semantic::ReadWriteModels::open(const std::string& filename) throw (ImagePlusError)
+{
+	_filename = filename;
+	if (_filename.find("file:") == 0)
+	{
+		 // FIXME IT'S AN URI! ("file:/path/to/file.xml" -> "/path/to/file.xml")
+		_filename.erase(0, 5);
+	}
+
+    boost::filesystem::path file_path(_filename);
+    boost::filesystem::path filename_branch(file_path.branch_path());
+    if (!boost::filesystem::exists(filename_branch) && filename_branch.string()!="")
+        throw ImagePlusError( "ReadWriteModels: Directory " + filename_branch.string() + " not found." );
+}
+

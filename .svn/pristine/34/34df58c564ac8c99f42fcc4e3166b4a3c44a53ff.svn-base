@@ -1,0 +1,548 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \file tool_config.cpp
+//!
+//! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+//!
+//!  Implementation for ToolConfig class
+//!
+
+#if 0
+#include <imageplus/core/tool_config.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/exceptions.hpp>
+
+#include <boost/shared_ptr.hpp>
+
+#include <sstream>
+
+using namespace imageplus;
+using namespace std;
+namespace po = boost::program_options;
+
+
+ToolConfig::ToolConfig(const string& toolname, const string& brief, const string& description) :
+        _config_file(toolname+".cfg"),
+        _toolname   (toolname),
+        _brief      (brief),
+        _description(description),
+        
+        _config      ("Configuration options"),
+        _generic     ("Generic options"),
+        _arguments   ("Arguments"),
+        
+        _positonal_optional_or_vector_added (false)
+{   
+}
+
+template <typename T>
+void ToolConfig::add_option(T opt, const string name, const string desc, const char abv)
+{
+    _add_option(opt, name, desc, abv);
+}
+
+template<typename T> 
+void ToolConfig::add_argument(T opt, const string name, const string desc, bool mandatory)
+{
+    _add_argument(opt, name, desc, mandatory);
+}
+
+void ToolConfig::add_flag(bool opt, const string name, const string desc, const char abv)
+{
+    if( opt != false ) 
+    {
+        throw (ImagePlusError((string) "\n" +
+                              "ToolConfig: All flags should be initialized to false.\n" +
+                              "            Error adding flag '" + name + "'.\n"));
+    }
+        
+    string name_and_abv;
+    
+    // if abreviature is not the default one
+    if(abv != ' ')
+    {
+        name_and_abv = name+','+abv;
+    }
+    else
+    {
+        name_and_abv = name;
+    }
+     _config.add_options()(name_and_abv.c_str(), desc.c_str());
+}
+
+
+template <typename T>
+void ToolConfig::read(const string name, T& config_variable )
+{
+    _read( name, config_variable );
+}
+
+void ToolConfig::configure(int ac, char* av[])
+{
+    try {
+        // create the basic messages
+        _create_basic_usage();
+        _create_version();
+        
+        // Genreic Options: Only allowed in the command line options:
+        _generic.add_options()
+            ("help"       , "prints the complete help message")
+            ("version"    , "prints the version")
+            ("config_file", po::value<string>()->default_value(_config_file), "select a different config file")
+            ;
+        
+        // Group all command-line options
+        po::options_description cmdline_options;
+        cmdline_options.add(_generic).add(_config).add(_arguments);
+        
+        // Group all config file options
+        po::options_description config_file_options;
+        config_file_options.add(_config);
+        
+        // Parsing command line
+        store(po::command_line_parser(ac, av).options(cmdline_options).positional(_pos_arguments).run(), _options_map);
+        
+        // create arguments informations
+        // Note: This method is called after the command_line parser. 
+        //       It is necessary in orde to be able to read the default values of the arguments.
+        _create_arguments_usage();
+                
+        // Manage the generic options
+        // Note: This should be done before parser the config file, to avoid error parsing it.
+        if (_options_map.count("help")) {
+            help();
+            exit(0);
+        }    
+        if (_options_map.count("version")) {
+            cout << _version << endl;
+            exit(0);
+        }
+        if (_options_map.count("config_file")) {
+            //TODO: check if config_file exists
+            _config_file = _options_map["config_file"].as< string >();
+        }
+
+        // Parsing config file
+        // Note: The store function will not change the value of an option if it's already assigned in command line. 
+        ifstream icf(_config_file.c_str());
+        store(parse_config_file(icf, config_file_options), _options_map);
+        
+        // Check mandatory options
+        for(vector<string>::iterator i = _mandatory_arguments.begin(); i != _mandatory_arguments.end(); i++ )
+        {
+            if (!_options_map.count(*i))
+            {
+                error(string("Argument missing: " + *i ));
+            }
+        }
+        if( _mandatory_argument_vector != "" )
+        {
+            if (!_options_map.count(_mandatory_argument_vector))
+            {
+                error(string("Argument missing: " + _mandatory_argument_vector) );
+            }
+        }
+    }
+    catch(exception& e)
+    {   
+        // Override a known message for convenience
+        if( string(e.what()) == string("too many positional options") )
+        {
+            error( "too many arguments" );
+        }
+        else
+        {
+            error( e.what() );
+        }
+    }
+}
+
+void ToolConfig::_create_basic_usage()
+{
+    _usage = _toolname + " [options] ";
+
+    for(vector<string>::iterator i = _mandatory_arguments.begin(); i != _mandatory_arguments.end(); i++ )
+    {
+        _usage += *i + " ";
+    }
+    
+    if( _no_mandatory_argument != "" )
+    {
+        _usage += (string)"[" + _no_mandatory_argument + "] ";
+    }
+    
+    if( _no_mandatory_argument_vector != "" )
+    {
+        _usage += (string)"[" + _no_mandatory_argument_vector + "...] ";
+    }
+    
+    if( _mandatory_argument_vector != "" )
+    {
+        _usage +=  _mandatory_argument_vector + "... ";
+    }
+    
+    _usage += "\n";
+}
+    
+void ToolConfig::_create_arguments_usage()
+{
+    const vector< boost::shared_ptr<po::option_description> >& arguments = _arguments.options();
+    
+    if ( arguments.size() > 0 )
+    {
+        for(uint32 i = 0; i < arguments.size(); i++ )
+        {
+            // add argument name and description
+            _usage_args += string("") + arguments.at(i)->long_name() + ": \t" + arguments.at(i)->description();
+            
+            // add default value information
+            string default_value;
+            stringstream ss;
+            
+            // Because std::vector class has not the operator <<ostream we can not save its default value, 
+            // so we need to use some auxiliar variables  
+            if ( _default_argument_vector_name == (string)arguments.at(i)->long_name() )
+            {
+                vector<string> value = _default_argument_vector;
+                for(uint32 i = 0; i < value.size(); i++)
+                {
+                    ss << value.at(i);
+                    if ( i < value.size()-1 )
+                    {
+                        ss << " ";
+                    }
+                }
+            }
+            else if( typeid(int32) == _options_map[arguments.at(i)->long_name()].value().type() )
+            {
+                ss << _options_map[arguments.at(i)->long_name()].as< int32 >();
+            }
+            else if( typeid(float32) == _options_map[arguments.at(i)->long_name()].value().type() )
+            {
+                ss << _options_map[arguments.at(i)->long_name()].as< float32 >();
+            }
+            else if( typeid(string) == _options_map[arguments.at(i)->long_name()].value().type() )
+            {
+                ss << _options_map[arguments.at(i)->long_name()].as< string >();
+            }
+            // else: no deafult value (typeid(void))    
+            
+            default_value = ss.str();            
+            if ( default_value != "" )
+            {
+                _usage_args += (string)" (default: \"" + default_value + "\")";
+            }
+            _usage_args += "\n";
+        }   
+    }
+}
+
+void ToolConfig::_create_version()
+{
+    _version  = _toolname + " - ImagePlus v1.0 - Video and Image Processing Group of the UPC\n";
+}
+
+template <typename T>
+void ToolConfig::_add_option(T opt, const string name, const string desc, const char abv)
+{
+    string name_and_abv;
+    
+    // if abreviature is not the default one
+    if(abv != ' ')
+    {
+        name_and_abv = name+','+abv;
+    }
+    else
+    {
+        name_and_abv = name;
+    }
+
+    _config.add_options()(name_and_abv.c_str() , po::value< T >()->default_value( opt ), desc.c_str());
+}
+
+template<typename T>
+void ToolConfig::_add_option(vector<T> opt, const string name, const string desc, const char abv)
+{
+    string name_and_abv;
+    
+    // if abreviature is not the default one
+    if(abv != ' ')
+    {
+        name_and_abv = name+','+abv;
+    }
+    else
+    {
+        name_and_abv = name;
+    }
+    
+    // Because std::vector class has not the operator <<ostream we can not save its default value.
+    // Vectors are always composed, it means that values from command line and config file are merged
+    _config.add_options()(name_and_abv.c_str() , po::value< vector<T> >()->composing(), desc.c_str());
+}
+
+template<typename T> 
+void ToolConfig::_add_argument(T opt, const string name, const string desc, bool mandatory)
+{
+    // No more arguments can be addded after an optional one, or a vector argument.
+    if (_positonal_optional_or_vector_added)
+    {
+        throw (ImagePlusError((string)
+                              "\nToolConfig: No more arguments can be addded after an optional one or a vector.\n" +
+                                "            Error adding option '" + name + "'.\n"));        
+    }
+    
+    // mandatory options can not have default values
+    if ( mandatory )
+    {
+        _mandatory_arguments.push_back(name);
+        _arguments.add_options()(name.c_str(), po::value< T >(), desc.c_str());
+    }
+    else
+    {
+        _no_mandatory_argument = name;
+        _arguments.add_options()(name.c_str(), po::value< T >()->default_value( opt ), desc.c_str());
+        
+        _positonal_optional_or_vector_added = true;
+    }
+
+    _pos_arguments.add(name.c_str(), 1);
+}
+
+template<typename T>
+void ToolConfig::_add_argument(vector<T> opt, const string name, const string desc, bool mandatory)
+{
+    // No more arguments can be addded after an optional one, or a vector argument.
+    if (_positonal_optional_or_vector_added)
+    {
+        throw (ImagePlusError((string)
+                              "\nToolConfig: No more arguments can be addded after an optional one or a vector.\n" +
+                                "            Error adding option '" + name + "'.\n"));        
+    }
+    
+    // mandatory options can not have default values
+    if ( mandatory )
+    {
+        _mandatory_argument_vector = name;
+    }
+    else
+    {
+        _no_mandatory_argument_vector = name;
+        for(size_t i=0; i< opt.size(); i++)
+        {
+            std::stringstream ss;
+            ss << opt.at(i);
+            _default_argument_vector.push_back(ss.str());
+        }
+    }
+    
+    // Because std::vector class has not the operator <<ostream we can not save its default value, 
+    // so we need to use some auxiliar variables.
+    _arguments.add_options()(name.c_str(), po::value< vector<T> >(), desc.c_str());
+    _pos_arguments.add(name.c_str(), -1);
+    
+    _positonal_optional_or_vector_added = true;
+    _default_argument_vector_name = name;
+}
+
+template <typename T>
+void ToolConfig::_read(const string opt_name, T& out )
+{
+    if (_options_map.count(opt_name))
+    {
+        out = _options_map[opt_name].as< T >();
+    }
+}
+
+void ToolConfig::_read(const string opt_name, bool& out )
+{
+    // Boleans are treated as flags, without arguments (no default values)
+    if (_options_map.count(opt_name))
+    {
+        out = !out;            
+    }
+}
+
+void ToolConfig::help()
+{
+    cout << "NAME\n"       << endl;
+    cout << _toolname << " - " << _brief << endl;
+    
+    cout << "USAGE\n"      << endl;
+    cout << _usage         << endl;
+    
+    cout << "DESCRIPTION\n"<< endl;
+    cout << _description   << endl;
+    
+    cout << "ARGUMENTS\n"  << endl;
+    cout << _usage_args    << endl;
+    
+    cout << "OPTIONS\n"    << endl;
+    cout << _generic       << endl;
+    cout << _config        << endl;
+    exit(0);
+}
+
+void ToolConfig::error( string error_mesage, int error )
+{
+    cout << _toolname << ": " << error_mesage          << endl;
+    cout << endl;
+    cout << "usage: " << _usage                        << endl;
+    cout << _usage_args                                << endl;
+    cout << "Try --help to get more information.\n"    << endl;
+    exit(error);
+}
+
+// ToolConfig instances
+namespace imageplus
+{
+    // public instances
+    template void ToolConfig::add_option(int8            opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(int16           opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(int32           opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(int64           opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(uint8           opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(uint16          opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(uint32          opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(uint64          opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(float32         opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(float64         opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(string          opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<int8>    opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<int16>   opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<int32>   opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<int64>   opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<uint8>   opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<uint16>  opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<uint32>  opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<uint64>  opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<float32> opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<float64> opt, const string name, const string desc, const char abv);
+    template void ToolConfig::add_option(vector<string>  opt, const string name, const string desc, const char abv);
+    
+    
+    template void ToolConfig::add_argument(int8            opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(int16           opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(int32           opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(int64           opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(uint8           opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(uint16          opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(uint32          opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(uint64          opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(float32         opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(float64         opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(string          opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<int8>    opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<int16>   opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<int32>   opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<int64>   opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<uint8>   opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<uint16>  opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<uint32>  opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<uint64>  opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<float32> opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<float64> opt, const string name, const string desc, bool);
+    template void ToolConfig::add_argument(vector<string>  opt, const string name, const string desc, bool);
+
+    
+    template void ToolConfig::read(const string name, int8&            opt);
+    template void ToolConfig::read(const string name, int16&           opt);
+    template void ToolConfig::read(const string name, int32&           opt);
+    template void ToolConfig::read(const string name, int64&           opt);
+    template void ToolConfig::read(const string name, uint8&           opt);
+    template void ToolConfig::read(const string name, uint16&          opt);
+    template void ToolConfig::read(const string name, uint32&          opt);
+    template void ToolConfig::read(const string name, uint64&          opt);
+    template void ToolConfig::read(const string name, float32&         opt);
+    template void ToolConfig::read(const string name, float64&         opt);
+    template void ToolConfig::read(const string name, string&          opt);
+    template void ToolConfig::read(const string name, vector<int8>&    opt);
+    template void ToolConfig::read(const string name, vector<int16>&   opt);
+    template void ToolConfig::read(const string name, vector<int32>&   opt);
+    template void ToolConfig::read(const string name, vector<int64>&   opt);
+    template void ToolConfig::read(const string name, vector<uint8>&   opt);
+    template void ToolConfig::read(const string name, vector<uint16>&  opt);
+    template void ToolConfig::read(const string name, vector<uint32>&  opt);
+    template void ToolConfig::read(const string name, vector<uint64>&  opt);
+    template void ToolConfig::read(const string name, vector<float32>& opt);
+    template void ToolConfig::read(const string name, vector<float64>& opt);
+    template void ToolConfig::read(const string name, vector<string>&  opt);
+    template void ToolConfig::read(const string name, bool&            opt);
+    
+
+    // private instances
+    template void ToolConfig::_add_option(int8            opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(int16           opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(int32           opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(int64           opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(uint8           opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(uint16          opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(uint32          opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(uint64          opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(float32         opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(float64         opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(string          opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<int8>    opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<int16>   opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<int32>   opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<int64>   opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<uint8>   opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<uint16>  opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<uint32>  opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<uint64>  opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<float32> opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<float64> opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(vector<string>  opt, const string name, const string desc, const char abv);
+    template void ToolConfig::_add_option(bool            opt, const string name, const string desc, const char abv);
+    
+    template void ToolConfig::_add_argument(int8             opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(int16            opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(int32            opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(int64            opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(uint8            opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(uint16           opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(uint32           opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(uint64           opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(float32          opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(float64          opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(string           opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<int8>     opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<int16>    opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<int32>    opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<int64>    opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<uint8>    opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<uint16>   opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<uint32>   opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<uint64>   opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<float32>  opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<float64>  opt, const string name, const string desc, bool);
+    template void ToolConfig::_add_argument(vector<string>   opt, const string name, const string desc, bool);
+    
+    template void ToolConfig::_read(const string name, int8&            opt);
+    template void ToolConfig::_read(const string name, int16&           opt);
+    template void ToolConfig::_read(const string name, int32&           opt);
+    template void ToolConfig::_read(const string name, int64&           opt);
+    template void ToolConfig::_read(const string name, uint8&           opt);
+    template void ToolConfig::_read(const string name, uint16&          opt);
+    template void ToolConfig::_read(const string name, uint32&          opt);
+    template void ToolConfig::_read(const string name, uint64&          opt);
+    template void ToolConfig::_read(const string name, float32&         opt);
+    template void ToolConfig::_read(const string name, float64&         opt);
+    template void ToolConfig::_read(const string name, string&          opt);
+    template void ToolConfig::_read(const string name, vector<int8>&    opt);
+    template void ToolConfig::_read(const string name, vector<int16>&   opt);
+    template void ToolConfig::_read(const string name, vector<int32>&   opt);
+    template void ToolConfig::_read(const string name, vector<int64>&   opt);
+    template void ToolConfig::_read(const string name, vector<uint8>&   opt);
+    template void ToolConfig::_read(const string name, vector<uint16>&  opt);
+    template void ToolConfig::_read(const string name, vector<uint32>&  opt);
+    template void ToolConfig::_read(const string name, vector<uint64>&  opt);
+    template void ToolConfig::_read(const string name, vector<float32>& opt);
+    template void ToolConfig::_read(const string name, vector<float64>& opt);
+    template void ToolConfig::_read(const string name, vector<string>&  opt);
+}
+
+#endif

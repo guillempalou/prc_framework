@@ -1,0 +1,119 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file imagegray.test
+ */
+
+#include <imageplus/core/imagegray.hpp>
+#include <imageplus/core/imavol_logical.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ImageGraySuite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64,
+                           int8,  int16,  int32,  int64,
+                                                float64 > ImageGrayTypes;
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( ImageGray_Test, T, ImageGrayTypes )
+{
+    /*
+     * Default constructor
+     */
+    ImageGray<T> gry1;
+    BOOST_CHECK( gry1.size_x() == 0 );
+    BOOST_CHECK( gry1.size_y() == 0 );
+    
+    /*
+     * Specific constructor from width/height
+     */
+    ImageGray<T> gry2 (4,3);
+    BOOST_CHECK( gry2.size_x() == 4 );
+    BOOST_CHECK( gry2.size_y() == 3 );
+    
+    /*
+     * Specific constructor from dims
+     */
+    std::vector <uint64> dims_channel(2);
+    dims_channel[0] = 9;
+    dims_channel[1] = 6;
+
+    std::vector< std::vector <uint64> > dims(1, dims_channel);
+    
+    ImageGray<T> gry3(dims);
+    BOOST_CHECK( gry3.size_x() == 9 );
+    BOOST_CHECK( gry3.size_y() == 6 );
+    
+    /*
+     * Assign values
+     */
+    typedef typename ImageGray<T>::Color Color; 
+    Color c1, c2, c3;
+    
+    c1[0] = 127;
+    c2[0] =  64;
+    c3[0] =   0;
+    
+    for(std::size_t ii=0; ii < gry2.size_x(); ++ii )
+    {
+        gry2(Coord<int64,2>(ii,0)) = c1;
+        gry2(Coord<int64,2>(ii,1)) = c2;
+        gry2(Coord<int64,2>(ii,2)) = c3;
+    }
+    
+    for(std::size_t ii=0; ii < gry3.size_x(); ++ii )
+    {
+        gry3(Coord<int64,2>(ii,0)) = c3;
+        gry3(Coord<int64,2>(ii,1)) = c2;
+        gry3(Coord<int64,2>(ii,2)) = c1;
+        gry3(Coord<int64,2>(ii,3)) = c3;
+        gry3(Coord<int64,2>(ii,4)) = c2;
+        gry3(Coord<int64,2>(ii,5)) = c1;
+    }
+
+    /*
+     * Copy constructor
+     */
+    ImageGray<T> gry4 = gry2;
+    
+    BOOST_CHECK( gry4 == gry2 );
+    BOOST_CHECK( gry4.size_x() == 4 );
+    BOOST_CHECK( gry4.size_y() == 3 );
+    for(std::size_t ii=0; ii < gry4.size_x(); ++ii )
+    {
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,0)) == c1 );
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,1)) == c2 );
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,2)) == c3 );
+    }
+    
+    /*
+     * Assignment
+     */
+    gry4 = gry3;
+    BOOST_CHECK( gry4 == gry3 );
+    BOOST_CHECK( gry4.size_x() == 9 );
+    BOOST_CHECK( gry4.size_y() == 6 );
+    for(std::size_t ii=0; ii < gry4.size_x(); ++ii )
+    {
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,0)) == c3 );
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,1)) == c2 );
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,2)) == c1 );
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,3)) == c3 );
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,4)) == c2 );
+        BOOST_CHECK( gry4(Coord<int64,2>(ii,5)) == c1 );
+    }
+    
+    gry2 = 2;
+    BOOST_CHECK( gry2 == T(2) );
+    for(std::size_t jj=0; jj < gry2.size_y(); ++jj )
+    for(std::size_t ii=0; ii < gry2.size_x(); ++ii )
+    for(std::size_t ch=0; ch < 1;             ++ch )
+    {
+        BOOST_CHECK (gry2(Coord<int64,2>(ii,jj))[ch] == 2);
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

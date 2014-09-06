@@ -1,0 +1,87 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file coord3d.hpp
+ */
+
+#ifndef IMAGEPLUS_CORE_COORD3D_HPP
+#define IMAGEPLUS_CORE_COORD3D_HPP
+
+#include <imageplus/core/coord.hpp>
+
+namespace imageplus
+{
+    /*!
+     * \brief Class to represent 3D coordinates, usually to represent the voxel positions in a Volume.
+     *
+     * This class is just a kind of "template typedef" for the Coord<T,D>, for D=3.
+     *
+     * \see Coord, Coord2D, Point2D
+     *
+     * \author 2008-02 - Josep Ramon Morros <ramon.morros@upc.edu> - Creation
+     * \author 2011-06 - Albert Gil Moreno <albert.gil@upc.edu>    - Review
+     */
+    template < typename T = int64>
+    class Coord3D : public Coord<T,3>
+    {
+    private:
+
+        typedef Coord<T,3> BaseCoord; //!< Base class
+
+    public:
+
+        typedef typename BaseCoord::data_type  data_type;                          //!< The data_type of the Coord (T)
+        static const std::size_t               dimensions = BaseCoord::dimensions; //!< The dimension of the Coord space (3D)
+
+        /*!
+         * \brief Default constructor
+         */
+        Coord3D()
+        :   BaseCoord()
+        {}
+
+        /*!
+         * Constructor from (x,y,z) values
+         *
+         * \param[in] x : the value of the first dimension
+         * \param[in] y : the value of the second dimension
+         * \param[in] z : the value of the third dimension
+         */
+
+        Coord3D(T x, T y, T z)
+        :   BaseCoord(x,y,z)
+        {}
+
+        /*!
+         * Copy constructor from base class, with an implicit data type conversion
+         *
+         * \tparam TC : This template allows us to use different data types
+         *
+         * \param[in] copy : Array with coordinates (you can also use a Coord2D<TC> and Coord<TC,2>)
+         */
+        template<typename TC>
+        Coord3D(const boost::array<TC,dimensions>& copy)
+        {
+            BaseCoord::operator=(copy);
+        }
+
+        /*!
+         * Assignment operator from the base/array class, with an implicit data type conversion
+         *
+         * \param[in] copy : the object to copy from (it can be also a Coord<TC,2> or a Coord2D<TC>)
+         *
+         * \returns this, just to concatenate
+         */
+        template<typename TC>
+        const Coord3D& operator= (const boost::array<TC,dimensions>& copy)
+        {
+            BaseCoord::operator=(copy);
+            return *this;
+        }
+    };
+}
+
+#endif /* IMAGEPLUS_COORD3D_HPP */

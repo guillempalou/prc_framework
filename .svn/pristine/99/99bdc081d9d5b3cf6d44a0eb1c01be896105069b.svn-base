@@ -1,0 +1,567 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file tool_config.hpp
+//!
+//!  Definition of ToolConfig class, to be used in tools
+//!
+
+#ifndef IMAGEPLUS_CORE_TOOL_CONFIG_HPP
+#define IMAGEPLUS_CORE_TOOL_CONFIG_HPP
+
+#include <iostream>
+#include <fstream>
+#include <boost/program_options.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <boost/filesystem.hpp>
+
+namespace imageplus
+{
+    namespace toolbox
+    {
+        //!
+        //! \brief Class to manage the configuration parameters of an ImagePlus tool.
+        //!
+        //! This class is basically a wrapper for the <a href=http://www.boost.org/doc/html/program_options.html> Boost.Program_options library</a>.
+        //!
+        //! It is recomended to not use this class directly, but use the \ref ToolConfigMacros instead. \n
+        //!
+        //! The main objectives and features of the class are:
+        //! <ul>
+        //!     <li>To <b>simplify</b> the tools configuration</li>
+        //!     <li>To be able to read options from <b>command line</b> and/or from <b>config files</b> indistinctly.</li>
+        //!     <li>To make the parameters lecture <b>flexible</b> and <b>robust</b></li>
+        //!     <li>To add some basic options for all the tools: <tt><b>--help, --version, [--config_file]</b></TT></li>
+        //!     <li>To create uniformed and well formated <b>help messages</b></li>
+        //!     <li><b>Auto-usage message</b> to always get the usage message updated.</li>
+        //!     <li><b>Auto-error messages</b> for bad parameters passed to the tool.</li>
+        //!     <li>Config file name uniformed for all tools, but configurable in command line</li>
+        //! </ul>
+        //!
+        //! The class define three basic types of possible parameters:
+        //! <ul>
+        //!     <li>options</li>
+        //!     <ul>
+        //!         <li>Can be passed by: <tt>"--my_option=my_value"</tt> or <tt>"--my_option my_value"</tt></li>
+        //!         <li>And also with abreviatures: <tt>"-o my_value"</tt> (<tt>"-o=my_value"</tt> is not allowed)
+        //!         <li>Can be passed in any order and position within the command line, or in the config file</li>
+        //!         <li>Are always optional and always have a default value</li>
+        //!         <li>Supported types are: <tt>int32, float32, string, vector<string></tt></li>
+        //!         <li>If an option is defined in the command line and also in the config file, the last one is ignored</li>
+        //!         <li>The above rule is not true for <tt>vector<string></tt> options, where the result is a merged one (command line + config file)</li>
+        //!     </ul>
+        //!     <li>flags</li>
+        //!     <ul>
+        //!         <li>Are boolean parameters</li>
+        //!         <li>Can be passed by: <tt>"--my_flag"</tt> or with an abreviature <tt>"-f"</tt></li>
+        //!         <li>More than one flag is allowed with only one '-' and their abreviatures: <tt>"-o -f"</tt> is eqivalent to <tt>"-of"</tt></li>
+        //!         <li>Can be passed in any order and position within the command line</li>
+        //!         <li>Are always optional and by default are always <tt>false</tt></li>
+        //!         <li>In config files you should add the line <tt>my_flag = true</tt> to activate it</li>
+        //!         <li>In config files, althought you set it to <tt>false</tt>, flags will be considered <tt>true</tt>. Comment the line to set it <tt>false</tt></li>
+        //!     </ul>
+        //!     <li>arguments</li>
+        //!     <ul>
+        //!         <li>Passed directly from command line <small>(no <tt>-/--</tt>)</small></li>
+        //!         <li>Not allowed in config files, only in the command line</li>
+        //!         <li>Supported types are: <tt>int32, float32, string, vector<string></tt></li>
+        //!         <li>Should be passed from the command line in the usage order. This order is the same order you add the arguments in your code.</li>
+        //!         <li>In general are mandatory, only one optional argument is possible but should be placed at the end of the command line</li>
+        //!         <li>Only one vector argument is possible (mandatory or not) and should be placed at the end of the command line</li>
+        //!         <li>When an optional argument or a vector argument (mandatppry or not) are added, no more arguments are allowed (exception is thrown)</li>
+        //!     </ul>
+        //! </ul>
+        //!
+        //! \author Albert Gil <agil@gps.tsc.upc.edu>
+        //!
+        //! \date 10-3-2008
+        //!
+        class ToolConfig
+        {
+        protected:
+
+            //!
+            //! \brief Basic contructor.
+            //!
+            //! \param toolname     : The name of the tool
+            //! \param brief        : Brief for the tool functionality
+            //! \param description  : A complete description of what the tool does
+            //!
+            ToolConfig(const std::string& toolname, const std::string& brief, const std::string& description );
+
+            //!
+            //! \brief This method adds an option to be read from command line or config file.
+            //!
+            //! This method adds a configuration option.
+            //! Options can be specified from the comman line or in a config file.
+            //! In the command line the options can be spcified with its name (--option) or with its abreviature (-o)
+            //! The option value can be specified in two ways:
+            //! "--option=value" or "--option value"
+            //!
+            //! Abreviature options can be specified together (-o -k -f == -okf)
+            //! Bool options are treated as flags (without arguments after the option)
+            //!
+            //! \param default_value    : The default value for the option
+            //! \param name             : The name of the option. This name is the same name used in <tt>read</tt> method
+            //! \param description      : Description of the option
+            //! \param abv              : Option abreviature
+            //!
+            template<typename T>
+            void add_option(T default_value, const std::string name, const std::string description, const char abv = ' ');
+
+            //!
+            //! \brief This method adds an flag to be read from command line.
+            //!
+            //! This method adds a flag parameter.
+            //! Flags can only be specified within the comman line.
+            //! In the command line the options can be spcified with its name (--option) or with its abreviature (-o)
+            //! The option value can be specified in two ways:
+            //! "--option=value" or "--option value"
+            //!
+            //! Abreviature options can be specified together (-o -k -f == -okf)
+            //! Bool options are treated as flags (without arguments after the option)
+            //!
+            //! \param default_value    : The default value for the option
+            //! \param name             : The name of the option. This name is the same name used in <tt>read</tt> method
+            //! \param description      : Description of the option
+            //! \param abv              : Option abreviature
+            //!
+            void add_flag(bool default_value, const std::string name, const std::string description, const char abv = ' ');
+
+            //!
+            //! \brief This method adds a command line argument.
+            //!
+            //! This method adds a command line argument.
+            //! By default this arguments are mandatory. You can only add one optional argument at the end.
+            //! Note that if you add more arguments after an optional one is added you will get an ImagePlusError exception.
+            //!
+            //! \param default_value    : The default value for the argument (ignored if argument is mandatory)
+            //! \param name             : The name of the option. This name is the same name used in <tt>read</tt> method
+            //! \param description      : Description of the argument
+            //! \param mandatory        : Selects if argument is mandatory or optional. If argument is mandatory, the default value is ignored..
+            //!
+            //! \throws ImagePlusError  : If adding an argument after a optional one or a vector.
+            //!
+            template<typename T>
+            void add_argument(T default_value, const std::string name, const std::string description, bool mandatory = true);
+
+            //!
+            //! \brief This method reads the command line and the config file and store the values in an internal map.
+            //!
+            //! This method basically reads the command line and the config file and store the values in an internal map.
+            //! After this method is call you can call the <tt>read</tt> method to get the values readed.
+            //!
+            //! If the <tt>--help</tt> or <tt>--version</tt> options are found, they are processed and the tool is finished with 0.
+            //!
+            //! Also if an error is detected it is printed out and the application is finished with 1. Some errors are:
+            //! invalid arguments and options, wrong number of arguments, wrong value options...
+            //!
+            //! \param[in] argc : The number of arguments passed
+            //! \param[in] argv : An array with all arguments passed
+            //!
+            void configure(int argc, char* argv[]);
+
+            //!
+            //! \brief This method sets the <tt>variable</tt> with the value found for parameter <tt>name</tt> during the configuration.
+            //!
+            //! This method sets the <tt>variable</tt> with the value found for parameter <tt>name</tt> during the configuration.
+            //!
+            //! Booleans are treated as flags, so if flag is found the variable will be set to <tt>true</tt>.
+            //!
+            //! \param name     : The name of the option to get
+            //! \param variable : The variable with the default value to be overided if parameter is found during the configuration.
+            //!
+            template <typename T>
+            void read(const std::string name, T& variable);
+
+            //!
+            //! \brief Method to print out the help message with all the information and finish the application with 0.
+            //!
+            void help();
+
+        public:
+            //!
+            //! \brief This method prints out the basic usage information and the <tt>error_ message</tt> at the end. It also finish the application with <tt>error</tt>.
+            //!
+            //! \param[in] error_message : The message to be printed out with the basic usage information
+            //! \param[in] error         : The error type. The application will finish returning this value.
+            //!
+            void usage( std::string error_message, int error = 1 );
+
+        private:
+            //! Method to create the basic usage message
+            void _create_basic_usage();
+
+            //! Method to create arguments information for help messages
+            void _create_arguments_usage();
+
+            //! Method to create the version message
+            void _create_version();
+
+            //!
+            //! \brief Implementation of add_option method for non-vector types
+            //!
+            //! \param default_value    : The default value for the option
+            //! \param name             : The name of the option. This name is the same name used in <tt>read</tt> method
+            //! \param description      : Description of the option
+            //! \param abv              : Option abreviature
+            //!
+            template<typename T>
+            void _add_option(T default_value, const std::string name, const std::string description, const char abv);
+
+            //!
+            //! \brief Implementation of add_option method for vectors
+            //!
+            //! This is an auxiliar method to add a vector of Ts as option.
+            //! This is because the std::vector class has not the opertor ostream<< defined and boost.program_options library
+            //! needs this operator to add default values. We should do specific things with this kind of options to store
+            //! default values.
+            //!
+            //! \param default_value    : The default value for the option
+            //! \param name             : The name of the option. This name is the same name used in <tt>read</tt> method
+            //! \param description      : Description of the option
+            //! \param abv              : Option abreviature
+            //!
+            template<typename T>
+            void _add_option(std::vector<T> default_value, const std::string name, const std::string description, const char abv);
+
+            //!
+            //! \brief Implementation of add_argument method for non vector
+            //!
+            //! \param default_value    : The default value for the argument (ignored if argument is mandatory)
+            //! \param name             : The name of the option. This name is the same name used in <tt>read</tt> method
+            //! \param description      : Description of the argument
+            //! \param mandatory        : Selects if argument is mandatory or optional. If argument is mandatory, the default value is ignored..
+            //!
+            //! \throws ImagePlusError  : If adding an argument after a optional one or a vector.
+            //!
+            template<typename T>
+            void _add_argument(T default_value, const std::string name, const std::string description, bool mandatory);
+
+            //!
+            //! \brief Add argument implementation for vectors
+            //!
+            //! This is an auxiliar method to add a vector of Ts as argument.
+            //! This is because the std::vector class has not the opertor ostream<< defined and boost.program_options library
+            //! needs this operator to add default values. We should do specific things with this kind of arguments to store
+            //! default values.
+            //!
+            //! \param default_value    : The default value for the argument (ignored if argument is mandatory)
+            //! \param name             : The name of the argument. This name is the same name used in <tt>read</tt> method
+            //! \param description      : Description of the arument
+            //! \param mandatory        : Selects if argument is mandatory or optional. If argument is mandatory, the default value is ignored..
+            //!
+            template<typename T>
+            void _add_argument(std::vector<T> default_value, const std::string name, const std::string description, bool mandatory);
+
+            //!
+            //! \brief Implementatio of <tt>read</tt> method for non-booleans.
+            //!
+            //! \param name    : The name of the option to get
+            //! \param option  : The variable with the default value. It will be overided if option is found
+            //!
+            template <typename T>
+            void _read(const std::string name, T& option);
+
+            //!
+            //! \brief Implementation of <tt>read</tt> method for booleans
+            //!
+            //! Booleans are treated as flags, so if flag is found the default value is negated.
+            //!
+            //! \param name    : The name of the option to get.
+            //! \param option  : The variable with the default value. It will be negated if option is found.
+            //!
+            void _read(const std::string name, bool& option);
+
+            //! The config file name
+            std::string  _config_file;
+            //! The tool name.used for help messages
+            std::string _toolname;
+            //! The version message
+            std::string _version;
+            //! The usage message
+            std::string _usage;
+            //! The usage arguments
+            std::string _usage_args;
+
+            //! The tool brief
+            std::string _brief;
+            //! The tool description
+            std::string _description;
+
+            //! The internal options map
+            boost::program_options::variables_map _options_map;
+            //! Configuration options
+            boost::program_options::options_description _config;
+            //! Common options for all imageplus tools
+            boost::program_options::options_description _generic;
+            //! Arguments description
+            boost::program_options::options_description _arguments;
+            //! Auxiliar variable for arguments
+            boost::program_options::positional_options_description _pos_arguments;
+
+            //! The name of all mandatoy arguments
+            std::vector<std::string> _mandatory_arguments;
+
+            //! The name of the no mandatoy arguments (only one is possible, and should be placed and the end of the command line)
+            std::string _no_mandatory_argument;
+            //! The name of the no mandatoy vector argument (only one is possible, and should be placed and the end of the command line)
+            std::string _no_mandatory_argument_vector;
+            //! The name of the mandatoy vector arguments (only one is possible, and should be placed and the end of the command line)
+            std::string _mandatory_argument_vector;
+
+            //! Auxiliar variabe to save the default value of an optional vector argument
+            std::vector<std::string> _default_argument_vector;
+            //! Auxiliar variable to save the name of the argument vector
+            std::string _default_argument_vector_name;
+
+            //! To check if an optional or vector argument is already added (only one is possible, and should be placed and the end of the command line)
+            bool _positonal_optional_or_vector_added;
+        };
+    }
+}
+
+
+/*!
+ * \namespace tools
+ *
+ * \brief The complete %tools list
+ *
+ * A tool is an aplication that uses the ImagePlus library.
+ * They use the \ref ToolConfigMacros for better configuration.
+ *
+ * Note that each tool is listed as a "string variable" with its name.
+ * You can also see a complete description per each tool.
+ *
+ * Tools are grouped into different subnamespaces, here you can find a
+ * complete list.
+ *
+ */
+namespace tools
+{
+}
+
+//!
+//! \defgroup ToolConfigMacros ToolConfig usage
+//!
+//! TOOL_CONFIG_MACROS are a set of preprocessor macros to help the configuration
+//! of any tool. They are based in the \ref imageplus::toolbox::ToolConfig "ToolConfig" class, and their goal is to help you
+//! to use the ToolConfig class in the best, and easier way.
+//!
+//! Here you can see a simple, but complete, example of how to create a tool unsing
+//! the TOOL_CONFIG_MACROS.
+//!
+//! This example contains the fully commented source code of a tool,
+//! and the results of executing the tool with different parameters at the end.
+//!
+//! Source code of the tool example:
+//! \include tool_config_example.cpp
+//!
+//! Results of running the above example with diferent parameters:
+//! \include tool_config_example.log
+//!
+
+//////////////////// TOOL_CONFIG_MACROS /////////////////////////////////
+
+#ifndef IMAGEPLUS_TOOL_CONFIG_GROUP
+
+#define IMAGEPLUS_TOOL_CONFIG_BRIEF()                                    \
+    namespace tools                                                      \
+    {/*! Run with "--help" for more details */                           \
+    static const std::string IMAGEPLUS_TOOL_CONFIG_NAME = (std::string)
+
+#else
+
+#define IMAGEPLUS_TOOL_CONFIG_BRIEF()                                   \
+    namespace tools                                                     \
+    {                                                                   \
+        namespace IMAGEPLUS_TOOL_CONFIG_GROUP                           \
+        {                                                               \
+        }                                                               \
+    }                                                                   \
+    namespace tools                                                     \
+    {                                                                   \
+        namespace IMAGEPLUS_TOOL_CONFIG_GROUP                           \
+        {/*! Run with "--help" for more details */                      \
+        static const std::string IMAGEPLUS_TOOL_CONFIG_NAME = (std::string)
+
+
+#endif
+
+/*! \cond SKIP_DOC */
+
+/////////////////////////////////////////////////////////////////////////
+
+#ifndef IMAGEPLUS_TOOL_CONFIG_GROUP
+    //!
+    //! \def IMAGEPLUS_TOOL_CONFIG_BRIEF()
+    //!
+    //! \ingroup ToolConfigMacros
+    //!
+    #define IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()                         \
+    }/*! \cond SKIP_DOC */                                               \
+    using namespace tools;                                              \
+    namespace tools                                                     \
+    {   /*! Run the tool with "--help" for more details */              \
+        static const std::string IMAGEPLUS_TOOL_MY_DESCRIPTION = (std::string)
+
+
+/////////////////////////////////////////////////////////////////////////
+
+    //!
+    //! \def IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+    //!
+    //! \ingroup ToolConfigMacros
+    //!
+    #define IMAGEPLUS_TOOL_CONFIG_PARAMETERS()                          \
+                                                                        \
+    }                                                                   \
+                                                                        \
+        class MyToolConfig : public imageplus::toolbox::ToolConfig      \
+        {                                                               \
+        public:                                                         \
+
+
+#else //ifdef IMAGEPLUS_TOOL_CONFIG_GROUP
+
+    #define IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()                         \
+    }}/*! \cond SKIP_DOC */                                               \
+    namespace tools                                                     \
+    {                                                                   \
+        namespace IMAGEPLUS_TOOL_CONFIG_GROUP                           \
+        {                                                               \
+        }                                                               \
+    }                                                                   \
+    using namespace tools::IMAGEPLUS_TOOL_CONFIG_GROUP;                 \
+    namespace tools                                                     \
+    {                                                                   \
+        namespace IMAGEPLUS_TOOL_CONFIG_GROUP                           \
+        {   /*! Run the tool with "--help" for more details */          \
+            static const std::string IMAGEPLUS_TOOL_MY_DESCRIPTION = (std::string)
+
+/////////////////////////////////////////////////////////////////////////
+
+    #define IMAGEPLUS_TOOL_CONFIG_PARAMETERS()                          \
+                                                                        \
+    } }                                                                 \
+                                             \
+        class MyToolConfig : public imageplus::toolbox::ToolConfig      \
+        {                                                               \
+        public:                                                         \
+
+
+#endif //ifndef IMAGEPLUS_TOOL_CONFIG_GROUP
+
+/////////////////////////////////////////////////////////////////////////
+
+
+
+
+/////////////////////////////////////////////////////////////////////////
+
+//!
+//! \def IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+//!
+//! \ingroup ToolConfigMacros
+//!
+//! FOR BOOST 1.37 we can replace
+//!
+//! boost::filesystem::basename(boost::filesystem::path( argv[0]) )
+//! for
+//! boost::filesystem::path(argv[0]).filename()
+//!
+#define IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()                          \
+                                                                        \
+    MyToolConfig(int argc, char* argv[]) :                              \
+        ToolConfig( boost::filesystem::basename(                        \
+                    boost::filesystem::path( argv[0]) ),                \
+                    IMAGEPLUS_TOOL_CONFIG_NAME,                  \
+                    IMAGEPLUS_TOOL_MY_DESCRIPTION)                      \
+    {                                                                   \
+
+/////////////////////////////////////////////////////////////////////////
+
+//!
+//! \def IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+//!
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+//!
+//! \def IMAGEPLUS_TOOL_CONFIG_FLAGS()
+//!
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+//!
+//! \def IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+//!
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+/////////////////////////////////////////////////////////////////////////
+
+//!
+//! \def IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+//!
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()                         \
+                                                                        \
+    configure(argc, argv);                                              \
+
+/////////////////////////////////////////////////////////////////////////
+
+//!
+//! \def IMAGEPLUS_TOOL_CONFIG_MAIN()
+//!
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_TOOL_CONFIG_MAIN()                                    \
+                                                                        \
+    }                                                                   \
+};                                                                      \
+                                                                        \
+int main(int argc, char* argv[])                                        \
+{                                                                       \
+   MyToolConfig cfg(argc, argv);                                        \
+
+
+//!
+//! \def IMAGEPLUS_TOOL_CONFIG_END()
+//!
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_TOOL_CONFIG_END()                                     \
+                                                                        \
+    return 0;                                                           \
+/*! \endcond */                                                         \
+}                                                                       \
+
+
+
+/////////////////////////////////////////////////////////////////////////
+
+#define IMAGEPLUS_TOOL_CONFIG_READ(var) read(#var, var);
+
+/////////////////////////////////////////////////////////////////////////
+
+#define IMAGEPLUS_TOOL_CONFIG_OPTION(var, msg)            add_option   ( var , #var , (std::string)msg        );
+#define IMAGEPLUS_TOOL_CONFIG_OPTION_ABV(var, msg, abv)   add_option   ( var , #var , (std::string)msg, abv   );
+#define IMAGEPLUS_TOOL_CONFIG_FLAG(var, msg)              add_flag     ( var , #var , (std::string)msg        );
+#define IMAGEPLUS_TOOL_CONFIG_FLAG_ABV(var, msg, abv)     add_flag     ( var , #var , (std::string)msg, abv   );
+#define IMAGEPLUS_TOOL_CONFIG_ARGUMENT(var, msg)          add_argument ( var , #var , (std::string)msg        );
+//#define IMAGEPLUS_TOOL_CONFIG_ARGUMENT_OPTIONAL(var, msg) add_argument ( var , #var , msg, false );
+
+/////////////////////////////////////////////////////////////////////////
+
+
+/*! \endcond */
+
+#endif // IMAGEPLUS_CORE_APPLICATION_CONFIG_HPP

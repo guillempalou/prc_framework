@@ -1,0 +1,94 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file get_image_dimensions.test
+ */ 
+
+#include <imageplus/core.hpp>
+
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+#include <io_auxiliar.hpp>
+
+#include <iostream>
+#include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/fstream.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( image_dims );
+
+using namespace std;
+using namespace boost::filesystem; 
+using namespace imageplus;
+using namespace imageplus::io;
+
+BOOST_AUTO_TEST_CASE ( image_dims_test )
+{
+    
+    uint64 x = 176; uint64 y = 144; uint64 z = 144;
+    std::string name = string(TEST_DATA_PATH_W) + "/test_dims";
+
+    std::vector<std::string> exts;
+    exts.push_back(".jpg"); 
+    exts.push_back(".png"); 
+    exts.push_back(".tiff");
+#ifdef USE_IMAGEMAGICK
+    exts.push_back(".ras");
+    exts.push_back(".bmp");
+#endif
+
+    for (uint64 e = 0; e < exts.size(); e++)
+    {
+        for (uint64 s = 1; s < 4; s++) 
+        {
+            std::string fname = name + exts[e];
+
+            WriteImage wim(fname);
+            ImageRGB<uint8> im(x*s,y*s);
+            im = 128;
+            wim << im;
+            std::vector<uint64> dims = get_image_dimensions(fname, get_image_format(fname));
+            
+            //cout << "size_x = " << im.size_x() << " vs " << dims[0] << endl;
+            //cout << "size_y = " << im.size_y() << " vs " << dims[1] << endl;
+
+            BOOST_CHECK( im.size_x() == dims[0] );
+            BOOST_CHECK( im.size_y() == dims[1] );
+        }
+    }
+
+    // Check mult
+    x = 5; y = 10; z = 15;
+    for (uint64 s = 1; s < 4; s++) 
+    {
+        std::string fname = name + ".mult";
+        
+        WriteMultiArray wm(fname);
+        MultiArray<uint8,1> m1(x*s); m1 = (uint8)128;
+        MultiArray<uint8,2> m2(x*s, y*s); m2 = (uint8)128;
+        MultiArray<uint8,3> m3(x*s, y*s, z*s); m3 = (uint8)128;
+
+        wm << m1;
+        std::vector<uint64> dims = get_image_dimensions(fname, get_image_format(fname));
+        BOOST_CHECK( x*s == dims[0] );
+
+        wm << m2;
+        dims = get_image_dimensions(fname, get_image_format(fname));
+        BOOST_CHECK( x*s == dims[0] );
+        BOOST_CHECK( y*s == dims[1] );
+
+        wm << m3;
+        dims = get_image_dimensions(fname, get_image_format(fname));
+        BOOST_CHECK( x*s == dims[0] );
+        BOOST_CHECK( y*s == dims[1] );
+        BOOST_CHECK( z*s == dims[2] );
+
+    }
+    
+
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

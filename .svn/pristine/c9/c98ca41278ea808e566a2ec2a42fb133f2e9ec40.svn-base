@@ -1,0 +1,200 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Main script                                      #
+#                                                                            #
+#  This build system is based on SCons (http://www.scons.org/)               #
+#                                                                            #
+# This file is the main configuration file of the system.                    #
+# Actually it's a Python script launched by the "scons" command, which       #
+# works similar to "Makefile" when read by the "make" command.               #
+#                                                                            #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#  CONTRIBUTIONS:                                                            #
+#                Javier Ruiz, UPC                                            #
+#                Josep R. Casas, UPC                                         #
+#  DERIVED FROM WORK OF :                                                    #
+#                Shadi El Hajj, UPC (currently at IUA/UPF)                   #
+#                Joachim Neumann, UPC (currently at IUA/UPF)                 #
+#                                                                            #
+##############################################################################
+
+import os
+
+##
+## Global variables.
+##
+## These variables should be exported in order to be accessible
+## from all the sconscript files 
+## 
+modulesPath    = '#modules/'
+toolsPath      = '#tools/'
+clientsPath    = '#clients/'
+websPath       = '#applications/web/'
+testsPath      = '#tests/'
+validationPath = testsPath + 'validation/'
+
+toolsBinPath   = '#bin/'
+mainlibPath    = '#lib/'
+
+userPath       = '#user/'
+docPath        = '#doc/'
+
+libName        = 'imageplus'
+
+builderPath            = '#builder/'
+sconstoolsPath         = builderPath + 'scons-tools'
+platformFile           = File( builderPath + 'platform.build'     )
+contextFile            = File( builderPath + 'contextcheck.build' )
+modulesBuildFile       = File( builderPath + 'modules.build'      )
+libraryBuildFile       = File( builderPath + 'library.build'      )
+documentationBuildFile = File( builderPath + 'doc.build'          )
+validationBuildFile    = File( builderPath + 'validation.build'   )
+optionsFile            = File( builderPath + 'options.build'      )
+targetsFile            = File( builderPath + 'targets.build'      )
+environmentFile        = File( builderPath + 'environment.build'  )
+helpFile               = File( builderPath + 'help.build'         )
+testBuildFile          = File( builderPath + 'tests.build'        )
+toolsBuildFile         = File( builderPath + 'tools.build'        )
+clientsBuildFile       = File( builderPath + 'clients.build'      )
+websBuildFile          = File( builderPath + 'web.build'          )
+devBuildFile           = File( builderPath + 'dev.build'          )
+dependencedBuildFile   = File( builderPath + 'dependences.build'  )
+
+modulesListFile        = File( builderPath + 'modules.list'       )
+toolsListFile          = File( builderPath + 'tools.list'         )
+clientsListFile        = File( builderPath + 'clients.list'       )
+
+userBuildFile          = File( userPath + 'user.build' )
+userListFile           = File( userPath + 'user.list'  )
+userTestListFile       = File( userPath + 'user-tests.list'  )
+
+traces = list()
+testDataExists = True
+
+#Export ALL
+Export('modulesPath', 
+       'toolsPath',
+       'clientsPath',
+       'websPath',
+       'testsPath', 
+       'toolsBinPath', 
+       'docPath',
+       'builderPath',
+       'mainlibPath',
+       'validationPath',
+       
+       'platformFile',
+       'userBuildFile',
+       'userListFile',
+       'contextFile',
+       'modulesBuildFile',
+       'documentationBuildFile',
+       'validationBuildFile',
+       'environmentFile',
+       'testBuildFile',
+       'toolsBuildFile',
+       'clientsBuildFile',
+       'websBuildFile',
+       'devBuildFile',
+       'dependencedBuildFile',
+       
+       'modulesListFile',
+       'toolsListFile',
+       'clientsListFile',
+       'userTestListFile',
+       
+       'libName',
+       'traces',
+       
+       'testDataExists',
+       
+       'sconstoolsPath',
+       )
+
+
+##
+## Command line options
+##
+## This should create and export the 'opts' variable
+##
+SConscript( optionsFile )
+
+
+##
+## Targets and alias
+##
+SConscript( targetsFile )
+
+
+##
+## Create and export the Build Environment 'env' 
+##
+SConscript( environmentFile )
+
+
+##
+## Build library 
+##
+SConscript( libraryBuildFile )
+
+
+##
+## Validation test
+##
+## Note: this test links with main library
+##
+SConscript( validationBuildFile )
+
+
+##
+## Tools
+##
+## Note: tools link with main library
+##
+SConscript( toolsBuildFile )
+
+
+##
+## Real-Time clients
+##
+## Note: These are smartflow clients that link with main library and smartflow
+##
+SConscript( clientsBuildFile )
+
+##
+## Web GUIs
+##
+## Note: These are Wt applications that link with main library and Wt
+##
+SConscript( websBuildFile )
+
+
+##
+## Documentation
+##
+SConscript( documentationBuildFile )  
+
+
+##
+## Create the help message
+##
+SConscript( helpFile )
+
+
+
+
+##
+## Clean configuration
+## 
+#Clean   ( static_library , moduleObjs + static_library )
+#NoClean ( testsTarget    , moduleObjs + static_library )
+

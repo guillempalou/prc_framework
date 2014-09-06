@@ -1,0 +1,354 @@
+/*
+ * binary_partition_tree.hpp
+ *
+ *  Created on: Aug 21, 2012
+ *      Author: guillem
+ */
+
+#ifndef LEARNING_BINARY_PARTITION_TREE_HPP_
+#define LEARNING_BINARY_PARTITION_TREE_HPP_
+
+#include <imageplus/segmentation/partition/hierarchical_region_partition.hpp>
+#include <imageplus/core/regions/hierarchical_region.hpp>
+
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <imageplus/descriptors/features/features_descriptor.hpp>
+
+#include <boost/filesystem.hpp>
+#include <fstream>
+#include <iomanip>
+#include <limits>
+
+namespace imageplus {
+	namespace bpt {
+
+	template<class Signal, class RegionModel = HierarchicalRegion<typename Signal::coord_type>, ConnectivityType adjacency_type = neighborhood_traits<RegionModel::dimensions>::default_forward_connectivity>
+	class LearningBPT {
+
+	public:
+
+		typedef typename Signal::coord_type														coord_type;
+
+		typedef RegionModel																		RegionType;
+
+		typedef segmentation::HierarchicalRegionPartition<RegionType, adjacency_type>			BPT;
+
+		typedef typename RegionType::RegionBaseType												RegionBaseType;
+		typedef typename RegionBaseType::RegionLinkType											RegionLinkType;
+
+		typedef typename RegionType::identifier_type											identifier_type;
+
+		typedef typename BPT::PartitionType														PartitionType;
+		typedef descriptors::DescriptorManager													DescriptorManagerType;
+
+	public:
+
+		typedef descriptors::FeaturesDescriptor<Signal> DescriptorType;
+
+		typedef Eigen::Vector3i triplet;
+
+		struct Parameters {
+			bool debug;
+			bool update_roots_partition;
+			uint64 num_regions_until_stop;
+			float64 step;
+
+			uint64 num_constraints_per_level;
+
+			std::map<uint64,uint64>										gt_assignment;
+			uint64 														incompatibilities;
+			std::map<uint64,uint64> 									reg_index;
+			std::map<uint64,uint64>										rev_reg_index;
+			uint64														num_regions_to_index;
+			std::list<typename DescriptorType::type> 					descriptors;
+			std::list<triplet> 											triplets;
+
+			Parameters() : debug(false), update_roots_partition(false), num_regions_until_stop(1), step(0), incompatibilities(0), num_regions_to_index(0) {
+
+			}
+
+		};
+
+		static const Parameters default_parameters() {
+			Parameters p;
+			p.debug = false;
+			p.update_roots_partition = false;
+			p.step = 0.0;
+			p.num_regions_until_stop = 1;
+			return p;
+		}
+
+		Parameters& pars() {
+			return _pars;
+		}
+
+	public:
+
+		LearningBPT(const Parameters& pars = default_parameters()) : _pars(pars), _manager() {
+		}
+
+		void set_gt_assignments(std::map<uint64,uint64>& assignments) {
+			_pars.gt_assignment = assignments;
+		}
+
+		template<class DistanceModel>
+		void add_constraints(Signal& signal, DistanceModel* model) {
+
+			typename BPT::roots_iterator r = _bpt.begin();
+			typename BPT::roots_iterator r_end = _bpt.end();
+
+			std::vector<triplet> triplets;
+			std::set<std::set<uint64> > trips;
+
+			for (;r!=r_end;++r) {
+
+				typename RegionBaseType::neighbor_iterator n, n2, n_end;
+
+				n = (*r).neighbors_begin();
+				n_end = (*r).neighbors_end();
+
+				uint64 label1 = (*r).label();
+
+				// iterate over neighbors
+				for (; n != n_end; ++n) {
+					uint64 label2 = (*n)->label();
+					for (n2 = n; n2 != n_end; ++n2) {
+						uint64 label3 = (*n2)->label();
+
+						if (label2 == label3 || label3 == label1) continue;
+
+						uint64 gt_label1 = _pars.gt_assignment[label1];
+						uint64 gt_label2 = _pars.gt_assignment[label2];
+						uint64 gt_label3 = _pars.gt_assignment[label3];
+
+						std::set<uint64> s; s.insert(label1); s.insert(label2); s.insert(label3);
+						if (trips.find(s) != trips.end()) continue;
+
+						trips.insert(s);
+
+						if (gt_label1 == gt_label2 && gt_label1 != gt_label3) {
+							triplets.push_back(triplet(label1,label2,label3));
+							triplets.push_back(triplet(label2,label1,label3));
+						}
+
+						if (gt_label1 == gt_label3 && gt_label2 != gt_label1) {
+							triplets.push_back(triplet(label1,label3,label2));
+							triplets.push_back(triplet(label3,label1,label2));
+						}
+
+						if (gt_label2 == gt_label3 && gt_label2 != gt_label1) {
+							triplets.push_back(triplet(label2,label3,label1));
+							triplets.push_back(triplet(label3,label2,label1));
+						}
+					}
+				}
+
+			}
+
+			uint64 N = triplets.size();
+			std::vector<bool>	used(N,false);
+
+			for (uint64 i = 0; i < std::min(N,_pars.num_constraints_per_level); i++) {
+				uint64 idx = 0;
+				do {
+					idx = rand() % N;
+				} while (used[idx] == true);
+
+				used[idx] = true;
+
+				//std::cout << "Putting " << triplets[idx].transpose() << std::endl;
+
+				std::vector<uint64> ids(3);
+
+				for (uint64 i = 0; i < 3; i++) {
+					uint64 id = triplets[idx](i);
+					if (_pars.reg_index.find(id) == _pars.reg_index.end()) {
+						_pars.reg_index[id] = _pars.num_regions_to_index++;
+						_pars.rev_reg_index[_pars.reg_index[id]] = id;
+						const typename DescriptorType::type&  desc = _manager.template calc_descriptor<DescriptorType>(signal, _bpt(id));
+						_pars.descriptors.push_back(desc);
+					}
+					ids[i] = _pars.reg_index[id];
+				}
+				_pars.triplets.push_back(triplet(ids[0],ids[1],ids[2]));
+			}
+		}
+
+		template <class DistanceModel>
+		inline uint64 merge_iteration(Signal& signal, DistanceModel* model) {
+
+			RegionLinkType* to_merge;
+			bool valid = false;
+			do {
+				to_merge = _links.get_first();
+
+				if (to_merge->type == LinkTypeSkip) {
+					_links.erase(to_merge);
+				} else {
+					valid = true;
+				}
+			} while(to_merge->type != LinkTypeNormal && !_links.is_empty());
+
+			if (!valid)
+				return -1;
+
+			//get link characteristics
+			RegionType* reg1 = (RegionType*)to_merge->neighbor1;
+			RegionType* reg2 = (RegionType*)to_merge->neighbor2;
+
+			//remove all links belonging to the child regions from list
+			//std::cout << "erasing neighbors " << std::endl;
+			typename RegionBaseType::neighbor_iterator n, n_end;
+			n = reg1->neighbors_begin();
+			n_end = reg1->neighbors_end();
+			for (; n != n_end; ++n) {
+				if (_links.find(n.link_data()))
+					_links.erase(n.link_data());
+			}
+			n = reg2->neighbors_begin();
+			n_end = reg2->neighbors_end();
+			for (; n != n_end; ++n) {
+
+				if ((*n) != reg1) {
+					if (_links.find(n.link_data()))
+						_links.erase(n.link_data());
+				}
+			}
+			//std::cout << "merging " << _current_label+1 << std::endl;
+			RegionType& parent = _bpt.merge_regions(*reg1,*reg2, ++_current_label);
+
+			_pars.gt_assignment[parent.label()] = _pars.gt_assignment[reg1->label()];
+
+			//remove merged link from list
+			// the link is removed with the previous process
+			//_links.erase(to_merge);
+
+			// recalculate father distances
+			n = parent.neighbors_begin();
+			n_end = parent.neighbors_end();
+
+			//uint64 neighs = 0;
+			for (; n != n_end; ++n) {
+
+				//neighs++;
+				float64 d = model->region_distance(parent, *((RegionType *)(*n)), signal, _bpt, _manager);
+				n.link_data()->distance = d;
+
+				if (_pars.gt_assignment[parent.label()] != _pars.gt_assignment[((RegionType *)(*n))->label()]) {
+					n.link_data()->type = LinkTypeSkip;
+				}
+
+				_links.put(n.link_data());
+			}
+
+			return --_N;
+		}
+
+
+
+		void init(Signal& signal, PartitionType& initial_partition) {
+
+			_bpt.init(initial_partition);
+
+			_bpt.set_update_partition(_pars.update_roots_partition);
+
+			_manager.set_max_number_of_regions(2*_bpt.max_label()+1);
+
+			_N = _bpt.max_label()+1;
+
+			_current_label = _bpt.max_label();
+		}
+
+		template <class DistanceModel>
+		void create(Signal& signal, const typename DistanceModel::Parameters& pars = DistanceModel::default_parameters()) {
+
+			DistanceModel* model = new DistanceModel(pars);
+
+			uint64 num_regions = _N;
+			uint64 	total_mergings 		= num_regions - _pars.num_regions_until_stop;
+			uint64 	total_mergings_done = 0;
+			float64 merging_step = _pars.step * total_mergings;
+			uint64 	current_merging_step = 0;
+
+			typename BPT::global_iterator it = _bpt.begin();
+			typename BPT::global_iterator end = _bpt.end();
+
+			if (_pars.debug) std::cerr << "Starting from " << _bpt.max_label()+1 << " regions " << std::endl;
+			// put the links into a priority queue
+			for (; it!=end;++it) {
+
+				for (typename RegionType::neighbor_iterator n = (*it).neighbors_begin(); n != (*it).neighbors_end(); ++n) {
+
+					if ((*it).label() < (*n)->label()) continue;
+
+					float64 d = model->region_distance((RegionType&)(*it), *((RegionType *)(*n)), signal, _bpt, _manager);
+					n.link_data()->distance = d;
+
+					if (_pars.gt_assignment[((RegionType&)(*it)).label()] != _pars.gt_assignment[((RegionType *)(*n))->label()]) {
+						n.link_data()->type = LinkTypeSkip;
+					}
+
+					_links.put(n.link_data());
+				}
+			}
+
+			add_constraints(signal, model);
+
+			while (num_regions > _pars.num_regions_until_stop) {
+				num_regions = merge_iteration(signal, model);
+
+				if (num_regions == 500 || num_regions == 200 || num_regions == 100 || num_regions == 50 || num_regions == 10) {
+					add_constraints(signal,model);
+				}
+
+				// debug info
+
+				//ImageSignal<float64,3> segmentation = segmentation::to_false_color<ImageSignal<float64,3> >(_bpt.roots_partition());
+
+				//std::ostringstream os;
+				//os << "./debug/" << num_regions << ".png";
+				//segmentation.write(os.str());
+
+				if (_links.is_empty())
+					break;
+
+				if (_pars.debug) {
+					current_merging_step++;
+					total_mergings_done++;
+					if (current_merging_step >= merging_step) {
+						current_merging_step = 0;
+						std::cerr << "Done " << (int)(total_mergings_done * 100 / total_mergings) << "% " << std::endl;
+					}
+				}
+
+			}
+
+			delete model;
+		}
+
+		//! Returns the descriptor manager
+		DescriptorManagerType& manager() {
+			return _manager;
+		}
+
+		//! Returns a reference to the tree
+		BPT& bpt() {
+			return _bpt;
+		}
+
+	protected:
+
+		Parameters _pars;
+
+		uint64 	_N; //! number of actual regions
+		uint64 _current_label; //! label of the new region to create
+
+		BST<typename RegionBaseType::RegionLinkType, typename RegionBaseType::RegionLinkType::compare_distance_function>		_links; //! links
+		DescriptorManagerType																									_manager; //! descriptor manager
+		BPT																														_bpt;
+	};
+
+	}
+}
+
+#endif /* BINARY_PARTITION_TREE_HPP_ */

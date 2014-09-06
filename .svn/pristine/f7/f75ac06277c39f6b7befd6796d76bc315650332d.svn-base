@@ -1,0 +1,142 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imageplus/descriptors/color/auxiliar.hpp
+//!
+
+#ifndef IMAGEPLUS_DESCRIPTORS_COLOR_AUXILIAR_HPP
+#define IMAGEPLUS_DESCRIPTORS_COLOR_AUXILIAR_HPP
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+namespace imageplus
+{
+	/*! \namespace imageplus::descriptors
+	 *  \brief Visual descriptors for images and regions
+	 */
+    namespace descriptors
+    {
+        //!
+        //! \brief Class for visual descriptor that contains the color volume of the own region.
+        //!
+        //! \author Ekaterina Zaytseva <zaytseva@gps.tsc.upc.edu>
+        //! \author Jordi Pont <jordi.pont@upc.edu>
+        //!
+        //! \date 20-7-2009    
+        template<class InputModel>
+        class ColorVolume : public DescriptorBase,
+                            public boost::array<uint64, InputModel::channels>
+        
+        {
+        public:
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef boost::array<uint64, InputModel::channels>  vd_type;
+            
+            //!
+            //! \brief Default constructor
+            //!
+            ColorVolume() : DescriptorBase("ColorVolume",true), vd_type()
+            {
+            };
+            
+            //! \brief Calculates the color_volume of a region given a pair of iterators. 
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {
+                for(std::size_t ch=0; ch!=InputModel::channels; ++ch) 
+                {
+                    (*this)[ch] = 0;
+                }
+                
+                for(; first!=last; ++first)
+                {
+                    for(std::size_t ch=0; ch!=InputModel::channels; ++ch) 
+                    {
+                        (*this)[ch] +=  (*first).value(ch);
+                    }
+                }
+            }
+            
+            
+            //! \brief Calculates color_volume of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            {        
+                 (*(vd_type*)this) = son1_descs.get(*this) + son2_descs.get(*this);
+            }
+        };
+        
+        
+        
+        //! \brief Class for visual descriptor that contains the squared color volume of the own region.
+        //!       (Sum of the squares of all the values)
+        //!
+        //! \author Ekaterina Zaytseva <zaytseva@gps.tsc.upc.edu>
+        //!
+        //! \date 20-7-2009    
+        template<class InputModel>
+        class SquaredColorVolume : public DescriptorBase,
+                                   public boost::array<uint64, InputModel::channels>
+
+        {
+        public:
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef boost::array<uint64, InputModel::channels>  vd_type;
+               
+            //!
+            //! \brief Default constructor
+            //!
+            SquaredColorVolume():  DescriptorBase("SquaredColorVolume",true), vd_type()
+            {
+            };
+            
+            //! \brief Calculates the squared_color_volume of a region given a pair of iterators. 
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {
+                for(std::size_t ch=0; ch!=InputModel::channels; ++ch) 
+                {
+                    (*this)[ch] = 0;
+                }
+                
+                for(; first!=last; ++first)
+                {
+                    for(std::size_t ch=0; ch!=InputModel::channels; ++ch) 
+                    {
+                        (*this)[ch] += (*first).value(ch) * (*first).value(ch);
+                    }
+                }
+            }
+                
+            
+            //! \brief Calculates squared_color_volume of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            {     
+                (*(vd_type*)this) = son1_descs.get(*this) + son2_descs.get(*this);
+            }
+        };
+    } 
+}
+
+#endif
+
+

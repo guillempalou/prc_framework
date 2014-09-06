@@ -1,0 +1,69 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Under development tests build                    #
+#                                                                            #
+# This script is executed for each module. It creates all the targets from   #
+# inside the dev/ directory, the under development tests.                    # 
+#                                                                            #
+# The build system is based on SCons (http://www.scons.org/), so also this   #
+# this script.                                                               #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                                                                            #
+##############################################################################
+
+Import('*')
+
+# To get the list of files
+import glob
+import os
+
+
+##
+## Configure the build environment
+##
+## Each module can configure its build environment from the global one.
+## This configuration is done in the 'config.build' script in the module directory 
+##
+## Note: Sources are built in the moduleEnv, but tests will create its own later
+##       using on the module one: testEnv
+##
+devEnv = moduleEnv.Clone()
+
+devEnv['CPPDEFINES'] += ['TEST_DATA_PATH_R=\"\\\"'+env['TEST_DATA_PATH_R']+'\\\"\"']
+devEnv['CPPDEFINES'] += ['TEST_DATA_PATH_W=\"\\\"'+env['TEST_DATA_PATH_W']+'\\\"\"']
+devEnv['LIBS'      ] =  [dependences] + devEnv['LIBS'] # order is relevant!!
+devEnv['LIBPATH'   ] += [dependencesPaths]
+
+
+##
+## Get the list of sources
+##
+devFiles  = glob.glob(str(Dir(devPath))  + os.sep + '*.cpp')
+for devFile in devFiles:
+	dev = devFile.replace('.cpp','')
+	dev = dev.replace(str(Dir(devPath))+ os.sep,'')
+			
+	obj = devEnv.Object  ( objPath + dev, devFile )
+	bin = devEnv.Program ( binPath + dev, obj)
+
+
+##
+## Get the list of CUDA sources
+##
+if env['USE_CUDA']:
+    devFiles  = glob.glob(str(Dir(devPath))  + os.sep + '*.cu')
+    for devFile in devFiles:
+    	dev = devFile.replace('.cu','')
+    	dev = dev.replace(str(Dir(devPath))+ os.sep,'')
+    
+     	obj = devEnv.Object  ( objPath + dev, devFile )
+    	bin = devEnv.Program ( binPath + dev, obj)

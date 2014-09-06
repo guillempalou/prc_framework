@@ -1,0 +1,103 @@
+/*
+ * bijective_error.hpp
+ *
+ *  Created on: Dec 10, 2012
+ *      Author: guillem
+ */
+
+#ifndef BIJECTIVE_ERROR_HPP_
+#define BIJECTIVE_ERROR_HPP_
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/opencv.hpp>
+
+#include <boost/array.hpp>
+#include <boost/multi_array.hpp>
+#include <vector>
+
+namespace imageplus {
+	namespace optical_flow {
+
+	template<class ImageModel, class OpticalFlowType>
+	ImageSignal<float64,1> bijective_error(ImageModel& img1, ImageModel& img2, OpticalFlowType& forward) {
+
+		ImageSignal<float64,1> bijective(forward.sizes());
+		boost::array<int64, 2> sizes = { {forward.size_x(), forward.size_y()} };
+		boost::multi_array<std::vector<ImageSignal<float64,1>::coord_type>, 2> corresp(sizes);
+
+		for (typename OpticalFlowType::iterator v = forward.begin(); v != forward.end(); ++v) {
+
+			ImageSignal<float64,1>::coord_type ref_pos = v.pos();
+			ImageSignal<float64,1>::coord_type pos = ref_pos;
+
+			typename OpticalFlowType::coord_float_type pos_float = ref_pos.template cast<float64>();
+			typename OpticalFlowType::value_type displacement = forward.interpolate_value(pos_float);
+			typename OpticalFlowType::coord_float_type new_pos = pos_float + displacement;
+
+			for (uint64 i = 0; i < 2; i++) pos(i) = round(new_pos(i));
+
+			ImageSignal<float64,1>::coord_type a = pos - forward.lower_point();
+			ImageSignal<float64,1>::coord_type b = forward.upper_point() - pos;
+
+			//Check if the trajectory falls inside the video
+			if (a.minCoeff() < 0 || b.minCoeff() < 0) {
+				bijective(ref_pos)(0) = -1;
+				continue;
+			}
+
+			corresp[pos(0)][pos(1)].push_back(ref_pos);
+		}
+
+		for (typename OpticalFlowType::iterator v = forward.begin(); v != forward.end(); ++v) {
+			ImageSignal<float64,1>::coord_type pos = v.pos();
+			uint64 N = corresp[pos(0)][pos(1)].size();
+			if (N <= 1) continue;
+
+			int64 P = 1;
+			float64 min_d = 1e200;
+			uint64 min_i = 0;
+
+			int64 sx = sizes[0];
+			int64 sy = sizes[1];
+			for (uint64 i = 0; i < N; i++) {
+				ImageSignal<float64,1>::coord_type ref = corresp[pos(0)][pos(1)][i];
+				// compute patch similarity
+				int64 n = 0;
+				float64 d = 0;
+				for (int64 dx = -P; dx <= P; dx++) {
+					for (int64 dy = -P; dy >= P; dy++) {
+						int64 nx_ref = ref(0)+dx;
+						int64 ny_ref = ref(1)+dy;
+						int64 nx_pos = pos(0)+dx;
+						int64 ny_pos = pos(1)+dy;
+						if (nx_ref < 0 || nx_ref >= sx || ny_ref < 0 || ny_ref >= sy) continue;
+						if (nx_pos < 0 || nx_pos >= sx || ny_pos < 0 || ny_pos >= sy) continue;
+						d += (img2(nx_pos,nx_pos) - img1(nx_ref,ny_ref)).squaredNorm();
+						n++;
+					}
+				}
+				if (n != 0) {
+					d/=n;
+					if (min_d > d) {min_i = i; min_d = d;}
+				}
+			}
+			for (uint64 i = 0; i < N; i++) {
+				if (i == min_i) continue;
+				ImageSignal<float64,1>::coord_type ref = corresp[pos(0)][pos(1)][i];
+				bijective(ref)(0) = 1;
+			}
+		}
+
+		//Blur the resulting image, to allow 1 pixel error
+		cv::Mat b = to_opencv(bijective);
+
+		cv::GaussianBlur(b, b, cv::Size(7,7), 1.5, 1.5);
+
+		return bijective;
+	}
+
+	}
+
+}
+
+#endif /* BIJECTIVE_ERROR_HPP_ */

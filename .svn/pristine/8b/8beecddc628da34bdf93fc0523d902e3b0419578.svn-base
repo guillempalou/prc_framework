@@ -1,0 +1,143 @@
+/*
+ * robust_functions.hpp
+ *
+ *  Created on: Nov 2, 2011
+ *      Author: guillem
+ */
+
+#ifndef ROBUST_FUNCTIONS_HPP_
+#define ROBUST_FUNCTIONS_HPP_
+
+#include <imageplus/math/numeric/scalar_function.hpp>
+#include <cmath>
+
+namespace imageplus {
+	namespace math {
+		namespace numeric {
+
+		//! Definition of the most common Robust functions according to MATLAB¨
+
+		//! Class implementing the Huber Robust function H(x) = 0.5*x^2 if (|x| < \delta), |x| - 0.5\delta otherwise
+		//! \author Guillem Palou <guillem.palou@upc.edu>
+		//! \date 20-03-2012
+		class HuberRobust : public ScalarFunction {
+
+		public:
+			//! Scalar function type
+			typedef ScalarFunction			 			ScalarFunctionType;
+
+			//! Variable type
+			typedef ScalarFunction::VariableType		VariableType;
+
+			//! Gradient type
+			typedef ScalarFunction::GradientType		GradientType;
+
+			//! Hessian Type
+			typedef ScalarFunction::HessianType			HessianType;
+
+			//! Default constructor
+			//!
+			//! \param[in] delta : small value > 0 to determine where the quadratic contribution
+			HuberRobust(float64 delta = 1) : ScalarFunction(1), _delta(delta) {
+			}
+
+			//! Value
+			//!
+			//! \param[in] x : point to evaluate the function
+			//! \return Value of the Hubert function at x
+			inline const float64 value(const VariableModel& x) {
+				if (x.norm() < _delta) return 0.5*x.squaredNorm();
+				return _delta * (x.norm() - 0.5*_delta);
+			}
+
+			//! Gradient
+			//!
+			//! \param[in] x : point to evaluate the function
+			//! \return Gradient of the Hubert function at x
+			inline const GradientType& gradient(const VariableType& x)  {
+				if (x.norm() < _delta) _gradient = x; else {
+					_gradient(0) = (x(0) > 0) ? 1 : -1;
+				}
+				return _gradient;
+			}
+
+			//! Hessian
+			//!
+			//! \param[in] x : point to evaluate the function
+			//! \return Hessian of the Hubert function at x
+			inline const HessianType& hessian(const VariableModel& x) {
+				if (x.norm() < _delta) _hessian(0,0) = 1; else _hessian(0,0) = 0;
+				return _hessian;
+			}
+		private:
+
+			//! parameter of the Hubert function
+			float64 _delta;
+		};
+
+		//! Class implementing th Charbonnier L1 differentiable norm sqrt(x*x + \eps*\eps)
+		//! \author Guillem Palou <guillem.palou@upc.edu>
+		//! \date 20-03-2011
+		class L1Robust : public ScalarFunction {
+
+		public:
+			//! Scalar function type
+			typedef ScalarFunction			 			ScalarFunctionType;
+
+			//! Variable type
+			typedef ScalarFunction::VariableType		VariableType;
+
+			//! Gradient type
+			typedef ScalarFunction::GradientType		GradientType;
+
+			//! Hessian Type
+			typedef ScalarFunction::HessianType			HessianType;
+
+			//! Default constructor
+			//!
+			//! \param[in] delta : small value > 0 to determine where the quadratic contribution
+			L1Robust(float64 epsilon) : ScalarFunction(1), _epsilon(epsilon) {
+			}
+
+			L1Robust() : ScalarFunction(1), _epsilon(1e-4) {
+
+			}
+
+			//! Value
+			//!
+			//! \param[in] x : point to evaluate the function
+			//! \return Value of the Hubert function at x
+			inline const float64 value(const VariableModel& x) {
+				return std::sqrt(x.squaredNorm() + _epsilon);
+			}
+
+			//! Gradient
+			//!
+			//! \param[in] x : point to evaluate the function
+			//! \return Gradient of the Hubert function at x
+			inline const GradientType& gradient(const VariableType& x)  {
+				_gradient(0) = x(0)/std::sqrt(x(0)*x(0) + _epsilon);
+				return _gradient;
+			}
+
+			//! Hessian
+			//!
+			//! \param[in] x : point to evaluate the function
+			//! \return Hessian of the Hubert function at x
+			inline const HessianType& hessian(const VariableModel& x) {
+				float64 sq_norm = x.squaredNorm();
+				_hessian(0,0) = 1.0/std::sqrt(sq_norm + _epsilon) - sq_norm*std::pow(sq_norm + _epsilon, -1.5);
+				return _hessian;
+			}
+		private:
+
+			//! parameter of the Hubert function
+			float64 _epsilon;
+		};
+
+		}
+	}
+}
+
+
+#endif /* ROBUST_FUNCTIONS_HPP_ */

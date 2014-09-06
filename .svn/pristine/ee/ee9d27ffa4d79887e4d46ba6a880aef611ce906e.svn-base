@@ -1,0 +1,564 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file region_traits.hpp
+//!
+
+#ifndef IMAGEPLUS_CORE_REGION_TRAITS_HPP
+#define IMAGEPLUS_CORE_REGION_TRAITS_HPP
+
+#include <vector>
+#include <set>
+#include <list>
+
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+
+namespace imageplus
+{
+	/*! 
+	 * \cond SKIP_DOC 
+	 */
+    template<class RegionModel, class PartsContainer = std::vector<RegionModel* > >
+    class tree_traits
+    {
+    public:
+        
+        typedef RegionModel RegionType;
+        typedef RegionType* RegionPointer;
+        
+        
+        typedef PartsContainer PartsContainerType;
+        
+        tree_traits(): _children(0), _father()
+        {
+        }
+        
+        virtual ~tree_traits()
+        {
+        }
+        
+        const PartsContainer& parts() const
+        {
+            return _children;
+        }
+
+        typename PartsContainer::const_iterator parts_begin() const
+        {
+            return _children.begin();
+        }
+        
+        typename PartsContainer::const_iterator parts_end() const
+        {
+            return _children.end();
+        }
+        
+        PartsContainer& parts()
+        {
+            return _children;
+        }
+
+        RegionPointer parent() const
+        {
+            return _father;
+        }
+        
+        void parent(RegionPointer new_father)
+        {
+            _father = new_father;
+        }
+        
+        void clear_parts()
+        {
+            _children.clear();
+        }
+        
+        template<class PartitionModel>
+        void update_traits(PartitionModel& curr_part)
+        {
+            if(_father !=0)
+            {
+                _father = &(curr_part[_father->label()]);
+            }
+            
+            typename PartsContainer::iterator it     = _children.begin();
+            typename PartsContainer::iterator it_end = _children.end();
+            for( ; it!=it_end; ++it)
+            {
+                *it = &(curr_part[(*it)->label()]);
+            }
+        }
+
+
+    protected:
+        // The region is not responsible for the memory management of his parent and child regions
+        // That's why we only store raw pointers
+
+        //! Pointer to the child regions
+    	PartsContainer _children;
+        
+        //! Pointer to the father region
+        RegionPointer _father;
+
+    };
+    
+    
+    
+    
+    template<class RegionModel>
+    class neighbor_traits
+    {
+    public:
+        typedef RegionModel RegionType;
+        typedef RegionType* RegionPointer;
+        
+        neighbor_traits() : _neighbors()
+        {
+        }
+        
+        virtual ~neighbor_traits()
+        {
+        }
+        
+        template<class IdentifierType>
+        static void clear_regions(const std::map<IdentifierType, RegionPointer>& regions)
+        {
+        }
+        
+    protected:
+
+        typedef std::set<RegionPointer> neighbor_set_type;
+
+        //! Pointer to the neighbor regions
+        neighbor_set_type _neighbors;
+        
+    public:
+        typedef typename neighbor_set_type::iterator neighbor_iterator;
+        typedef typename neighbor_set_type::const_iterator const_neighbor_iterator;
+
+        
+        neighbor_iterator neighbors_begin()
+        {
+            return _neighbors.begin();
+        }
+        
+        const_neighbor_iterator neighbors_begin() const
+        {
+            return _neighbors.begin();
+        }
+        
+        neighbor_iterator neighbors_end()
+        {
+            return _neighbors.end();
+        }
+        
+        const_neighbor_iterator neighbors_end() const
+        {
+            return _neighbors.end();
+        }
+        
+        neighbor_iterator neighbors_find(const RegionPointer& reg)
+        {
+            return _neighbors.find(reg);
+        }
+
+        const_neighbor_iterator neighbors_find(const RegionPointer& reg) const
+        {
+            return _neighbors.find(reg);
+        }
+
+        
+        template<class PositionModel>
+        IMAGEPLUS_INLINE
+        void neighbors_insert(const RegionPointer& reg, const PositionModel& contour_coord)
+        {
+            _neighbors.insert(reg);
+            if(reg!=0)
+            {
+                reg->_neighbors.insert(&(*(static_cast<RegionType*>(this))));
+            }
+        }
+        
+        IMAGEPLUS_INLINE
+        void neighbors_insert(const RegionPointer& reg, const neighbor_iterator& old_neigh_it)
+        {
+            _neighbors.insert(reg);
+            if(reg!=0)
+            {
+                reg->_neighbors.insert(&(*(static_cast<RegionType*>(this))));
+            }
+        }
+        
+        IMAGEPLUS_INLINE
+        void neighbors_erase(const RegionPointer& reg)
+        {
+            _neighbors.erase(reg);
+            if(reg!=0)
+            {
+            	reg->_neighbors.insert(&(*(static_cast<RegionType*>(this))));
+            }
+        }
+        
+        IMAGEPLUS_INLINE
+        void neighbors_clear()
+        {
+        	neighbor_iterator neigh_it = this->neighbors_begin();
+            for(; neigh_it!=this->neighbors_end(); ++neigh_it)
+            {
+                if((*neigh_it)!=0)
+                {
+                    (*neigh_it)->_neighbors.erase(&(*(static_cast<RegionType*>(this))));
+                }
+            }
+            _neighbors.clear();
+        }
+        
+        template<class PartitionModel>
+        void update_traits(PartitionModel& curr_part)
+        {
+            neighbor_set_type new_neighbors;
+            neighbor_iterator it = _neighbors.begin();
+            neighbor_iterator it_end = _neighbors.end();
+            for( ; it!=it_end; ++it)
+            {
+                if((*it)==0)
+                {
+                    new_neighbors.insert(NULL); // insert a null pointer indicating border
+                }
+                else
+                {
+                    new_neighbors.insert(&(curr_part[(*it)->label()]));
+                }
+            }
+            _neighbors.swap(new_neighbors);
+        }
+    };
+    
+    template<class RegionModel, class NeighborLinkModel>
+    class neighbor_link_traits
+    {
+    public:
+        typedef RegionModel RegionType;
+        typedef RegionType* RegionPointer;
+        
+        typedef NeighborLinkModel NeighborLinkType;
+//      typedef boost::shared_ptr<NeighborLinkType> NeighborLinkPointer;
+        typedef NeighborLinkType* NeighborLinkPointer;
+
+
+        neighbor_link_traits()
+            : _neighbors()   
+        {
+        }
+        
+        neighbor_link_traits(const neighbor_link_traits& copy)
+            : _neighbors(copy._neighbors)   
+        {
+        }
+        
+        template<class IdentifierType>
+        static void clear_regions(const std::map<IdentifierType, RegionPointer>& regions)
+        {
+            typedef std::map<IdentifierType, RegionPointer> map_type;
+            typename map_type::const_iterator reg_it     = regions.begin();
+            typename map_type::const_iterator reg_it_end = regions.end();
+         
+            std::set<NeighborLinkPointer>   links_to_delete;
+
+            // Gather regions and neighbor links (if any) to be deleted
+            for(; reg_it!=reg_it_end; ++reg_it)
+            {
+                typename RegionType::neighbor_iterator neigh_it = (*(reg_it->second)).neighbors_begin();
+                typename RegionType::neighbor_iterator neigh_it_end = (*(reg_it->second)).neighbors_end();
+                for(; neigh_it!=neigh_it_end; ++neigh_it)
+                {
+                    if(neigh_it.link_data()!=0)
+                    {
+                        links_to_delete.insert(neigh_it.link_data());
+                    }
+                }
+            }
+
+            // Delete links
+            typename std::set<NeighborLinkPointer>::iterator it1 = links_to_delete.begin();
+            for(; it1!=links_to_delete.end(); ++it1)
+                delete *it1;
+        }
+        
+    protected:
+
+        typedef std::map<RegionPointer,NeighborLinkPointer> neighbor_map_type;
+        typedef std::pair<RegionPointer,NeighborLinkPointer> neighbor_pair_type;
+
+        //! Pointer to the neighbor regions
+        neighbor_map_type _neighbors;
+        
+    public:
+        //! \todo Implement const_neighbor_iterator
+        class neighbor_iterator
+        {
+        public:
+            neighbor_iterator()
+            {
+                
+            }
+            
+            neighbor_iterator(typename neighbor_map_type::iterator map_it)
+                : _map_it(map_it)
+            {
+                
+            }
+            
+            bool operator==(const neighbor_iterator& it) 
+            {
+                return _map_it==it._map_it;
+            }
+
+            bool operator!=(const neighbor_iterator& it)
+            {
+                return _map_it!=it._map_it;
+            }
+
+            RegionPointer operator*() const
+            {
+                return _map_it->first;
+            }
+            
+            NeighborLinkPointer link_data() const
+            {
+                return _map_it->second;
+            }
+            
+            neighbor_iterator& operator++()
+            {
+                ++_map_it;
+                return *this;
+            }
+            
+        private:
+            typename neighbor_map_type::iterator _map_it;
+            
+        };
+        
+        friend class neighbor_iterator;
+        
+        neighbor_iterator neighbors_begin()
+        {
+            return neighbor_iterator(_neighbors.begin());
+        }
+        
+        neighbor_iterator neighbors_end()
+        {
+            return neighbor_iterator(_neighbors.end());
+        }
+        
+        neighbor_iterator neighbors_find(const RegionPointer& reg)
+        {
+            return neighbor_iterator(_neighbors.find(reg));
+        }
+        
+        
+        template<class PositionModel>
+        IMAGEPLUS_INLINE
+        NeighborLinkPointer neighbors_insert(RegionPointer reg, const PositionModel& contour_coord)
+        {
+            neighbor_iterator it = this->neighbors_find(reg);
+            if(it==this->neighbors_end())
+            {
+                if(reg!=0)
+                {   
+                    /*
+                     * A pair of regions (not border) is newly scanned so:
+                     *  1- A new_link_data is created
+                     *  2- In 'this' we add a pointer to new_link_data and reg
+                     *  3- In reg we add a ponter to new_link_data and this
+                     * 
+                     * Note we are assuming that the pairs of regions are scanned just in one direction, otherwise we would duplicate
+                     * contour_coord
+                     */
+                    NeighborLinkPointer new_link_data = new NeighborLinkType(&(*(static_cast<RegionType*>(this))), reg, contour_coord);
+                    _neighbors.insert(neighbor_pair_type(reg, new_link_data));
+                    reg->_neighbors.insert(neighbor_pair_type(&(*(static_cast<RegionType*>(this))), new_link_data));
+                    return new_link_data;
+                }
+                else
+                {
+                    /*
+                     * Border is scanned so:
+                     *  1- A new_link_data is created
+                     *  2- In 'this' we add a pointer to new_link_data and NULL
+                     */
+                    NeighborLinkPointer new_link_data = new NeighborLinkType(&(*(static_cast<RegionType*>(this))), reg, contour_coord);
+                    _neighbors.insert(neighbor_pair_type(reg, new_link_data));
+                    return new_link_data;
+                }
+            }
+            else
+            {
+                /*
+                 * A pair of regions were previosuly scanned so we only add the contour coordinates
+                 */
+                it.link_data()->add_neighbor_coord(contour_coord);
+                return it.link_data();
+            }
+        }
+        
+        IMAGEPLUS_INLINE
+        NeighborLinkPointer neighbors_insert(RegionPointer reg, const neighbor_iterator& old_neigh_it)
+        {
+            neighbor_iterator neigh_it2 = this->neighbors_find(*old_neigh_it);
+            if(neigh_it2!=this->neighbors_end())
+            {
+                neigh_it2.link_data()->add_neighbor_coord(old_neigh_it.link_data()->neighbor_coords());
+                return NULL;
+            }
+            else
+            {
+                NeighborLinkPointer new_link = new NeighborLinkType(&(*(static_cast<RegionType*>(this))), *old_neigh_it, old_neigh_it.link_data());
+                this->_neighbors.insert(neighbor_pair_type(*old_neigh_it, new_link));
+                if((*old_neigh_it)!=0)
+                {
+                    (*old_neigh_it)->_neighbors.insert(neighbor_pair_type(&(*(static_cast<RegionType*>(this))), new_link));
+                }
+                return new_link;
+            } 
+        }
+        
+        IMAGEPLUS_INLINE
+        void neighbors_erase(const RegionPointer& reg)
+        {
+            neighbor_iterator neigh_it = this->neighbors_find(reg);
+            if(neigh_it != this->neighbors_end()) // We do this check to allow for merging of non-neighboring regions
+            {
+                delete neigh_it.link_data();
+                _neighbors.erase(reg);
+                if(reg!=0)
+                {
+                    reg->_neighbors.erase(&(*(static_cast<RegionType*>(this))));
+                }
+            }
+        }
+
+        
+        IMAGEPLUS_INLINE
+        void neighbors_erase(RegionPointer reg, NeighborLinkPointer& to_delete)
+        {
+            neighbor_iterator neigh_it = this->neighbors_find(reg);
+            to_delete = neigh_it.link_data();
+            _neighbors.erase(reg);
+            if(reg!=0)
+            {
+                reg->_neighbors.erase(&(*(static_cast<RegionType*>(this))));
+            }
+        }
+        
+//  ******** Not used in the library nor tested, how do we know it is correct? *********       
+//        IMAGEPLUS_INLINE
+//        NeighborLinkPointer neighbors_change(RegionPointer reg, RegionPointer new_reg)
+//        {
+//            RegionPointer me = &(*(static_cast<RegionType*>(this)));
+//
+//            neighbor_iterator neigh_it = this->neighbors_find(reg);
+//            NeighborLinkPointer to_return = neigh_it.link_data();
+//            to_return->neighbors_change(me,new_reg);
+//
+//            _neighbors.erase(reg);
+//            _neighbors.insert(neighbor_pair_type(new_reg, to_return));
+//            if(new_reg.get()!=0)
+//            {
+//                new_reg->_neighbors.insert(neighbor_pair_type(me, to_return));
+//            }
+//            return to_return;
+//        }
+        
+        IMAGEPLUS_INLINE
+        void neighbors_clear()
+        {
+            std::list<RegionPointer> to_erase;
+            
+            neighbor_iterator neigh_it = this->neighbors_begin();
+            for(; neigh_it!=this->neighbors_end(); ++neigh_it)
+            {
+                to_erase.push_back(*neigh_it);
+                delete neigh_it.link_data();
+            }
+
+            typename std::list<RegionPointer>::iterator it = to_erase.begin();
+            for(; it!=to_erase.end(); ++it)
+            {
+                _neighbors.erase(*it);
+                if((*it)!=0)
+                {
+                    (*it)->_neighbors.erase(&(*(static_cast<RegionType*>(this))));
+                }
+            }
+        }
+        
+        IMAGEPLUS_INLINE
+        void neighbors_clear(std::list<NeighborLinkPointer>& to_delete)
+        {
+            std::list<RegionPointer> to_erase;
+            
+            neighbor_iterator neigh_it = this->neighbors_begin();
+            for(; neigh_it!=this->neighbors_end(); ++neigh_it)
+            {
+                to_erase.push_back(*neigh_it);
+                to_delete.push_back(neigh_it.link_data());
+            }
+
+            typename std::list<RegionPointer>::iterator it = to_erase.begin();
+            for(; it!=to_erase.end(); ++it)
+            {
+                _neighbors.erase(*it);
+                if((*it)!=0)
+                {
+                    (*it)->_neighbors.erase(&(*(static_cast<RegionType*>(this))));
+                }
+            }
+        }
+        
+        
+        template<class PartitionModel>
+        void update_traits(PartitionModel& curr_part)
+        {
+            neighbor_map_type new_neighbors;
+            typename neighbor_map_type::iterator it = _neighbors.begin();
+            typename neighbor_map_type::iterator it_end = _neighbors.end();
+            for( ; it!=it_end; ++it)
+            {
+                if(it->first==NULL)
+                {
+                    NeighborLinkPointer new_link_data = new NeighborLinkType(*(it->second));
+                    new_neighbors.insert(neighbor_pair_type(NULL, new_link_data));
+                    new_link_data->update_traits(curr_part);
+                }
+                else
+                {
+                    neighbor_iterator neigh_it = curr_part[(it->first)->label()].neighbors_find(&(*(static_cast<RegionType*>(this))));
+                    if(neigh_it==curr_part[(it->first)->label()].neighbors_end())
+                    {  
+                        NeighborLinkPointer new_link_data = new NeighborLinkType(*(it->second));
+                        new_neighbors.insert(neighbor_pair_type(&(curr_part[(it->first)->label()]), new_link_data));
+                        new_link_data->update_traits(curr_part);
+                    }
+                    else
+                    {
+                        NeighborLinkPointer new_link_data = neigh_it.link_data();
+                        new_neighbors.insert(neighbor_pair_type(&(curr_part[(it->first)->label()]), new_link_data));
+                        new_link_data->update_traits(curr_part);
+                    }
+                }
+            }
+            _neighbors.swap(new_neighbors);
+        }
+    };
+    
+	/*! 
+	 * \endcond SKIP_DOC 
+	 */
+}
+
+#endif // IMAGEPLUS_CORE_REGION_TRAITS_HPP

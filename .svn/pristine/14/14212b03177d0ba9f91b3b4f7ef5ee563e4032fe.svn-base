@@ -1,0 +1,60 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file foreground2d.test
+//!
+//!  Tests for foreground2d functions
+//!
+
+#include <iostream>
+#include <stdio.h>
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+#include <imageplus/foreground2d/foreground2d_auxiliar.hpp>
+#include <cmath>
+#include <iostream>
+#include <fstream>
+
+
+BOOST_AUTO_TEST_SUITE ( suite_foreground2d_auxiliar );
+
+using namespace imageplus;
+using namespace imageplus::foreground2d;
+using namespace std;
+    
+BOOST_AUTO_TEST_CASE ( test_area_filter )
+{
+     
+    //init io objects
+    io::ReadImage readImage;
+    ImageGray<uint8> currentImage;
+    readImage.open(string(TEST_DATA_PATH_R) + "/Foreground2D/area2filter.png");
+    readImage >> currentImage ;
+    
+    size_t im_x= currentImage.size_x();
+    size_t im_y= currentImage.size_y();
+    ImageGray<uint8> resultImage(im_x,im_y);
+    ImageGray<uint8> maskRead(im_x,im_y);
+    
+
+    //Filter currentImage and store result in 'resultImage'
+    area_filter(currentImage, 5, 8,resultImage);
+    
+                
+
+    readImage.open(string(TEST_DATA_PATH_R) + "/Foreground2D/areafiltered.png");
+    readImage >> maskRead ;
+
+    // Check image 'resultImage' currently filtered is equal to the mask for checking stored in disk 'maskRead'
+    BOOST_CHECK(maskRead == resultImage);
+        
+
+}
+
+
+
+BOOST_AUTO_TEST_SUITE_END ();

@@ -1,0 +1,136 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file b_search_tree.test
+//!
+//!  Tests for the Binary Search Tree class 
+//!
+
+#include <imageplus/core/b_search_tree.hpp>
+
+BOOST_AUTO_TEST_SUITE ( BST_test_suite );
+
+using namespace imageplus;
+
+/*!
+ * \cond TestStructures
+ */
+struct node : public bst_base_node<node>
+{
+    uint64 population_;
+    std::string country_;
+    std::string capital_;
+    
+    // Constructor
+    node(uint64 population = 0, std::string country = "",  std::string capital = "")
+    {
+        population_ = population;
+        country_ = country;
+        capital_ = capital;
+    }   
+};
+
+
+struct compare_function
+{
+    bool operator()(node *a, node *b)
+    {  
+        return a->population_ < b->population_;  
+    }    
+};
+
+/*!
+ * \endcond
+ */
+
+BOOST_AUTO_TEST_CASE ( test_BST )
+{
+
+    BST<node, compare_function> queue;
+    
+    BOOST_CHECK( queue.size() == 0);
+    BOOST_CHECK( queue.is_empty() );
+    
+    node * france = new node(59765983, "France", "Paris");
+    queue.put(france);
+
+    node * germany  = new node(83251851, "Germany", "Berlin");
+    queue.put(germany);
+    
+    node * spain  = new node(45061274, "Spain", "Madrid");
+    queue.put(spain);
+
+    BOOST_CHECK( queue.size() == 3);
+    BOOST_CHECK( !queue.is_empty() );
+    
+    node key;
+    key.population_ = 59765983;
+    node * out = queue.find(&key);
+
+    BOOST_CHECK( out == france );
+    BOOST_CHECK( out->country_ == "France" );
+    BOOST_CHECK( out->capital_ == "Paris" );
+    
+    key.population_ = 50000000;
+    out = queue.find(&key);
+    BOOST_CHECK( out == 0x0 );
+    
+    key.population_ = 59765983;
+    out = queue.strict_upper_bound(&key);
+    
+    BOOST_CHECK( out == germany );
+    BOOST_CHECK( out->country_ == "Germany" );
+    BOOST_CHECK( out->capital_ == "Berlin" );
+    
+    key.population_ = 50000000;
+    out = queue.strict_upper_bound(&key);
+    
+    BOOST_CHECK( out == france );
+    BOOST_CHECK( out->country_ == "France" );
+    BOOST_CHECK( out->capital_ == "Paris" );
+
+    key.population_ = 500000000;
+    out = queue.strict_upper_bound(&key);
+    BOOST_CHECK( out == 0x0 );
+    
+    key.population_ = 59765983;
+    out = queue.upper_bound(&key);
+    BOOST_CHECK( out == france );
+    
+    out = queue.get_first();
+    BOOST_CHECK( out == spain );
+    BOOST_CHECK( out->country_ == "Spain" );
+    BOOST_CHECK( out->capital_ == "Madrid" );
+    
+    queue.erase(out);
+    BOOST_CHECK( queue.size() == 2);
+    BOOST_CHECK( !queue.is_empty() );
+    
+    out = queue.get_first();
+    BOOST_CHECK( out == france );
+    BOOST_CHECK( out->country_ == "France" );
+    BOOST_CHECK( out->capital_ == "Paris" );
+    
+    queue.erase(out);
+    BOOST_CHECK( queue.size() == 1);
+    BOOST_CHECK( !queue.is_empty() );
+    
+    out = queue.get_first();
+    BOOST_CHECK( out == germany );
+    BOOST_CHECK( out->country_ == "Germany" );
+    BOOST_CHECK( out->capital_ == "Berlin" );
+    
+    queue.erase(out);
+    BOOST_CHECK( queue.size() == 0);    
+    BOOST_CHECK( queue.is_empty() );
+
+    delete(spain);
+    delete(france);
+    delete(germany);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+

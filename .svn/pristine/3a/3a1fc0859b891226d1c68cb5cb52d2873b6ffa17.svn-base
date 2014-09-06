@@ -1,0 +1,633 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file numeric/distances.hpp
+//!
+//!  Definition of all kind of distances
+//! 
+
+#ifndef IMAGEPLUS_MATH_NUMERIC_DISTANCES_HPP
+#define IMAGEPLUS_MATH_NUMERIC_DISTANCES_HPP
+
+#include<imageplus/core.hpp>
+#include<imageplus/math/numeric/transformations.hpp>
+#include<imageplus/math/numeric/products.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            //!
+            //! \brief Euclidean distance between two n-dimensional points
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the Euclidean distance between two n-dimensional points is given by:\n
+            //! \f$ dist = \sqrt{ \sum_{i=1}^n \left| x_i - y_i \right|^2} \f$\n 
+            //! This function can also be used to compute the Sum of Squared Diferences (SSD) of two points.
+            //!
+            //! \note Is recomended to NOT USE THIS FUNCTION, but the overloaded ones for diferent 
+            //!       types of "points": MultiArray and boost::array (Point)
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] begin1 : data iteraror of the first n-dimensional point
+            //! \param[in] begin2 : data iteraror of the second n-dimensional point
+            //! \param[in] dim    : dimensions of the points
+            //!
+            //! \return Euclidean distance between points
+            //!
+            //! \warning Note that is up to users that points data is well allocated.
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa p_norm_distance(), infinity_norm_distance(), hamming_distance(), manhattan_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T>
+            float64 euclidean_distance (const T* begin1, const T* begin2, std::size_t dim  )
+            {
+                float64 dist = 0.0;
+
+                for (std::size_t i = 0; i < dim; i++)
+                {
+                    dist += (*begin1 - *begin2) * (*begin1 - *begin2);
+                    begin1++;
+                    begin2++;                    
+                }
+                return (std::sqrt(dist));
+            }
+            
+            
+            //!
+            //! \brief p-norm distance between two n-dimensional points
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the p-norm distance between two n-dimensional points is given by:\n
+            //! \f$ dist = \left( \sum_{i=1}^n \left| x_i - y_i \right|^p \right)^{1/p}  \f$ \n
+            //! p need not be an integer, but it cannot be less than 1
+            //!
+            //! Note that when p=1 we have the euclidian_distance()
+            //!
+            //! \note Is recomended to NOT USE THIS FUNCTION, but the overloaded ones for diferent 
+            //!       types of "points": MultiArray and boost::array (Point)
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] begin1 : data iteraror of the first n-dimensional point
+            //! \param[in] begin2 : data iteraror of the second n-dimensional point
+            //! \param[in] dim    : dimensions of the points
+            //! \param[in] p      : Real number (1 ≤ p < ∞) which defines the distance
+            //!
+            //! \return p-norm distance between points
+            //!
+            //! \warning Note that is up to users that points data is well allocated. \n 
+            //! \warning Note that is up to users that p >= 1.0 (it is only checked in debug mode).
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), infinity_norm_distance(), hamming_distance(), manhattan_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T>
+            float64 p_norm_distance (const T* begin1, const T* begin2, std::size_t dim, float64 p )
+            {
+                ASSERT(p >= 1.0, "p_norm_distance: p must be >= 1.0");
+
+                float64 dist = 0.0;
+ 
+                for (std::size_t i = 0; i < dim; i++)
+                {
+                    dist += std::pow( (std::abs(*begin1++ - *begin2++)), p );
+                }
+
+                return (std::pow (dist, 1.0/p) );
+            }
+            
+            //!
+            //! \brief Manhattan distance between two n-dimensionl points
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the Manhattan distance between two n-dimensional points is given by:\n
+            //! \f$ dist = \sum_{i=1}^n \left| x_i - y_i \right|  \f$ \n
+            //! This function can also be used to compute the Sum of Absolute Diferences (SAD) of two points.
+            //!
+            //! \note Is recomended to NOT USE THIS FUNCTION, but the overloaded ones for diferent 
+            //!       types of "points": MultiArray and boost::array (Point)
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] begin1 : data iteraror of the first n-dimensional point
+            //! \param[in] begin2 : data iteraror of the second n-dimensional point
+            //! \param[in] dim    : dimensions of the points
+            //!
+            //! \return Manhattan distance between n-dimensional points
+            //!
+            //! \warning Note that is up to users that points data is well allocated.
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), infinity_norm_distance(), hamming_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T>
+            float64 manhattan_distance (const T* begin1, const T* begin2, std::size_t dim )
+            {
+                float64 dist = 0.0;
+
+                for (std::size_t i = 0; i < dim; i++)
+                {
+                    dist += std::abs(*begin1++ - *begin2++);
+                }
+
+                return dist;
+            }
+            
+            //!
+            //! \brief infinity-norm distance between two n-dimensional points
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$, the infinity-norm distance between two n-dimensional points is given by:\n
+            //! \f$ distance = \lim_{p \to \infty} \left( \sum_{i=1}^n \left| x_i - y_i \right|^p \right)^{1/p}
+            //! = \max \left(|x_1 - y_1|, |x_2 - y_2|, \ldots, |x_n - y_n| \right). \f$
+            //!
+            //! \note Is recomended to NOT USE THIS FUNCTION, but the overloaded ones for diferent 
+            //!       types of "points": MultiArray and boost::array (Point)
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] begin1 : data iteraror of the first n-dimensional point
+            //! \param[in] begin2 : data iteraror of the second n-dimensional point
+            //! \param[in] dim    : dimensions of the points
+            //!
+            //! \return infinity-norm distance between the two n-dimensional points
+            //!
+            //! \warning Note that is up to users that points data is well allocated.
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), p_norm_distance(), hamming_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T>
+            float64 infinity_norm_distance (const T* begin1, const T* begin2, std::size_t dim )
+            {
+                //
+                // AGIL: Removed for performance reassons.
+                //       MultiArray is not needed, we only need some temporal buffer space
+                //       
+                //MultiArray<T,1> abs_dif(dim);
+                //T* pout = abs_dif.data();
+                
+                T* pout = new T[dim]; 
+
+                for (std::size_t i = 0; i < dim; i++)
+                {
+                    pout[i] = std::abs(*begin1++ - *begin2++);
+                }
+
+                T out = (*(std::max_element (pout, pout+dim)));
+                
+                delete[] pout;
+                
+                return out;
+            }
+
+            
+            //!
+            //! \brief Euclidean distance between two n-dimensional points (with MultiArrays)
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the Euclidean distance between two n-dimensional points is given by:\n
+            //! \f$ dist = \sqrt{ \sum_{i=1}^n \left| x_i - y_i \right|^2} \f$\n 
+            //! This function can also be used to compute the Sum of Squared Diferences (SSD) of two points.
+            //!
+            //! Note that in this funcion the n-dimensional ponts are represented by MultiArray objects where the dimension 
+            //! n of the point is num_elements() of the MultiArray.
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] npoint1 : first n-dimensional point 
+            //! \param[in] npoint2 : second n-dimensional point
+            //!
+            //! \return Euclidean distance between points
+            //!
+            //! \warning Note that is up to the user that two points have the same dimension n = num_elements() (it is only checked in debug mode).
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa p_norm_distance(), infinity_norm_distance(), hamming_distance(), manhattan_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T, std::size_t N>
+            float64 euclidean_distance (const MultiArray<T,N>& npoint1, const MultiArray<T,N>& npoint2 )
+            {
+                ASSERT(npoint1.num_elements() == npoint2.num_elements(), "euclidian_distance need point with the same dimension");
+
+                return euclidean_distance( npoint1.data(), 
+                                           npoint2.data(), 
+                                           npoint1.num_elements());
+            }
+
+
+            //!
+            //! \brief Euclidean distance between two n-dimensional points (with boost:arrays)
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the Euclidean distance between two n-dimensional points is given by:\n
+            //! \f$ dist = \sqrt{ \sum_{i=1}^n \left| x_i - y_i \right|^2} \f$\n 
+            //! This function can also be used to compute the Sum of Squared Diferences (SSD) of two points.
+            //!
+            //! Note that in this funcion the n-dimensional ponts are represented by boost::array objects where the dimension n of the point 
+            //! is the size() of the boost::array.
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] npoint1 : first n-dimensional point 
+            //! \param[in] npoint2 : second n-dimensional point
+            //!
+            //! \return Euclidean distance between points
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa p_norm_distance(), infinity_norm_distance(), hamming_distance(), manhattan_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T, std::size_t S>
+            float64 euclidean_distance (const boost::array<T,S>& npoint1, const boost::array<T,S>& npoint2 )
+            {
+                return euclidean_distance( npoint1.data(), 
+                                           npoint2.data(), 
+                                           npoint1.size());
+            }
+
+
+            //!
+            //! \brief p-norm distance between two n-dimensional points (with MultiArray)
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the p-norm distance between two n-dimensional points is given by:\n
+            //! \f$ dist = \left( \sum_{i=1}^n \left| x_i - y_i \right|^p \right)^{1/p}  \f$ \n
+            //! p need not be an integer, but it cannot be less than 1
+            //!
+            //! Note that when p=1 we have the euclidian_distance()
+            //!
+            //! Note that in this funcion the n-dimensional ponts are represented by MultiArray objects where the dimension 
+            //! n of the point is num_elements() of the MultiArray.
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] npoint1 : first n-dimensional point 
+            //! \param[in] npoint2 : second n-dimensional point
+            //! \param[in] p       : Real number (1 ≤ p < ∞) which defines the distance
+            //!
+            //! \return p-norm distance between points
+            //!
+            //! \warning Note that is up to users that p >= 1.0 (it is only checked in debug mode). \n
+            //! \warning Note that is up to the user that two points have the same dimension n = num_elements(). (it is only checked in debug mode)
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), infinity_norm_distance(), hamming_distance(), manhattan_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T, std::size_t N>
+            float64 p_norm_distance (const MultiArray<T,N>& npoint1, const MultiArray<T,N>& npoint2, float64 p )
+            {
+                ASSERT(npoint1.num_elements() == npoint2.num_elements(), "p_norm_distance: points should have the same dimension");
+                
+                return p_norm_distance( npoint1.data(), 
+                                        npoint2.data(), 
+                                        npoint1.num_elements(),
+                                        p);
+            }
+            
+            //!
+            //! \brief p-norm distance between two n-dimensional points (with boost::array)
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the p-norm distance between two n-dimensional points is given by:\n
+            //! \f$ dist = \left( \sum_{i=1}^n \left| x_i - y_i \right|^p \right)^{1/p}  \f$ \n
+            //! p need not be an integer, but it cannot be less than 1
+            //!
+            //! Note that when p=1 we have the euclidian_distance()
+            //!
+            //! Note that in this funcion the n-dimensional ponts are represented by boost::array objects where the dimension 
+            //! n of the point is the size() of the boost::array.
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] npoint1 : first n-dimensional point 
+            //! \param[in] npoint2 : second n-dimensional point
+            //! \param[in] p       : Real number (1 ≤ p < ∞) which defines the distance
+            //!
+            //! \return p-norm distance between points
+            //!
+            //! \warning Note that is up to users that p >= 1.0 (it is only checked in debug mode). \n
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), infinity_norm_distance(), hamming_distance(), manhattan_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T, std::size_t S>
+            float64 p_norm_distance (const boost::array<T,S>& npoint1, const boost::array<T,S>& npoint2, float64 p )
+            {
+                return p_norm_distance( npoint1.data(), 
+                                        npoint2.data(), 
+                                        npoint1.size(),
+                                        p);
+            }
+
+            //!
+            //! \brief Manhattan distance between two n-dimensionl points (with MultiArray)
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the Manhattan distance between two points is given by:\n
+            //! \f$ dist = \sum_{i=1}^n \left| x_i - y_i \right|  \f$ \n
+            //! This function can also be used to compute the Sum of Absolute Diferences (SAD) of two points.
+            //!
+            //! Note that in this funcion the n-dimensional ponts are represented by MultiArray objects where the dimension 
+            //! n of the point is num_elements() of the MultiArray.
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] npoint1 : first n-dimensional point 
+            //! \param[in] npoint2 : second n-dimensional point
+            //!
+            //! \return Manhattan distance between n-dimensional points
+            //!
+            //! \warning Note that is up to the user that two points have the same dimension n = num_elements() (it is only checked in debug mode).
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), infinity_norm_distance(), hamming_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T, std::size_t N>
+            float64 manhattan_distance (const MultiArray<T,N>& npoint1, const MultiArray<T,N>& npoint2)
+            {
+                ASSERT(npoint1.num_elements() == npoint2.num_elements(), "manhattan_distance: points should have the same dimension");
+
+                return manhattan_distance( npoint1.data(), 
+                                           npoint2.data(), 
+                                           npoint1.num_elements());
+            }
+            
+            //!
+            //! \brief Manhattan distance between two n-dimensionl points (with boost::array)
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$ , the Manhattan distance between two points is given by:\n
+            //! \f$ dist = \sum_{i=1}^n \left| x_i - y_i \right|  \f$ \n
+            //! This function can also be used to compute the Sum of Absolute Diferences (SAD) of two points.
+            //!
+            //! Note that in this funcion the n-dimensional ponts are represented by boost::array objects where the dimension 
+            //! n of the point is the size() of the boost::array.
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] npoint1 : first n-dimensional point 
+            //! \param[in] npoint2 : second n-dimensional point
+            //!
+            //! \return Manhattan distance between n-dimensional points
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), infinity_norm_distance(), hamming_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T, std::size_t S>
+            float64 manhattan_distance (const boost::array<T,S>& npoint1, const boost::array<T,S>& npoint2 )
+            {
+                return manhattan_distance( npoint1.data(), 
+                                           npoint2.data(), 
+                                           npoint1.size());
+            }
+
+            //!
+            //! \brief infinity-norm distance between two n-dimensional points (with MultiArray)
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$, the infinity-norm distance between two n-dimensional points is given by:\n
+            //! \f$ distance = \lim_{p \to \infty} \left( \sum_{i=1}^n \left| x_i - y_i \right|^p \right)^{1/p}
+            //! = \max \left(|x_1 - y_1|, |x_2 - y_2|, \ldots, |x_n - y_n| \right). \f$
+            //!
+            //! Note that in this funcion the n-dimensional ponts are represented by MultiArray objects where the dimension 
+            //! n of the point is num_elements() of the MultiArray.
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] npoint1 : first n-dimensional point 
+            //! \param[in] npoint2 : second n-dimensional point
+            //!
+            //! \return infinity-norm distance between the two n-dimensional points
+            //!
+            //! \warning Note that is up to the user that two points have the same dimension n = num_elements() (it is only checked in debug mode).
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), p_norm_distance(), hamming_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T, std::size_t N>
+            float64 infinity_norm_distance (const MultiArray<T,N>& npoint1, const MultiArray<T,N>& npoint2)
+            {
+                ASSERT(npoint1.num_elements() == npoint2.num_elements(), "infinity_norm_distance: points should have the same dimension");
+
+                return infinity_norm_distance( npoint1.data(), 
+                                               npoint2.data(), 
+                                               npoint1.num_elements());
+            }
+            
+            //!
+            //! \brief infinity-norm distance between two n-dimensional points (with boost::array)
+            //!
+            //! In the Euclidean space \f$ \Re^n \f$, the infinity-norm distance between two n-dimensional points is given by:\n
+            //! \f$ distance = \lim_{p \to \infty} \left( \sum_{i=1}^n \left| x_i - y_i \right|^p \right)^{1/p}
+            //! = \max \left(|x_1 - y_1|, |x_2 - y_2|, \ldots, |x_n - y_n| \right). \f$
+            //!
+            //! Note that in this funcion the n-dimensional ponts are represented by boost::array objects where the dimension 
+            //! n of the point is the size() of the boost::array.
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] npoint1 : first n-dimensional point 
+            //! \param[in] npoint2 : second n-dimensional point
+            //!
+            //! \return infinity-norm distance between the two n-dimensional points
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), p_norm_distance(), hamming_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //! \author Albert Gil Moreno <agil@gps.tsc.upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T, std::size_t S>
+            float64 infinity_norm_distance (const boost::array<T,S>& npoint1, const boost::array<T,S>& npoint2)
+            {
+                return infinity_norm_distance( npoint1.data(), 
+                                               npoint2.data(), 
+                                               npoint1.size());
+            }
+
+
+            //!
+            //! \brief Hamming distance between two numbers
+            //!
+            //! In information theory, the Hamming distance between two strings of equal length 
+            //! is the number of positions for which the corresponding symbols are different. 
+            //! Put another way, it measures the minimum number of substitutions required to 
+            //! change one into the other, or the number of errors that transformed one string into the other.
+            //! Here, for the two input numbers, the binary representation is considered, resulting in two 
+            //! strings of '1's and '0's \n \n
+            //! Example:\n
+            //! The Hamming distance between:\n \n
+            //! 1011101 and 1001001 is 2.\n
+            //!
+            //! \param[in] a      : First integer
+            //! \param[in] b      : Second integer
+            //! \param[in] length : Length of the string comparison (default value: 64)
+            //!
+            //! \return Manhattan distance between two integers
+            //!
+            //! \exception ImageplusError : Length must be <= 64
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), p_norm_distance(), manhattan_distance(), infinity_norm_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            uint64 hamming_distance (uint64 a, uint64 b, uint8 length=64) throw (ImagePlusError)
+            {
+                uint64 val    = a ^ b; // Bitwise XOR
+                uint64 dist = 0;
+
+                if (length > 64)
+                {
+                    throw ImagePlusError ("length must be < 64");
+                }
+
+#               if 1 // Implementation found in http://en.wikipedia.org/wiki/Hamming_distance
+
+                while(val)
+                {
+                    ++dist; 
+                    val &= val - 1;
+                }
+
+#               else //Old, classical implementation
+
+                // Count the number of '1' in c
+                for(uint64 i=0; i < length; i++)    
+                {
+                    if((val & 1)== 1)
+                    {
+                        dist++;
+                    }
+                    val = val>>1;
+                }
+
+#               endif
+                return dist;
+            }
+
+
+# if 0   // Removed because it is not tested (Ramon Morros)
+
+            //!
+            //! \brief Mahalanobis distance between two data vectors represented by 1D MultiArrays
+            //!
+            //! Mahalanobis distance can be defined as dissimilarity measure between two random vectors 
+            //! \f$ \vec{x} \f$ and \f$ \vec{y} \f$ of the same distribution with the covariance matrix \f$ \Sigma \f$ :\n \n
+            //! \f$ d(\vec{x},\vec{y})=\sqrt{(\vec{x}-\vec{y})^T \Sigma^{-1} (\vec{x}-\vec{y})}.\, \f$\n \n
+            //! Mahalanobis distance is a useful way of determining similarity of an unknown sample set to 
+            //! a known one. It differs from Euclidean distance in that it takes into account the correlations 
+            //! of the data set and is scale-invariant, i.e. not dependent on the scale of measurements.
+            //! If the second vector is the mean of a group of values \f$ \mu = ( \mu_1, \mu_2, \mu_3, \dots , \mu_p )^T \f$ 
+            //! and covariance matrix \f$ \Sigma \f$, the Mahalanobis distance from the group of values and a  
+            //! multivariate vector \f$ x = ( x_1, x_2, x_3, \dots, x_p )^T \f$ is defined as:\n \n
+            //! \f$  D_M(x) = \sqrt{(x - \mu)^T \Sigma^{-1} (x-\mu)}. \f$
+            //!
+            //! \param[in] v1 : First vector \f$ \vec{x} \f$
+            //! \param[in] v2 : Second vector \f$ \vec{y} \f$ or \f$ \mu \f$
+            //! \param[in] cov: Covariance matrix \f$ \Sigma \f$
+            //!
+            //! \return Mahalanobis distance between vectors
+            //!
+            //! \exception ImageplusError : Vectors do not have same dimension
+            //!
+            //! \headerfile include/imageplus/math/numeric/distances.hpp <math/numeric/distances.hpp>
+            //!
+            //! \sa euclidean_distance(), infinity_norm_distance(), hamming_distance(), manhattan_distance(), p_norm_distance()
+            //!
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 16-07-2008
+            //!
+            template<typename T>
+            float64 mahalanobis_distance (const MultiArray<T,1>& v1, const MultiArray<T,1>& v2, const MultiArray<float64,2>& cov) throw (ImagePlusError)
+            {
+                compatible (v1, v2);
+
+                MultiArray<float64,1> dif     = convert<float64>(v1 - v2);
+                MultiArray<float64,2> inv_cov;
+
+                inv_cov = math::numeric::invert_matrix(cov);
+
+                float64 res = math::numeric::scalar_prod (math::numeric::prod (dif, inv_cov), dif);
+
+                return std::sqrt(res);
+            }
+# endif
+
+        }
+    }
+}
+
+#endif
+

@@ -1,0 +1,62 @@
+/*
+ * regression.hpp
+ *
+ *  Created on: Nov 2, 2011
+ *      Author: guillem
+ */
+
+#ifndef REGRESSION_HPP_
+#define REGRESSION_HPP_
+
+#include <imageplus/math/math_types.hpp>
+
+namespace imageplus {
+	namespace math {
+		namespace algebra {
+
+		//! \brief Class that solves the least squares problem: argmin_x ||Ax - b ||^2
+		//! \author Guillem Palou <guillem.palou@upc.edu>
+		//! \date 20-03-2011
+		class LeastSquaresRegression {
+		public:
+
+			//! Default constructor
+			LeastSquaresRegression() {
+			}
+
+			//! Main function
+			//! Finds the point x that minimizes the least squares problem
+			//! \param[in] A : matrix
+			//! \param[in] b : vector
+			void fit(Matrix& A, Vector &b) {
+				_x = A.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
+			}
+
+			//! Alternative Main function
+			//! Finds the point x that minimizes the least squares problem
+			void fit() {
+				fit(_A,_b);
+			}
+
+			//! Gets the solution of solving. Should be called after fit()
+			//! \return x: the solution of the least squares priblem
+			Vector& solution() {return _x;}
+
+		private:
+			//! solution vector
+			Vector _x;
+
+			//! matrix
+			Matrix _A;
+
+			// parameter vector
+			Vector _b;
+		};
+
+
+		}
+	}
+}
+
+
+#endif /* REGRESSION_HPP_ */

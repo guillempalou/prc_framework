@@ -1,0 +1,864 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file convert_colorspace.cpp
+//!
+//! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+//! \author Josep Ramon Morros <ramon.morros@upc.edu>
+//!
+
+#include <iostream>
+#include <typeinfo>
+
+#include <boost/smart_ptr.hpp>
+
+#include <imageplus/core/exceptions.hpp>
+#include <imageplus/core/multiarray_arithmetic.hpp>
+#include <imageplus/core/imavol_arithmetic.hpp>
+#include <imageplus/core/clipping.hpp>
+#include <imageplus/core/convert_types.hpp>
+#include <imageplus/core/check_size.hpp>
+
+#include <imageplus/core/convert_colorspace.hpp>
+
+using namespace imageplus;
+
+namespace imageplus
+{
+
+    template<typename T>
+    const ImageGray<T> to_gray(const ImageRGB<T>& image)
+    {
+        ImageGray<float64> imagray(image(0).dims(0), image(0).dims(1));
+        
+        const T* r = image(RED_CHANNEL).data();
+        const T* g = image(GREEN_CHANNEL).data();
+        const T* b = image(BLUE_CHANNEL).data();
+        
+        float64* y = imagray(0).data();
+        uint64   nelems = image(0).num_elements();
+
+        for (uint64 p = 0; p < nelems; p++)
+        {
+            *y++ = (*r) * 0.299  + (*g) * 0.587  + (*b) * 0.114 + 0.5;
+
+            r++; g++; b++;
+        }
+
+        ImageGray<T> ret = convert<T>( imagray );
+
+        return ret;
+    }
+    
+    
+    template<typename T>
+    const ImageGray<T> to_gray(const ImageYUV<T>& image)
+    {
+        ImageGray<T> ret(image(0).dims(0), image(0).dims(1));
+        
+        ret(0) = image(Y_CHANNEL);
+        
+        return ret;
+    }
+    
+    template<typename T>
+    const ImageGray<T> to_gray(const ImaVol<T,3,2>& image)
+    {
+        return to_gray((ImageRGB<T>)image);
+    }
+    
+    template<typename T>
+    const ImageGray<T> to_gray(const ImaVol<T,1,2>& image)
+    {
+        return image;
+    }
+    
+
+    const ImageYUV<uint8> to_yuv( const ImageRGB<uint8>& image)
+    {
+        ImageYUV<float64> f(image.dims());
+
+        const uint8* r = image(RED_CHANNEL).data();
+        const uint8* g = image(GREEN_CHANNEL).data();
+        const uint8* b = image(BLUE_CHANNEL).data();
+
+        float64* y = f(Y_CHANNEL).data();
+        float64* u = f(U_CHANNEL).data();
+        float64* v = f(V_CHANNEL).data();
+
+        uint64   nelems = image(0).num_elements();
+
+        for (uint64 p = 0; p < nelems; p++)
+        {
+            *y++ = 0.5 + 16.0  + 1/256.0 * (   65.738  * (*r) +  129.057  * (*g) +  25.064  * (*b) );
+            *u++ = 0.5 + 128.0 + 1/256.0 * ( - 37.945  * (*r) -   74.494  * (*g) + 112.439  * (*b) );
+            *v++ = 0.5 + 128.0 + 1/256.0 * (  112.439  * (*r) -   94.154  * (*g) -  18.285  * (*b) );
+
+            r++; g++; b++;
+        }
+
+        // Clipping g between 0-high!
+        Clipping clip(0, static_cast<float64>(255));
+        ImageYUV<uint8> ret = convert<uint8>( clip.filter(f) );
+
+        return ret;
+    }   
+
+    const ImageYIQ<uint8> to_yiq( const ImageRGB<uint8>& image)
+    {
+        ImageYIQ<float64> f(image.dims());
+
+	    const uint8* r = image(RED_CHANNEL).data();
+	    const uint8* g = image(GREEN_CHANNEL).data();
+	    const uint8* b = image(BLUE_CHANNEL).data();
+
+	    float64* y = f(Y_CHANNEL).data();
+	    float64* i = f(I_CHANNEL).data();
+	    float64* q = f(Q_CHANNEL).data();
+
+	    uint64 nelems = image(0).num_elements();
+
+	    for (uint64 p = 0; p < nelems; p++) 
+	    {
+		   *y++ = 0.5 + 0.299 * (*r) + 0.587 * (*g) + 0.114 * (*b);
+		   *i++ = 0.5 + 0.596 * (*r) - 0.275 * (*g) - 0.321 * (*b);
+		   *q++ = 0.5 + 0.212 * (*r) - 0.523 * (*g) + 0.311 * (*b);
+
+		   r++;g++;b++;
+	    }
+
+	    // Clipping g between 0-high!
+	    Clipping clip(0, static_cast<float64>(255));
+	    ImageYIQ<uint8> ret = convert<uint8>(clip.filter(f) );
+
+	    return ret;
+    }
+    
+    const ImageRIQ<uint8> to_riq( const ImageRGB<uint8>& image)
+    {
+        ImageRIQ<float64> f(image.dims());
+
+        const uint8* r = image(RED_CHANNEL).data();
+        const uint8* g = image(GREEN_CHANNEL).data();
+        const uint8* b = image(BLUE_CHANNEL).data();
+
+        float64* r1 =f(R_CHANNEL).data();
+        float64* i = f(I_CHANNEL).data();
+        float64* q = f(Q_CHANNEL).data();
+
+        uint64   nelems = image(0).num_elements();
+
+        for (uint64 p = 0; p < nelems; p++)
+        {
+            *r1++ = 0.5 + (*r) ;
+            *i++ =  0.5 + 0.596  * (*r) -  0.275  * (*g) - 0.321  * (*b) ;
+            *q++ =  0.5 + 0.212  * (*r) -  0.523  * (*g) +  0.311  * (*b) ;
+
+            r++; g++; b++;
+         }
+
+         // Clipping g between 0-high!
+         Clipping clip(0, static_cast<float64>(255));
+         ImageRIQ<uint8> ret = convert<uint8>( clip.filter(f) );
+
+         return ret;
+    }
+    
+    const ImageYUV<uint8> to_yuv( const ImageYUV<uint8>& image)
+    {
+        return image;
+    }
+    
+    const ImageYUV<uint8> to_yuv( const Image<uint8,3>& image) throw (ImagePlusNotImplemented)
+    {
+        throw ImagePlusNotImplemented ("to_yuv: This function is not implemented on purpose because the color space is not known");
+        
+        return image;
+    }
+
+    const ImageRCQ<uint8> to_rcq( const ImageRGB<uint8>& image)
+    {
+        ImageRCQ<float64> f(image.dims());
+
+        const uint8* r = image(RED_CHANNEL).data();
+        const uint8* g = image(GREEN_CHANNEL).data();
+        const uint8* b = image(BLUE_CHANNEL).data();
+
+        float64* r1 = f(R_CHANNEL).data();
+        float64* cr = f(Cr_CHANNEL).data();
+        float64* q =  f(Q_CHANNEL).data();
+
+        uint64   nelems = image(0).num_elements();
+
+        for (uint64 p = 0; p < nelems; p++)
+        {
+            *r1++ = 0.5 + (*r) ;
+            *cr++ = 0.5 + 128.0 + 1/256.0 * (  112.439  * (*r) -   94.154  * (*g) -  18.285  * (*b) );
+            *q++ =  0.5 + 0.212  * (*r) -   0.523  * (*g) +  0.311  * (*b) ;
+
+            r++; g++; b++;
+            
+        }
+
+        // Clipping g between 0-high!
+        Clipping clip(0, static_cast<float64>(255));
+        ImageRCQ<uint8> ret = convert<uint8>( clip.filter(f) );
+
+        return ret;
+        
+    }
+    
+    const ImageRUV<uint8> to_ruv( const ImageRGB<uint8>& image)
+    {
+        ImageRUV<float64> f(image.dims());
+
+        const uint8* r = image(RED_CHANNEL).data();
+        const uint8* g = image(GREEN_CHANNEL).data();
+        const uint8* b = image(BLUE_CHANNEL).data();
+
+        float64* r1 = f(R_CHANNEL).data();
+        float64* cr = f(Cr_CHANNEL).data();
+        float64* cb =  f(Cb_CHANNEL).data();
+
+        uint64   nelems = image(0).num_elements();
+
+        for (uint64 p = 0; p < nelems; p++)
+        {
+            *r1++ = 0.5 + (*r) ;
+            *cr++ = 0.5 + 128.0 + 1/256.0 * (  112.439  * (*r) -   94.154  * (*g) -  18.285  * (*b) );
+            *cb++ = 0.5 + 128.0 + 1/256.0 * ( - 37.945  * (*r) -   74.494  * (*g) + 112.439  * (*b) );
+
+            ++r; ++g; ++b;
+        }
+
+        // Clipping g between 0-high!
+        Clipping clip(0, static_cast<float64>(255));
+        ImageRUV<uint8> ret = convert<uint8>( clip.filter(f) );
+
+        return ret;
+    }
+
+    const ImageYUV<float64> to_yuv( const ImageRGB<float64>& image) throw (ImagePlusNotImplemented)
+    {
+        throw ImagePlusNotImplemented ("This function is not implemented on pourpose because it is not clear how the conversion is defined");
+        return image;
+    }
+    
+
+    //
+    // Internal function to upsample chroma images (horizontal and vertical)
+    // The input multiarray ima must have the size of the desired output image and the values inside must be
+    // equal to the input image (with input_width x input_height size).
+    //
+    // This code comes from AVC/H.264 SVC and it is normative
+    //
+    static void horizvert_chroma_upsample(MultiArray<float64,2>& ima,int64 input_width,int64 input_height)
+    {
+
+        // define filter for chroma samples
+        static float64 filter16[16][6] = { // bilinear
+            {0,0,32,0,0,0},
+            {0,0,30,2,0,0},
+            {0,0,28,4,0,0},
+            {0,0,26,6,0,0},
+            {0,0,24,8,0,0},
+            {0,0,22,10,0,0},
+            {0,0,20,12,0,0},
+            {0,0,18,14,0,0},
+            {0,0,16,16,0,0},
+            {0,0,14,18,0,0},
+            {0,0,12,20,0,0},
+            {0,0,10,22,0,0},
+            {0,0,8,24,0,0},
+            {0,0,6,26,0,0},
+            {0,0,4,28,0,0},
+            {0,0,2,30,0,0}
+        };
+
+        int64 output_width = ima.dims(0);
+        int64 output_height = ima.dims(1);
+
+        // needed variables
+        int32 input_chroma_phase_shift_x = -1;
+        int32 output_chroma_phase_shift_x = -1;
+        int32 input_chroma_phase_shift_y = 0;
+        int32 output_chroma_phase_shift_y = 0;
+        
+        
+        int32 m_iImageStride = output_width;
+
+        // initialization
+        boost::shared_array<int32> px = boost::shared_array<int32>(new int32[output_width]);
+        boost::shared_array<int32> py = boost::shared_array<int32>(new int32[output_height]);
+        boost::shared_array<float64> m_paiTmp1dBuffer = boost::shared_array<float64>(new float64[output_width + output_height]);
+
+        int32 crop_x0 = 0;
+        int32 crop_w = output_width;
+        int32 crop_y0 = 0;
+        int32 crop_h = output_height;
+
+        int32 i, j, k;
+        int32 x16, y16, x, y, m;
+
+        int32 G = 2, J, M, S = 12;
+        unsigned short C, C1, D1;
+        int32 D, E, q, w;
+        
+        for(i=0; i<crop_x0; i++)  px[i] = -128;
+        for(i=crop_x0+crop_w; i<output_width; i++)  px[i] = -128;
+
+        // prepare values
+        J = 1; M = 13; 
+        J ++; M --;
+        C = ((1<<(M+G))*input_width + (crop_w>>1))/crop_w;
+        D = ((-1)<<15) + (1<<11) - (input_chroma_phase_shift_x<<14);
+        C1 = C<<J;
+        E = 0;
+        q = (C<<(J-1)) + D + (C<<(J-2))*output_chroma_phase_shift_x;
+        w = q>>S;
+        D1 = q - (w<<S);
+        E += w;
+        px[0+crop_x0] = E;
+        
+        for(i = 1; i < crop_w; i++)
+        {
+            q = C1 + D1;
+            w = q>>S;
+            D1 = q - (w<<S);
+            E += w;	  
+            px[i+crop_x0] = E;
+        }
+
+        for(j=0; j<crop_y0; j++)   py[j] = -128;
+        for(j=crop_y0+crop_h; j<output_height; j++)  py[j] = -128;
+
+        J = 1; M = 13; 
+	    J ++;  M --;
+
+        C = ((1<<(M+G))*input_height + (crop_h>>1))/crop_h;
+        D = ((-1)<<15) + (1<<11) - (input_chroma_phase_shift_y<<14);
+        
+        C1 = C<<J;
+        E = 0;
+        
+        q = (C<<(J-1)) + D + (C<<(J-2))*output_chroma_phase_shift_y;
+        w = q>>S;
+        D1 = q - (w<<S);
+        E += w;
+        py[0+crop_y0] = E;
+  
+        for(j = 1; j < crop_h; j++)
+        {
+            q = C1 + D1;
+            w = q>>S;
+            D1 = q - (w<<S);
+            E += w;	  
+            py[j+crop_y0] = E;
+        }
+
+        //========== horizontal upsampling ===========
+        for(j = 0; j < input_height; j++ ) 
+        {
+            float64*  piSrc = &ima.data()[j*m_iImageStride];
+            for( i = 0; i < output_width; i++ ){
+                if( px[i]==-128 ) continue;
+                x16 = px[i]&0x0f;
+                x = px[i]>>4;
+                m_paiTmp1dBuffer[i] = 0.0;
+                for( k=0; k<6; k++) {
+                    m = x - 2 + k;
+                    if( m<0 ) m = 0;
+                    else if( m>(input_width-1) ) m=input_width-1;
+                    m_paiTmp1dBuffer[i] += filter16[x16][k]*piSrc[m];
+                }
+                m_paiTmp1dBuffer[i] = m_paiTmp1dBuffer[i];
+            }
+            
+            //----- copy row back to image buffer -----
+            for (int32 c = 0; c < output_width; c++)
+            {
+                piSrc[c] = m_paiTmp1dBuffer[c];
+            }
+            
+        }
+
+        //========== vertical upsampling ===========
+        for( i = 0; i < output_width; i++ ) 
+        {
+            float64*  piSrc = &ima.data()[i];
+            for( j = 0; j < output_height; j++ ){
+                if( py[j]==-128 || px[i]==-128)
+                {
+                    m_paiTmp1dBuffer[j] = 128.0;
+                    continue;
+                }
+                y16 = py[j]&0x0f;
+                y = py[j]>>4;
+                m_paiTmp1dBuffer[j] = 0.0;
+                for( k=0; k<6; k++) {
+                    m = y - 2 + k;
+                    if( m<0 ) m = 0;
+                    else if( m>(input_height-1) ) m=input_height-1;
+                    m_paiTmp1dBuffer[j] += filter16[y16][k]*piSrc[m*m_iImageStride];
+                }
+                m_paiTmp1dBuffer[j] = (m_paiTmp1dBuffer[j]+512.0)/1024.0;
+            }
+
+            //----- scale and copy back to image buffer -----
+            for( j = 0; j < output_height; j++ )
+            {
+                piSrc[j*m_iImageStride] = m_paiTmp1dBuffer[j];
+            }
+        }
+
+    }
+
+    //
+    // Internal function to upsample chroma images (only horizontal)
+    // The input multiarray ima must have the size of the desired output image and the values inside must be
+    // equal to the input image (with input_width x height size).
+    //
+    // This code comes from AVC/H.264 SVC and it is normative
+    //
+    static void horiz_chroma_upsample(MultiArray<float64,2>& ima,int64 input_width)
+    {
+        // define filter for chroma samples
+        static float64 filter16[16][6] = { // bilinear
+            {0,0,32,0,0,0},
+            {0,0,30,2,0,0},
+            {0,0,28,4,0,0},
+            {0,0,26,6,0,0},
+            {0,0,24,8,0,0},
+            {0,0,22,10,0,0},
+            {0,0,20,12,0,0},
+            {0,0,18,14,0,0},
+            {0,0,16,16,0,0},
+            {0,0,14,18,0,0},
+            {0,0,12,20,0,0},
+            {0,0,10,22,0,0},
+            {0,0,8,24,0,0},
+            {0,0,6,26,0,0},
+            {0,0,4,28,0,0},
+            {0,0,2,30,0,0}
+        };
+
+        int64 output_width = ima.dims(0);
+        int64 output_height = ima.dims(1);
+
+        // needed variables
+        int32 input_chroma_phase_shift_x = -1;
+        int32 output_chroma_phase_shift_x = -1;      
+        
+        int32 m_iImageStride = output_width;
+
+        // initialization
+        boost::shared_array<int32> px = boost::shared_array<int32>(new int32[output_width]);
+        boost::shared_array<float64> m_paiTmp1dBuffer = boost::shared_array<float64>(new float64[output_width + output_height]);
+
+        int32 crop_x0 = 0, crop_w = output_width, i, j, k, x16, x, m, G = 2, J, M, S = 12;
+        unsigned short C, C1, D1;
+        int32 D, E, q, w;
+        
+        for(i=0; i<crop_x0; i++)  px[i] = -128;
+        for(i=crop_x0+crop_w; i<output_width; i++)  px[i] = -128;
+
+        // prepare values
+        J = 1; M = 13; J ++; M --;
+        C = ((1<<(M+G))*input_width + (crop_w>>1))/crop_w;
+        D = ((-1)<<15) + (1<<11) - (input_chroma_phase_shift_x<<14);
+        C1 = C<<J; E = 0;
+        q = (C<<(J-1)) + D + (C<<(J-2))*output_chroma_phase_shift_x;
+        w = q>>S; D1 = q - (w<<S); E += w;
+        px[0+crop_x0] = E;
+        
+        for(i = 1; i < crop_w; i++)
+        {
+            q = C1 + D1; w = q>>S;
+            D1 = q - (w<<S); E += w;	  
+            px[i+crop_x0] = E;
+        }
+
+        //========== horizontal upsampling ===========
+        for(j = 0; j < output_height; j++ ) // remember, input_height == output_height
+        {
+            float64*  piSrc = &ima.data()[j*m_iImageStride];
+            for( i = 0; i < output_width; i++ ){
+                if( px[i]==-128 ) continue;
+                x16 = px[i]&0x0f;
+                x = px[i]>>4;
+                m_paiTmp1dBuffer[i] = 0.0;
+                for( k=0; k<6; k++) {
+                    m = x - 2 + k;
+                    if( m<0 ) m = 0;
+                    else if( m>(input_width-1) ) m=input_width-1;
+                    m_paiTmp1dBuffer[i] += filter16[x16][k]*piSrc[m];
+                }
+                m_paiTmp1dBuffer[i] = m_paiTmp1dBuffer[i];
+            }
+            
+            //----- copy row back to image buffer -----
+            for (int32 c = 0; c < output_width; c++)
+            {
+                piSrc[c] = (m_paiTmp1dBuffer[c] + 16.0)/32.0;
+            }
+            
+        }
+
+    }
+
+    template<typename T>
+    const ImageYUV<T> to_yuv( const ImageYUV420<T>& src)
+    {
+#ifndef NDEBUG
+        check_size_yuv420(src);
+#endif
+        ImageYUV<T> dest(src.size_x(),src.size_y());
+                             
+        int64 input_width = src(U_CHANNEL).dims(0);
+        int64 input_height = src(U_CHANNEL).dims(1);
+        int64 output_width = 2*input_width;
+        int64 output_height = 2*input_height;
+
+        MultiArray<float64,2> destu(output_width,output_height);
+        MultiArray<float64,2> destv(output_width,output_height);
+
+        // Copy U channels 
+        for (int64 y = 0; y < input_height; y++)
+        {
+            for (int64 x = 0; x < input_width; x++)
+            {
+                destu[x][y] = static_cast<float64>(src(U_CHANNEL)[x][y]);
+                destv[x][y] = static_cast<float64>(src(V_CHANNEL)[x][y]);
+            }
+        }
+
+        // upsample it
+        horizvert_chroma_upsample(destu,input_width,input_height);
+        horizvert_chroma_upsample(destv,input_width,input_height);
+
+        dest(Y_CHANNEL) = src(Y_CHANNEL);
+        dest(U_CHANNEL) = convert<T>(destu);
+        dest(V_CHANNEL) = convert<T>(destv);
+        
+        // check image size consistency (throw if error)
+#ifndef NDEBUG
+        check_size_yuv(dest);
+#endif
+
+        return dest;
+    }
+
+
+    template<typename T>
+    const ImageYUV<T> to_yuv( const ImageYUV422<T>& src)
+    {
+#ifndef NDEBUG
+        check_size_yuv422(src);
+#endif
+
+        ImageYUV<T> dest(src.size_x(),src.size_y());
+                             
+        int64 input_width = src(U_CHANNEL).dims(0);
+        int64 input_height = src(U_CHANNEL).dims(1);
+        int64 output_width = 2*input_width;
+        int64 output_height = input_height;
+
+        MultiArray<float64,2> destu(output_width,output_height);
+        MultiArray<float64,2> destv(output_width,output_height);
+
+        // Copy U channels 
+        for (int64 y = 0; y < input_height; y++)
+        {
+            for (int64 x = 0; x < input_width; x++)
+            {
+                destu[x][y] = static_cast<float64>(src(U_CHANNEL)[x][y]);
+                destv[x][y] = static_cast<float64>(src(V_CHANNEL)[x][y]);
+            }
+        }
+
+        // upsample it
+        horiz_chroma_upsample(destu,input_width);
+        horiz_chroma_upsample(destv,input_width);
+
+        dest(Y_CHANNEL) = src(Y_CHANNEL);
+        dest(U_CHANNEL) = convert<T>(destu);
+        dest(V_CHANNEL) = convert<T>(destv);
+        
+        // check image size consistency (throw if error)
+#ifndef NDEBUG
+        check_size_yuv(dest);
+#endif
+
+        return dest;
+    }
+
+
+    const ImageRGB<uint8> to_rgb( const ImageYUV<uint8>& image)
+    {
+        ImageRGB<float64> g(image.dims());
+
+        for (uint64 j = 0; j < image.size_y(); j++)
+        {
+            for (uint64 i = 0; i < image.size_x(); i++)
+            {
+                float64 y  = static_cast<float64>(image(Y_CHANNEL)[i][j]);
+                float64 cb = static_cast<float64>(image(U_CHANNEL)[i][j]);
+                float64 cr = static_cast<float64>(image(V_CHANNEL)[i][j]);
+
+                //g(RED_CHANNEL)[i][j]   = 1.164 * (y - 16.0)                        + 1.596 * (cr - 128.0) + 0.5;
+                //g(GREEN_CHANNEL)[i][j] = 1.164 * (y - 16.0) - 0.391 * (cb - 128.0) - 0.813 * (cr - 128.0) + 0.5;
+                //g(BLUE_CHANNEL)[i][j]  = 1.164 * (y - 16.0) + 2.018 * (cb - 128.0)                        + 0.5;
+
+                g(0)[i][j] = 0.5 + ( 298.082 * y                + 408.583 * cr ) / 256.0 - 222.921;
+                g(1)[i][j] = 0.5 + ( 298.082 * y - 100.291 * cb - 208.120 * cr ) / 256.0 + 135.576;
+                g(2)[i][j] = 0.5 + ( 298.082 * y + 516.412 * cb                ) / 256.0 - 276.836;
+
+            }
+        }
+
+        // Clipping g between 0-255!
+        Clipping clip(0, static_cast<float64>(255));
+        ImageRGB<uint8> ret = convert<uint8>( clip.filter( g ) );
+
+        return ret;
+    }
+
+
+   // Specialization for float64
+    const ImageRGB<float64> to_rgb( const ImageYUV<float64>& image) throw (ImagePlusNotImplemented)
+    {
+        throw ImagePlusNotImplemented ("This function is not implemented on pourpose because it is not clear how the conversion is defined");
+        
+        return image;
+    }
+
+    template<typename T>
+    const ImageRGB<T> to_rgb( const ImageGray<T>& image)
+    {
+        ImageRGB<T> rgb(image.size_x(),image.size_y());
+
+        rgb(RED_CHANNEL)   = image(GRAY_CHANNEL);
+        rgb(GREEN_CHANNEL) = image(GRAY_CHANNEL);
+        rgb(BLUE_CHANNEL)  = image(GRAY_CHANNEL);
+
+        return rgb;
+    }
+    
+    template<typename T>
+    float64 f(T x, float64 Xref) {
+    	float64 xF = static_cast<float64>(x);
+    	if (xF/Xref > pow(6.0/29.0,3.0))
+    		return pow(xF/Xref,1.0/3.0);
+    	return ((1.0/3.0)*(29.0/6.0)*(29.0/6.0)*(xF/Xref) + 4.0/29.0);
+    }
+
+    boost::array<float64, 3> xyz_to_lab(float64 x, float64 y, float64 z) {
+    	boost::array<float64, 3> v;
+    	float64 Yn = 1.0;
+    	float64 Xn = 0.95046866;
+    	float64 Zn = 1.08882331;
+
+    	float64 L = 116 * f(y,Yn) - 16;
+    	float64 a = 500 * (f(x,Xn) - f(y,Yn));
+    	float64 b = 200 * (f(y,Yn) - f(z,Zn));
+
+    	v[0] = L;
+    	v[1] = a;
+    	v[2] = b;
+    	return v;
+    }
+
+    boost::array<float64, 3> lab_to_xyz(float64 l, float64 a, float64 b) {
+    	boost::array<float64, 3> v;
+    	float64 Yn = 1.0;
+    	float64 Xn = 0.95046866;
+    	float64 Zn = 1.08882331;
+
+    	float64 delta = 6.0 / 29.0;
+    	float64 X,Y,Z;
+
+    	float64 fy = (l + 16) / 116;
+    	float64 fx = fy + a/500;
+    	float64 fz = fy - b/200;
+
+    	if (fx > delta) X = Xn * fx * fx * fx; else X = (fx - 16.0/116.0)*3*delta*delta*Xn;
+    	if (fy > delta) Y = Yn * fy * fy * fy; else Y = (fy - 16.0/116.0)*3*delta*delta*Yn;
+    	if (fz > delta) Z = Zn * fz * fz * fz; else Z = (fz - 16.0/116.0)*3*delta*delta*Zn;
+
+    	v[0] = X; v[1] = Y; v[2] = Z;
+
+    	return v;
+    }
+
+    template<typename T>
+    boost::array<float64, 3> rgb_to_xyz(T r, T g, T b) {
+    	float64 lr=r/255.0,lg= g/255.0,lb = b / 255.0;
+
+    	if (lr < 0.03928) lr = lr / 12.92; else lr = pow((lr+0.055)/(1.055),2.4);
+    	if (lg < 0.03928) lg = lg / 12.92; else lg = pow((lg+0.055)/(1.055),2.4);
+    	if (lb < 0.03928) lb = lb / 12.92; else lb = pow((lb+0.055)/(1.055),2.4);
+
+    	float64 X = 0.412453 * lr + 0.357580 * lg + 0.180423 * lb;
+    	float64 Y = 0.212671 * lr + 0.715160 * lg + 0.072169 * lb;
+    	float64 Z = 0.019334 * lr + 0.119193 * lg + 0.950227 * lb;
+    	boost::array<float64, 3> v;
+    	v[0] = X;
+    	v[1] = Y;
+    	v[2] = Z;
+    	return v;
+    }
+
+    template<typename T>
+    boost::array<float64, 3> xyz_to_rgb(T x, T y, T z) {
+    	float64 R = 3.240479 * x - 1.537152 * y - 0.498536 * z;
+    	float64 G =-0.969255 * x + 1.875990 * y + 0.041556 * z;
+    	float64 B = 0.055647 * x - 0.204041 * y + 1.057311 * z;
+
+    	if (R < 0.00304) R *= 12.92; else R = 1.055*pow(R,1/2.4) - 0.055;
+    	if (G < 0.00304) G *= 12.92; else G = 1.055*pow(G,1/2.4) - 0.055;
+    	if (B < 0.00304) B *= 12.92; else B = 1.055*pow(B,1/2.4) - 0.055;
+
+    	R *= 255; G*=255; B*=255;
+    	boost::array<float64, 3> v;
+    	v[0] = R;
+    	v[1] = G;
+    	v[2] = B;
+    	return v;
+    }
+    
+    template<typename T>
+    const ImageCIELab<T> to_cielab( const ImageGray<T>& image) {
+    	// a and b are 0, we only have L value
+    	ImageCIELab<T> lab(image.size_x(),image.size_y());
+    	lab.reindex(image(0).bases());
+
+    	typename ImageGray<T>::template const_iterator<> it = image.colors_begin();
+    	typename ImageGray<T>::template const_iterator<> it_end = image.colors_end();
+        for(; it!=it_end; ++it)
+        {
+   			lab((*it).position())[L_CHANNEL] = (*it).value(GRAY_CHANNEL); // proper scaling
+    	}
+    	return lab;
+    }
+
+    template<typename T>
+    const ImageCIELab<T> to_cielab( const ImageYUV<T>& image) {
+    	ImageRGB<T> imgRGB = to_rgb(image);
+    	imgRGB.reindex(image(0).bases());
+    	return to_cielab(imgRGB);
+    }
+
+    template<typename T>
+    const ImageCIELab<T> to_cielab( const ImageRGB<T>& image) {
+    	ImageRGB<float64> img(image.dims());
+    	img.reindex(image(0).bases());
+
+    	typename ImageRGB<T>::template const_iterator<> it = image.colors_begin();
+    	typename ImageRGB<T>::template const_iterator<> it_end = image.colors_end();
+        for(; it!=it_end; ++it)
+        {
+            float64 r = static_cast<float64>((*it).value(RED_CHANNEL));
+            float64 g = static_cast<float64>((*it).value(GREEN_CHANNEL));
+            float64 b = static_cast<float64>((*it).value(BLUE_CHANNEL));
+            boost::array<float64,3> xyz = rgb_to_xyz(r,g,b);
+            boost::array<float64,3> lab = xyz_to_lab(xyz[0],xyz[1],xyz[2]);
+            img((*it).position())[L_CHANNEL] = lab[0];
+            img((*it).position())[A_CHANNEL] = lab[1] + 128; // we don't allow negative values
+            img((*it).position())[B_CHANNEL] = lab[2] + 128;
+        }
+
+    	//Clipping img between 0 - 255!
+    	Clipping clip(static_cast<float64>(0), static_cast<float64>(255));
+    	ImageCIELab<T> ret = convert<T>( clip.filter( img ) );
+
+    	return ret;
+    }
+
+    template<typename T>
+    const ImageRGB<T> to_rgb( const ImageCIELab<T>& image)
+    {
+    	ImageRGB<float64> img(image.dims());
+        img.reindex(image(0).bases());
+
+        typename ImageCIELab<T>::template const_iterator<> it = image.colors_begin();
+        typename ImageCIELab<T>::template const_iterator<> it_end = image.colors_end();
+        for(; it!=it_end; ++it)
+        {
+            float64 l  = static_cast<float64>((*it).value(L_CHANNEL));
+            float64 a = static_cast<float64>((*it).value(A_CHANNEL)) - 128;				// compensate the mean
+            float64 b = static_cast<float64>((*it).value(B_CHANNEL)) - 128;				// compensate the mean
+            boost::array<float64,3> xyz = lab_to_xyz(l,a,b);
+            boost::array<float64,3> rgb = xyz_to_rgb(xyz[0],xyz[1],xyz[2]);
+            img((*it).position())[RED_CHANNEL] = rgb[0];
+            img((*it).position())[GREEN_CHANNEL] = rgb[1];
+            img((*it).position())[BLUE_CHANNEL] = rgb[2];
+    	}
+    	// Clipping img between -128 - 127!
+    	Clipping clip(static_cast<float64>(0), static_cast<float64>(255));
+    	ImageCIELab<T> ret = convert<T>( clip.filter( img ) );
+    	return ret;
+    }
+
+    template<typename T>
+    const ImageYUV<T> to_yuv( const ImageCIELab<T>& image) {
+		ImageRGB<T> imgRGB = to_rgb(image);
+		return to_yuv(imgRGB);
+    }
+
+    template<typename T>
+    const ImageGray<T> to_gray( const ImageCIELab<T>& image) {
+    	ImageGray<T> gray(image.size_x(),image.size_y());
+    	for (uint64 j = 0; j < image.size_y(); j++) {
+    		for (uint64 i = 0; i < image.size_x(); i++) {
+    			gray[i][j] = image(L_CHANNEL)[i][j]; // proper scaling
+    		}
+    	}
+    	return gray;
+    }
+
+    
+    // grayscale instantiations
+    template const ImageGray<uint8>   to_gray( const ImaVol<uint8,3,2>&   image);
+    template const ImageGray<int64>   to_gray( const ImaVol<int64,3,2>&   image);
+    template const ImageGray<uint8>   to_gray( const ImageYUV<uint8>&   image);
+    template const ImageGray<int64>   to_gray( const ImageYUV<int64>&   image);
+    template const ImageGray<float64> to_gray( const ImageYUV<float64>&   image);
+    template const ImageGray<uint8>   to_gray( const ImaVol<uint8,1,2>&   image);
+    template const ImageGray<int16>   to_gray( const ImaVol<int16,1,2>&   image);
+    template const ImageGray<int64>   to_gray( const ImaVol<int64,1,2>&   image);
+    template const ImageGray<float64> to_gray( const ImageCIELab<float64>&   image);
+    template const ImageGray<uint8>   to_gray( const ImageCIELab<uint8>& 	  image);
+
+
+    //to_rgb instantiations
+    template const ImageRGB<uint8>   to_rgb( const ImageGray<uint8>&   image);
+    template const ImageRGB<int64>   to_rgb( const ImageGray<int64>&   image);
+    template const ImageRGB<float64> to_rgb( const ImageCIELab<float64>&   image);
+    template const ImageRGB<uint8> 	 to_rgb( const ImageCIELab<uint8>& 	  image);
+
+    //to_yuv instantiations
+    template const ImageYUV<uint8>   to_yuv( const ImageYUV420<uint8>&   image);
+    template const ImageYUV<int64>   to_yuv( const ImageYUV420<int64>&   image);
+    template const ImageYUV<float64> to_yuv( const ImageYUV420<float64>& image);
+
+
+    template const ImageYUV<uint8>   to_yuv( const ImageYUV422<uint8>&   image);
+    template const ImageYUV<int64>   to_yuv( const ImageYUV422<int64>&   image);
+    template const ImageYUV<float64> to_yuv( const ImageYUV422<float64>& image);
+    
+    template const ImageYUV<float64> to_yuv( const ImageCIELab<float64>&   image);
+    template const ImageYUV<uint8>   to_yuv( const ImageCIELab<uint8>& 	  image);
+
+    // to_cielab instatiations
+
+    template const ImageCIELab<float64>   to_cielab( const ImageRGB<float64>&     image);
+    template const ImageCIELab<float64>   to_cielab( const ImageYUV<float64>&     image);
+    template const ImageCIELab<float64>   to_cielab( const ImageGray<float64>&    image);
+
+    template const ImageCIELab<uint8>     to_cielab( const ImageRGB<uint8>&   	  image);
+    template const ImageCIELab<uint8> 	  to_cielab( const ImageYUV<uint8>& 	  image);
+    template const ImageCIELab<uint8> 	  to_cielab( const ImageGray<uint8>& 	  image);
+}

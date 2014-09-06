@@ -1,0 +1,244 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file imavol_arithmetic.test
+//!
+//! Tests for imavol arithmetics 
+//!
+
+#include <imageplus/core/imavol_arithmetic.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( ImaVolArithmeticSuite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64, int8, int16, int32, int64, float64 > DataTypes;
+typedef boost::mpl::list< uint8, uint16, uint32, uint64, int8, int16, int32, int64, float64 > DataTypes2;
+
+// Tests for the 4 operators +, -, * and /
+BOOST_AUTO_TEST_CASE_TEMPLATE( ImaVol_testcase_operator_sum, T, DataTypes )
+{	
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    // 1 Channel
+	ImaVol<T,1,2> iv1(size,size);
+	ImaVol<T,1,2> iv2(size,size);
+	ImaVol<T,1,2> iv_res(size,size);
+    
+    iv1 = 1;  iv2 = 2;
+    iv_res = iv1 + iv2;
+    
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 3);	
+    
+    iv_res = val + iv2;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 12);	
+
+    iv_res = iv1 + val;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 11);	
+    
+    // 3 Channel
+	ImaVol<T,3,2> ivb1(size,size);
+	ImaVol<T,3,2> ivb2(size,size);
+	ImaVol<T,3,2> ivb_res(size,size);
+    
+    ivb1 = 1;  ivb2 = 2;
+    ivb_res = ivb1 + ivb2;
+    
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 3);	
+    
+    ivb_res = val + ivb2;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 12);	
+
+    ivb_res = ivb1 + val;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 11);	
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( ImaVol_testcase_operator_substract, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    // 1 Channel
+	ImaVol<T,1,2> iv1(size,size);
+	ImaVol<T,1,2> iv2(size,size);
+	ImaVol<T,1,2> iv_res(size,size);
+    
+    iv1 = 1;  iv2 = 20;
+    iv_res = iv2 - iv1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 19);	
+    
+    iv_res = val - iv1;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 9);	
+
+    iv_res = iv2 - val;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 10);	
+    
+    // 3 Channel
+	ImaVol<T,3,2> ivb1(size,size);
+	ImaVol<T,3,2> ivb2(size,size);
+	ImaVol<T,3,2> ivb_res(size,size);
+    
+    ivb1 = 1;  ivb2 = 20;
+    ivb_res = ivb2 - ivb1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 19);	
+    
+    ivb_res = val - ivb1;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 9);	
+
+    ivb_res = ivb2 - val;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 10);	
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( ImaVol_testcase_operator_product, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    // 1 Channel
+	ImaVol<T,1,2> iv1(size,size);
+	ImaVol<T,1,2> iv2(size,size);
+	ImaVol<T,1,2> iv_res(size,size);
+    
+    iv1 = 1;  iv2 = 10;
+    iv_res = iv2 * iv1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 10);	
+    
+    iv_res = val * iv1;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 10);	
+
+    iv_res = iv2 * val;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 100);	
+    
+    val = 0;    
+    iv_res = iv2 * val;
+    
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 0);
+    
+    // 3 Channel
+	ImaVol<T,3,2> ivb1(size,size);
+	ImaVol<T,3,2> ivb2(size,size);
+	ImaVol<T,3,2> ivb_res(size,size);
+    
+    ivb1 = 1;  ivb2 = 10; val = 10;
+    ivb_res = ivb2 * ivb1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 10);	
+    
+    ivb_res = val * ivb1;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 10);	
+    
+    ivb_res = ivb2 * val;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 100);
+
+    val = 0;
+    ivb_res = ivb2 * val;
+
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		for( uint64 k = 0; k < ivb_res.num_channels(); k++ )
+    			BOOST_CHECK(ivb_res(k)[i][j] == 0);	
+    
+    // Operator with bools
+    ImageMask iv3(size, size);
+    iv3(0)[0][0] = true; iv3(0)[1][0] = false;
+    iv3(0)[0][1] = true; iv3(0)[1][1] = false;
+    
+    iv_res = iv2 * iv3;
+    
+    BOOST_CHECK(iv_res(0)[0][0] == 10);
+    BOOST_CHECK(iv_res(0)[1][0] == 0);
+    BOOST_CHECK(iv_res(0)[0][1] == 10);
+    BOOST_CHECK(iv_res(0)[1][1] == 0);
+    
+    iv_res = iv3 * iv2;
+    
+    BOOST_CHECK(iv_res(0)[0][0] == 10);
+    BOOST_CHECK(iv_res(0)[1][0] == 0);
+    BOOST_CHECK(iv_res(0)[0][1] == 10);
+    BOOST_CHECK(iv_res(0)[1][1] == 0);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( ImaVol_testcase_operator_division, T, DataTypes )
+{
+    uint64 size = 2;
+    
+    ImaVol<T,1,2> iv1(size,size);
+    ImaVol<T,1,2> iv2(size,size);
+    ImaVol<T,1,2> iv_res(size,size);
+    
+    iv1 = 2;  iv2 = 20;
+    iv_res = iv2 / iv1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    	for( uint64 j = 0; j < size; j++ )
+    		BOOST_CHECK(iv_res(0)[i][j] == 10);	
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

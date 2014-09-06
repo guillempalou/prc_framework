@@ -1,0 +1,739 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+//!
+//!  \file pf_tumult.hpp
+//!
+//!  Interface for the TumultParticleFilter class used in tumult-detector tool.
+//!  TumultParticle and TumultParticleFilter classes are defined.
+//!  TumultEnvironmentData, TumultInputData and TumultInitData are defined. They are used to initialize the Tumult Particle Filter.
+//!
+
+#ifndef IMAGEPLUS_PARTICLEFILTERS_PF_TUMULT_HPP
+#define IMAGEPLUS_PARTICLEFILTERS_PF_TUMULT_HPP
+
+#include <imageplus/core/coord3d.hpp>
+#include <imageplus/math/statistics/histogram.hpp>
+#include <imageplus/particlefilters/pf_basic.hpp>
+
+namespace imageplus
+{
+    namespace particlefilters
+    {
+
+        //!
+        //! \brief TumultEnvironmentData for the InputDataType defined for the TumultParticle
+        //!
+    	//! Defines the data that the TumultParticle works with during the tracking and detection of a tumult. <br>
+        //! Note that this Class has public variables as it is only used by the TumultParticle, this behaviour should not be reproduced.
+        //!
+        class TumultEnvironmentData
+        {
+            public:
+
+                //!
+                //! \brief Default constructor <br>
+                //!
+                //! Particles initialized with default weight.
+                //!
+                TumultEnvironmentData( )
+                {
+                }
+
+                //!
+                //! \brief Default Destructor
+                //!
+                virtual ~TumultEnvironmentData() {}
+
+                // TODO: BBox2D initial_blob; //!< Defines the intial blob used to determine if a new Tumult Filter should be created.
+                int32 ini_blob_w; //!< Width of the initial blob
+                int32 ini_blob_h; //!< Height of the initial blob
+
+                // TODO: BBox2D initial_area; //!< Defines the initial area where the Tumult Filters are created.
+                int32 ini_area_x; //!< Position x of the initial area
+                int32 ini_area_y; //!< Position y of the initial area
+                int32 ini_area_w; //!< Width of the initial area
+                int32 ini_area_h; //!< Height of the initial area
+
+                // TODO: BBox2D destruction_area: Defines the destruction area where the Tumult Filters are destroyed.initial_area;
+                int32 des_area_x; //!< Position x of the destruction area
+                int32 des_area_y; //!< Position y of the destruction area
+                int32 des_area_w; //!< Width of the destruction area
+                int32 des_area_h; //!< Height of the destruction area
+              
+                float64 ramp_model_m; //!< Parameters for modelling the ramp
+                float64 ramp_model_n; //!< y = M * x + N
+
+                // TODO: Coord2D< int32 > initial_position; //!< Defines where the ramp begins.
+                // TODO: Coord2D< int32 > final_position; //!< Defines where the ramp ends.
+                int32 ini_point_x; //!< Position x of the initial point
+                int32 ini_point_y; //!< Position y of the initial point
+                int32 final_point_x; //!< Position x of the final point
+                int32 final_point_y; //!< Position x of the final point
+
+                float64 block_ramp_model_m; //!< Parameters for modelling the block ramp
+                float64 block_ramp_model_n; //!< y = M * x + N
+                
+                // TODO: Coord2D< int32 > block_initial_position; //!< Defines where the block ramp begins.
+                // TODO: Coord2D< int32 > block_final_position; //!< Defines where the block ramp ends.
+                int32 block_ini_point_x; //!< Position x of the initial point of the block ramp
+                int32 block_ini_point_y; //!< Position y of the initial point of the block ramp
+                int32 block_final_point_x; //!< Position x of the final point of the block ramp
+                int32 block_final_point_y; //!< Position x of the final point of the block ramp
+
+                // TODO: BBox2D filter_estimation; //!< Position, size, variance and width of the ramp related to the y value of the image.
+                std::vector< int32 > x; //!< All the value (x,y) of the points in the ramp
+                std::vector< int32 > y; //!< All the value (x,y) of the points in the ramp
+                std::vector< int32 > w; //!< All the value (w,h) of the points in the ramp
+                std::vector< int32 > h; //!< All the value (w,h) of the points in the ramp
+                std::vector< int32 > var; //!< Variance of the PF depending on the position in the ramp
+                std::vector< int32 > ramp_w; //!< Width of the ramp depending on the y of the ramp
+        };
+
+        //!
+        //! \brief Class defining the input data type for the TumultParticle
+        //!
+        class TumultInputData
+        {
+            public:
+                //! Type of Histogram
+                typedef math::statistics::Histogram< ImageYUV< uint8 >, uint64, math::statistics::HistogramYUV_UV_Type > HistogramType; 
+
+                //!
+                //! \brief Default constructor, only number of particles. <br>
+                //! Particles initialized with default weight.
+                //!
+                TumultInputData( )
+                    : hist_ref_UV( 0, 255, 10 )
+                {
+                }
+
+                //!
+                //! \brief Default Destructor
+                //!
+                virtual ~TumultInputData() {}
+
+                ImageRGB< uint8 > output_image; //!< Output image of the input data
+                ImageYUV< uint8 > current_image; //!< Image used to store the information of the input sequence
+                ImageGray< uint8 > fg_mask; //!< Image used to store the fg detection output image
+                HistogramType  hist_ref_UV; //!< Stores the Histogram UV calculated with the input images
+                TumultEnvironmentData environment; //!< Structure used to store the environment information
+        };
+
+        //!
+        //! \brief InitializationDataType for the TumultParticle
+        //!
+        //! Defines the information that initializes the TumultParticle (intiali position, size, variance and beta). <br>
+        //! Note that this Class has public variables as it is only used by the TumultParticle, this behaviour should not be reproduced.
+        //!
+        class TumultInitData
+        {
+            public:
+                //!
+                //! \brief Default constructor <br>
+                //!
+                //! Variance and beta initialized to zero.
+                //!
+                TumultInitData( )
+                    : variance( 0.0 ), beta( 0.0 )
+                {
+                }
+
+                //!
+                //! \brief Default Destructor
+                //!
+                virtual ~TumultInitData() {}
+
+                Coord3D< float64 > initial_position; //!< Initial position of particles
+                Coord2D< float64 > initial_size; //!< Initial size of particles
+                float64            variance; //!< Initial variance of particles
+                float64            beta; //!< Initial beta of particles
+        };
+
+        //!
+        //! \brief Derived class of the basic particle
+        //!
+        //! This class is a complex Particle class implementation. It is used in the tumult-detector tool. <br>
+        //! It's created by inheritance from the Basic Particle class. <br>
+        //! The TumultParticle class has all the abstract methods of the Basic Particle implemented. <br>
+        //! It is instantiated with 3 templates: <br>
+        //! - TumultParticle: Defines the particle type, due to the Derived behaviour of the Basic Particle. <br>
+        //! - TumultInputData: Defines the data that the TumultParticle works with during the tracking and detection of a tumult. It is divided in 5 main classes: <br>
+        //!   - output_image: Output image of the input data. <br>
+        //!   - current_image: Image used to store the information of the input sequence. <br>
+        //!   - fg_mask: Image used to store the fg detection image. <br>
+        //!   - hist_ref_UV: Stores the Histogram UV calculated with the input images. <br>
+        //!   - environment: Defines the 2D environment where the tracking with the TumultParticle is being done. <br>
+        //!     - Initial Area: Defines the intial area where the Tumult Filters are created. <br>
+        //!     - Destruction Area: Defines the destruction area where the Tumult Filters are destroyed. <br>
+        //!     - Initial blob: Defines the intial blob used to determine if a new Tumult Filter should be created. <br>
+        //!     - Ramp model: Defines the parameters that model the ramp (as a line). <br>
+        //!       - Initial point: Defines where the ramp begins. <br>
+        //!       - Final point: Defines where the ramp ends. <br>
+        //!     - Block Ramp model: Defines the parameters that model the ramp used to destroy the Tumult Particles (as a line). <br>
+        //!       - Block Initial point: Defines where the block ramp begins. <br>
+        //!       - Block Final point: Defines where the block ramp ends. <br>
+        //!     - Position, size, variance and width of the ramp related to the Y value of the image. <br>
+        //! - TumultInitData: Defines the information that initializes the TumultParticle (initial position, size, variance and beta). <br>
+        //!
+        //!
+        //! \sa TumultParticleFilter       
+        //!
+        //! \author Ramon Llorca Queralt <allorca@gps.tsc.upc.edu>
+        //!
+        //! \date 25-8-2008
+        //!
+        class TumultParticle
+            : public Particle< TumultParticle, TumultInputData, TumultInitData >
+        {
+
+            public:
+            	//! Type of the histogram used
+                typedef TumultInputData::HistogramType HistogramType;
+                
+                //!
+                //! \brief Default constructor, only number of particles. <br>
+                //! Particles initialized with default weight.
+                //!
+                //! \param[in] weight : Weight with which particles are created
+                //!
+                TumultParticle( const float64 weight = 0 )
+                    : Particle< TumultParticle, TumultInputData, TumultInitData >( weight ), _hist_particle( 0, 255, 10 )
+                {
+                }
+
+                //!
+                //! \brief Default Destructor
+                //!
+                virtual ~TumultParticle() {}
+
+                //!
+                //! \brief Evaluate of each particle. <br>
+                //! Method to be implemented for each particle filter subclass.
+                //!
+                //! \param[in] initialization_data : The initialization data type that particles use to initialize
+                //!
+                virtual void init_particle( const init_data_type& initialization_data );
+
+                //!
+                //! \brief Evaluate of each particle. <br>
+                //! Evaluates the particle and obtains its weight using both the color and foreground information.
+                //!
+                //! \param[in] input_data : The input data used to calculate the particles weight
+                //!
+                virtual void evaluate( const input_data_type& input_data );
+                //!
+                //! \brief Add Gaussian noise to a value. <br>
+                //! Method used for propagation.
+                //!
+                //! \param[in] value : Randomise this value
+                //!
+                //! \return Random value generated from the input value
+                //!
+                float64 rand_gauss( float64 value );
+
+                //!
+                //! \brief Propagation of a particle. <br>
+                //! Simple propagation implemented using random Gaussian noise.
+                //!
+                void propagate();
+
+                //!
+                //! \brief Propagation of a particle. <br>
+                //! Simple propagation implemented using random Gaussian noise and using information of the image to assure a correct propagation.
+                //!
+                //! \param[in] input_data : The input data used to propagate the particles in a fixed direction
+                //!
+                void propagate( const input_data_type& input_data);
+
+                //!
+                //! \brief operator + <br>
+                //! This function adds TumultParticles.
+                //!
+                //! \param[in] other_particle : The Particle added to the current one
+                //!
+                //! \return this
+                //!
+                virtual TumultParticle operator + ( const TumultParticle& other_particle ) const;
+
+                //!
+                //! \brief operator * <br>
+                //! This function multiplies the position of a particle by the weight given.
+                //!
+                //! \param[in] weight : Used to multiply the Particle's parameters
+                //!
+                //! \return this
+                //!
+                virtual TumultParticle operator * ( float64 weight ) const;
+
+                //!
+                //! \brief Copies the parameters of one particle to another. <br>
+                //! Used in operator = implemented in Basic Particle.
+                //!
+                //! \param[in] other_particle : The Particle copied to the current one
+                //!
+                virtual void copy( const TumultParticle& other_particle );
+
+                //!
+                //! \brief Position of the particle.
+                //!
+                //! \return The position of the particle
+                //!
+                const Coord3D< float64 >& position() const;
+
+                //!
+                //! \brief Position of the particle.
+                //!
+                //! \return Modifies the position of the particle
+                //!
+                Coord3D< float64 >& position();
+                
+                //!
+                //! \brief Position of the particle.
+                //!
+                //! \return The position X of the particle
+                //!
+                const float64& position_x() const;
+
+                //!
+                //! \brief Position of the particle.
+                //!
+                //! \return The position Y of the particle
+                //!
+                const float64& position_y() const;
+
+                //!
+                //! \brief Position of the particle.
+                //!
+                //! \return The position Z (Y`) of the particle
+                //!
+                const float64& position_z() const;
+
+                //!
+                //! \brief Size of the particle.
+                //!
+                //! \return The size of the particle
+                //!
+                const Coord2D< float64 > size() const;
+
+                //!
+                //! \brief Returns the Histogram of the particle.
+                //!
+                //! \return The Histogram of each particle.
+                //!
+                const HistogramType& hist_particle() const;
+
+                //!
+                //! \brief Returns the Histogram of the particle.
+                //!
+                //! \return The Histogram of each particle.
+                //!
+                HistogramType& hist_particle();
+
+            private:
+
+                //!
+                //! \brief Calculates the number of FG pixels that contains a particle in % using a fg_image (the FG detection). <br>
+                //! Method used in the evaluate function.
+                //!
+                //! \param[in] input_data : The input data used to calculate the particles weight
+                //!
+                void number_of_fg_pixels( const input_data_type& input_data );
+
+                //!
+                //! \brief Calculate Battacharyya's distance between the histogram of reference (particlefilter) and the particle. <br>
+                //! Method used in the evaluate function.
+                //!
+                //! \param[in]   hist_ref_UV : The histogram of reference, the one of the particlefilter
+                //! \param[in] hist_particle : The histogram of the current particle
+                //!
+                //! \return Battacharyya's distance
+                //!
+                float64 batt_distance( const HistogramType& hist_ref_UV, const HistogramType& hist_particle );
+
+                //!
+                //! \brief Updates size, variance and histogram of each particle. <br>
+                //!
+                //! \param[in] input_data : The input data used to update the particles
+                //!
+                void update_particles_in_filter( const input_data_type& input_data );
+
+                Coord3D< float64 > _position; //!< Stores the position for each particle
+                float64            _variance; //!< Stores the variance for each particle
+                float64             _beta; //!< Stores the beta used in the evaluate
+                Coord2D< float64 > _size; //!< Stores the Width and height for each particle
+                HistogramType      _hist_particle; //!< Stores the Histogram UV of the particle
+                float64            _fg_pixels; //!< Stores the number of FG pixels that contains the particle in %
+        };
+
+        //!
+        //! \brief Advanced class of the particlefilters
+        //!
+        //! \author Ramon Llorca Queralt <allorca@gps.tsc.upc.edu>
+        //!
+        //! \date 25-7-2008
+        //!
+        //!
+        //! \tparam TumultParticle (ParticleType) defines the class of the Particle used in the ParticleFilter current implementation, for this filter TumultParticle.
+        //!
+        //! To correctly understand how to use this Class refer to Particlefilters basic class and see the Particle example in the examples of ImagePlus. <br>
+    	//! For a more detailed explanation of particlefilters refer to <a href="http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.16.3641">
+    	//! A tutorial on particle filters for online nonlinear/non-Gaussian Bayesian tracking</a>. 
+        //!
+        //! In order to understand deeply the way Tumult Particle filters work, refer to <a href="files/Tumult_detection_with_particle_filters.pdf">
+        //! Tumult_detection_with_particle_filters-Ramon_Llorca-PFC</a>.
+        //!
+        //! All basic methods have been redefined to adapt correctly the basic ParticleFilter for the tumult-detector tool:
+        //! init_particles(), resample(), propagate(), evaluate(), normalize() and estimate().
+        //!
+        //! Common usage: init_particles() -> filter() -> estimate()
+        //!
+        //! This TumultParticleFilter uses a MEAN criteria for the estimation of the output data obtained from the filter use. <br>
+        //! The estimation is done with the Foreground and color information of the data. <br> 
+        //! 3 operators must be defined in the TumultParticle for the estimate to work correctly ( +, * and = ).
+        //!
+        //! \sa TumultParticle       
+        //!            
+        class TumultParticleFilter
+            : public ParticleFilter< TumultParticle >
+        {
+
+            public:
+            	//! Type of the histogram used
+                typedef TumultParticle::HistogramType HistogramType;
+                
+                //!
+                //! \brief Default constructor, only number of particles. <br>
+                //! Particles initialized with default weight and with histogram with 10 bins.
+                //!
+                //! \param[in] num_particles : Number of particles that the particlefilter contains
+                //!
+                TumultParticleFilter( const uint64 num_particles )
+                    : ParticleFilter< TumultParticle > ( num_particles ), _hist_ref( 0, 255, 10 )
+                {
+                }
+
+                //!
+                //! \brief Default Destructor.
+                //!
+                virtual ~TumultParticleFilter() {}
+
+                //!
+                //! \brief Describes the way the particle filter works. <br>
+                //! Overwriting the original filter in order to change propagate
+                //!
+                //! \param[in] input_data : The input data type specified by the particle type of the filter
+                //!
+                void filter( const input_data_type& input_data );
+
+                //!
+                //! \brief Propagate of all particles. <br>
+                //! Method that overloads the one implemented in the BasicParticleFilter.
+                //! Its uses the input_data for a better propagation.
+                //! Each particle filter subclass must specify its propagation scheme.
+                //!
+                //! \param[in] input_data : The input data type used to propagate the particle
+                //!
+                void propagate( const input_data_type& input_data );
+
+                //!
+                //! \brief Propagation with morphing of a particle. <br>
+                //! A complex propagation using a projection to the ramp direction.
+                //!
+                //! \param[in] input_data : The input data used to propagate the particles in a fixed direction
+                //!
+                void propagate_with_morphing( const input_data_type& input_data);
+
+                //!
+                //! \brief Initialize the TumultParticleFilter values and the particles.
+                //!
+                //! \param[in] initialization_data : The initialization data type the a particlefilter uses to initialize
+                //! \param[in]          input_data : The input data type used to calculate the histogram of the particlefilter
+                //! \param[in]       creation_mask : Fixes the initialization data to the specified mask
+                //!
+                void initialize_filter( const init_data_type& initialization_data, const input_data_type& input_data, ImageMask& creation_mask );
+
+                //!
+                //! \brief Updates the particle filter values after each iteration (frame).
+                //!
+                //! \param[in]      input_data : The input data type specified by the particle type of the filter
+                //! \param[in] result_particle : The result Particle used to update the filter
+                //!
+                //! \todo Add color information with new Histogram (must implement + operator and * (float64) for Histogram Class)
+                void update_filter( const input_data_type& input_data, const TumultParticle& result_particle );
+
+                //!
+                //! \brief Function that decides if particles are following correctly the ramp. <br>
+                //! Eliminates particles that are located in the non-wanted ramp to track.
+                //!
+                //! \param[in] input_data : The input data type specified by the particle type of the filter
+                //!
+                void block_particles_out_ramp( const input_data_type& input_data );
+
+                //!
+                //! \brief Function that decides if particles are following correctly the ramp. <br>
+                //! Blocks particles that are going too far from the ramp in the desired side.
+                //!
+                //! \param[in] input_data : The input data type specified by the particle type of the filter
+                //!
+                void block_particles_far_from_ramp( const input_data_type& input_data );
+
+                //!
+                //! \brief Function that decides if particles are too far from the PF's centroid. <br>
+                //! We consider too far as 150% times the width or height from the PF's centroid.
+                //!
+                //! \param[in] input_data : The input data type specified by the particle type of the filter
+                //!
+                void block_particles_too_far( const input_data_type& input_data );
+
+                //!
+                //! \brief Returns the identifier of the particle filter.
+                //!
+                //! \return Value of the identifier of each particle filter.
+                //!
+                const uint64& id() const;
+
+                //!
+                //! \brief Sets the identifier of the particle filter to the given value.
+                //!
+                //! \param[in] id : Id used to set the id of the Tumult Particle Filter
+                //!
+                void id( const uint64 id );
+
+                //!
+                //! \brief position of the particle filter.
+                //!
+                //! \return The position of the particle
+                //!
+                const Coord3D< float64 >& position() const;
+
+                //!
+                //! \brief Position of the particle.
+                //!
+                //! \return Modifies the position of the particle
+                //!
+                Coord3D< float64 >& position();
+                
+                //!
+                //! \brief position of the particle filter.
+                //!
+                //! \return The old position of the particle
+                //!
+                const Coord3D< float64 >& old_position( ) const;
+
+                //!
+                //! \brief Speed of the particle filter.
+                //!
+                //! \return The speed of the particle
+                //!
+                const float64& speed( ) const;
+
+                //!
+                //! \brief Size of the particle filter.
+                //!
+                //! \return The size of the particle
+                //!
+                const Coord2D< float64 >& size( ) const;
+
+                //!
+                //! \brief Return the history particle vector.
+                //!
+                //! \return The entire history vector of particles of the particle filter
+                //!
+                std::vector< TumultParticle >& history();
+
+                //!
+                //! \brief Returns the destruction_in value of the particle filter.
+                //!
+                //! \return Value of the destruction_in of each particle filter.
+                //!
+                const int64& destruction_in() const;
+
+                //!
+                //! \brief Sets the destruction_in value of the particle filter to the given value.
+                //!
+                //! \param[in] value : Value at which the destruction_in parameter is set
+                //!
+                void destruction_in( const int64 value );
+
+                //!
+                //! \brief Returns the destruction_out value of the particle filter.
+                //!
+                //! \return Value of the destruction_out of each particle filter.
+                //!
+                const int64& destruction_out() const;
+
+                //! \brief Sets the destruction_out value of the particle filter to the given value.
+                //!
+                //! \param[in] value : Value at which the destruction_out parameter is set
+                //!
+                void destruction_out( const int64 value );
+
+                //!
+                //! \brief Returns the destruction_double value of the particle filter.
+                //!
+                //! \return Value of the destruction_double of each particle filter.
+                //!
+                const int64& destruction_double() const;
+
+                //!
+                //! \brief Sets the destruction_double value of the particle filter to the given value.
+                //!
+                //! \param[in] value : Value at which the destruction_double parameter is set
+                //!
+                void destruction_double( const int64 value );
+
+                //!
+                //! \brief Returns the destruction_on_top value of the particle filter.
+                //!
+                //! \return Value of the destruction_on_top of each particle filter.
+                //!
+                const int64& destruction_on_top() const;
+
+                //!
+                //! \brief Sets the destruction_on_top value of the particle filter to the given value.
+                //!
+                //! \param[in] value : Value at which the destruction_on_top parameter is set
+                //!
+                void destruction_on_top( const int64 value );
+
+                //!
+                //! \brief Returns the destruction_efficiency value of the particle filter.
+                //!
+                //! \return Value of the destruction_efficiency of each particle filter.
+                //!
+                const int64& destruction_efficiency() const;
+
+                //!
+                //! \brief Sets the destruction_efficiency value of the particle filter to the given value.
+                //!
+                //! \param[in] value : Value at which the destruction_efficiency parameter is set
+                //!
+                void destruction_efficiency( const int64 value );
+
+                //!
+                //! \brief Returns the ready_to_update_pf value of the particle filter.
+                //!
+                //! \return Value of the ready_to_update_pf of each particle filter.
+                //!
+                const int64& ready_to_update_pf() const;
+
+                //!
+                //! \brief Sets the ready_to_update_pf value of the particle filter to the given value.
+                //!
+                //! \param[in] value : Value at which the ready_to_update_pf parameter is set
+                //!
+                void ready_to_update_pf( const int64 value );
+
+            private:
+
+                //! \brief Adds perspective to the z(y') axis: it transforms it to the ramp axis. <br>
+                //! It also inverts the axis: bottom of image (ramp) is the zero (Y is calculated in cm).
+                //!
+                //! \param[in] input_data : The input data type specified by the particle type of the filter
+                //!
+                void adding_perspective_to_z( const input_data_type& input_data );
+
+                //!
+                //! \brief Calculates the Speed of the PF's. <br>
+                //! Speed is calculated in cm/second.
+                //! Change frames_per_second depending on the input file sequence.
+                //!
+                //! \param[in] input_data : The input data type specified by the particle type of the filter
+                //!
+                void speed_calculation_with_z( const input_data_type& input_data );
+
+                Coord3D< float64 > _position; //!< Stores the position for each particle filter
+                Coord3D< float64 > _old_position; //!< Stores the position of the last frame for each particle filter
+                std::vector< TumultParticle > _history; //!< Vector to store all the history of the result particles of each iteration of the particle filter
+                float64 _variance; //!< Stores the variance for each particle filter
+                float64 _speed; //!< Stores the speed for each particle filter
+                Coord2D< float64 > _size; //!< Stores the Width and height for each particle filter
+                HistogramType _hist_ref; //!< Stores the Histogram of the particle for each particle filter
+                uint64 _id; //!< Identifier of the Particle Filter
+                int64 _destruction_in; //!< Determines if the PF should be destroyed
+                int64 _destruction_out; //!< Determines if the PF should be destroyed
+                int64 _destruction_double; //!< Determines if the PF should be destroyed
+                int64 _destruction_on_top; //!< Determines if the PF should be destroyed
+                int64 _destruction_efficiency; //!< Determines if the PF should be destroyed
+                int64 _ready_to_update_pf; //!< Determines if the PF is ready to be updated
+        };
+
+        //!
+        //! \brief Redefinition of the operator << <br>
+        //! Used during debug to print all the info all the TumultParticle.
+        //!
+        //! \param[in] os : Output stream
+        //! \param[in]  p : TumultParticle to show information
+        //!
+        //! \return os, to concatenate
+        //!
+        std::ostream& operator<< ( std::ostream& os, const TumultParticle& p );
+
+        //
+        // TRACKING FUNCTIONS
+        //
+
+        //!
+        //! \brief Creates the vector of Tumult Particle Filters and initializes them with the configuration and environment data
+        //!
+        //! A new Tumult Particle Filter is created if a foreground blob appears in the initialization zone.
+        //!
+        //! \param[in]      tumult_filters : Vector containing the whole set of Tumult Particle Filters
+        //! \param[in]          input_data : Input data used by the TumultParticle
+        //! \param[in] initialization_data : Data used to initialize the Tumult Particle Filters
+        //! \param[in] number_of_particles : Number of particles of each Particle filter
+        //! \param[in]                beta : Parameter that varies the influence of Battacharyya's distance
+        //!
+        void create_particle_filter( std::vector< TumultParticleFilter >& tumult_filters, const TumultInputData& input_data, struct TumultInitData initialization_data, uint64 number_of_particles, float64 beta );
+
+        //!
+        //! \brief Performs the main tracking of each tumult particle filter <br>
+        //!
+        //! It decides when to perform the the normal movement of the particle filter, if the particle filter should be destroyed due to a low efficiency rate <br>
+        //! or if the particle filter should be blocked depending on the environment configuration.
+        //!
+        //! \param[in]          tumult_filters : Vector containing the whole set of Tumult Particle Filters
+        //! \param[in]              input_data : Input data used by the TumultParticle
+        //! \param[in]     initialization_data : Data used to initialize the Tumult Particle Filters
+        //! \param[in] survival_rate_threshold : Threshold of the survival rate of the Particle Filters
+        //!
+        void tracking( std::vector< TumultParticleFilter >& tumult_filters, const TumultInputData& input_data, struct TumultInitData initialization_data, float64 survival_rate_threshold );
+
+        //!
+        //! \brief Decides whether to destroy or not a Tumult Particle Filter <br>
+        //!
+        //! The criterias used to destroy the particles filters are a low survival rate, overlapping or conditions fixed by the environment configuration.
+        //!
+        //! \param[in] tumult_filters : Vector containing the whole set of Tumult Particle Filters
+        //! \param[in]     input_data : Input data used by the TumultParticle
+        //!
+        void dropping_pf( std::vector< TumultParticleFilter >& tumult_filters, const TumultInputData& input_data );
+
+        //!
+        //! \brief Returns true if a tumult is being detected by the tumult particle filters <br>
+        //!
+        //! Evaluates the situation of the particle filters using a grid to determine if more than 2 particle filters <br>
+        //! are grouped in the same portion of the grid, in which case a possible tumult will be notified.
+        //!
+        //! \param[in]              tumult_filters : Vector containing the whole set of Tumult Particle Filters
+        //! \param[in]            resolution_speed : Speed Resolution of the Detection Grid ( E1 => 50 cm/s, E2 => 50 cm/s, E3 => 50 cm/s, E4 => 50 cm/s )
+        //! \param[in]                resolution_y : Y' Resolution of the Detection Grid ( E1 => 500 cm, E2 => 250 cm, E3 => 250 cm, E4 => 500 cm )
+        //! \param[in]         detection_threshold : Threshold used for the detection of a tumult
+        //! \param[in]        detection_histeresis : HISTERESIS threshold used to decide if a possible tumult condition is a real tumult
+        //! \param[in] tumult_detection_histeresis : Value used to determine how many consecutive frames the tumult conditions occur
+        //!
+        //! \return True if there possible tumult detected
+        //!
+        bool detecting_tumult( std::vector< TumultParticleFilter >& tumult_filters, uint64 resolution_speed, uint64 resolution_y, uint64 detection_threshold, uint64 detection_histeresis, uint64& tumult_detection_histeresis );
+
+        //
+        // END TRACKING
+        //
+
+    }//namespace particlefilters
+
+}//namespace imageplus
+
+#endif /*PF_TUMULT_HPP_*/

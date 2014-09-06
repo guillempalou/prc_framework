@@ -1,0 +1,25 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * This file is used as a context check for the build system.
+ * It is compiled, linked and executed to check if local environment is
+ * ready for building the software.
+ *
+ * \author Albert Gil <albert.gil@upc.edu>
+ */
+
+
+#include <CL/cl.hpp>
+
+
+int main(int ac, char* av[])
+{
+    /*
+     * This checks only looks for includes, but do not run anything.
+     * So, you can build with a dummy library and run it in an OpenCL platform.
+     */
+    return 0;
+}

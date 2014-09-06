@@ -1,0 +1,169 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file annotation.hpp
+//!
+//!  Annotation
+//!
+
+
+#ifndef IMAGEPLUS_SEMANTIC_ANNOTATION_HPP
+#define IMAGEPLUS_SEMANTIC_ANNOTATION_HPP
+
+
+#include <map>
+
+#include <boost/iterator/transform_iterator.hpp>
+
+#include <imageplus/core.hpp>
+#include <imageplus/semantic/annotatedsemanticclass.hpp>
+#include <imageplus/semantic/map.hpp>
+#include <imageplus/semantic/ontology.hpp>
+
+
+namespace imageplus {
+	namespace semantic {
+
+		//!
+		//! \brief Contains a set of annotated semantic classes from the ontology.
+		//!
+		//! This class is used to represent an annotation. It is composed of
+		//! an ontology and a set of annotated semantic classes.
+		//!
+		//! Instances of this class are iterable, the iterator will iterate
+		//! through all the semantic classes annotated in the instance.
+		//!
+		//! Example: print all semantic classes annotated in an annotation
+		//! \code
+		//! Annotation annotation;
+		//! BOOST_FOREACH(const AnnotatedSemanticClass& asc, annotation)
+		//! 	std::cout << asc << std::endl;
+		//! \endcode
+		//!
+		//!	In order to load an annotation from a file and save it back again
+		//! see the ReadWriteAnnotation class.
+		//!
+		//! \author Pau Haro Negre
+		//!
+		//! \date 10-6-2011
+		//!
+		class Annotation
+		{
+		public:
+
+			friend class ReadWriteAnnotation;
+
+			//! Type of the container for the semantic classes annotated in this annotation
+			typedef std::map<int, AnnotatedSemanticClass> ASCSType;
+
+			//! Type of the annotated semantic classes annotated in this annotation container iterator
+			typedef ASCSType::iterator ASCIterator;
+
+			//! Type of the annotated semantic classes annotated in this annotation container const iterator
+			typedef ASCSType::const_iterator ASCConstIterator;
+
+			//! Auxiliary type for map of annotated semantic classes (values) iterator
+			typedef boost::function<ASCSType::mapped_type (const ASCSType::value_type&)> F_val;
+
+			//! Type of the annotation annotated semantic classes iterator (DEFAULT annotation iterator)
+			typedef boost::transform_iterator<F_val, ASCIterator> iterator;
+
+			//! Type of the annotation annotated semantic classes const iterator (DEFAULT annotation const iterator)
+			typedef boost::transform_iterator<F_val, ASCConstIterator> const_iterator;
+
+
+            //! \brief Default constructor
+			Annotation() {};
+
+            //! \brief Destructor
+            ~Annotation() {};
+
+
+            //! Set the associated ontology
+            //!
+            //! \param[in] o Pointer to the ontology
+            void set_ontology(const Ontology& o);
+
+            //! Get the associated ontology
+            //!
+            //! \return Const reference to the ontology
+            const Ontology& get_ontology() const;
+
+
+            //! Annotate a semantic class
+            //!
+            //! \note The semantic class should be in the ontology (check Ontology::includes_semantic_class)
+            //!
+            //! \param[in] sc_id Semantic class id
+            //!
+            //!	\return Reference to annotated semantic class instance
+            //!
+            //! \throw ImagePlusError When the semantic class is not included in the ontology
+            AnnotatedSemanticClass& annotate(uint32 sc_id) throw (ImagePlusError);
+
+            //! Check if the given semantic class is annotated
+            //!
+            //! \param[in] sc_id Semantic class id
+            //!
+            //! \return Whether the semantic class has been annotated
+            bool semantic_class_is_annotated(uint32 sc_id) const;
+
+            //! Get the annotation of the given semantic class
+            //!
+            //! \note The semantic class should have already been annotated (check semantic_class_is_annotated)
+            //!
+            //! \param[in] sc_id Semantic class id
+            //!
+            //! \return Const reference to requested annotated semantic class
+            //!
+            //! \throw ImagePlusError When the semantic class is not annotated
+            const AnnotatedSemanticClass& get_annotated_semantic_class(uint32 sc_id) const throw (ImagePlusError);
+
+
+			// Annotation Iteration Interface
+
+			//! Returns an iterator referring to the first AnnotatedSemanticClass in the Annotation.
+			//!
+			//! \return An iterator to the beginning of the Annotation
+			iterator begin();
+
+			//! Returns an iterator referring to the past-the-end AnnotatedSemanticClass in the Annotation.
+			//!
+			//! \return An iterator to the element past the end of the Annotation
+			iterator end();
+
+			//! Returns a constant iterator referring to the first AnnotatedSemanticClass in the Annotation.
+			//!
+			//! \return A constant iterator to the beginning of the Annotation
+			const_iterator begin() const;
+
+			//! Returns a constant iterator referring to the past-the-end AnnotatedSemanticClass in the Annotation.
+			//!
+			//! \return A constant iterator to the element past the end of the Annotation
+			const_iterator end() const;
+
+    		friend std::ostream& operator<<(std::ostream &os, const Annotation& a);
+
+		private:
+			//! Annotated ontology
+			Ontology _ontology;
+			
+			//! Map of annotated semantic classes
+			ASCSType _annotated_semantic_classes;
+
+		};
+
+		//! Output a representation of the given Annotation to an ostream.
+        //!
+        //! \param[in,out] os Output stream where the representation will be appended
+        //! \param[in]     a  %Instance of Annotation class to write to the stream
+		//!
+		//! \return Description of the Annotation is appended to the given ostream
+		std::ostream& operator<<(std::ostream &os, const Annotation& a);
+	}
+}
+
+#endif //IMAGEPLUS_SEMANTIC_ANNOTATION_HPP

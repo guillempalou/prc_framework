@@ -1,0 +1,48 @@
+/*
+ * lab_histogram_bds.cpp
+ *
+ *  Created on: Feb 19, 2013
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <iostream>
+#include <fstream>
+
+using namespace imageplus;
+
+int main() {
+	std::string list 	= "/seq/segmentation/BSDS500/ids_train.txt";
+	std::string images 	= "/seq/segmentation/BSDS500/images";
+	std::string file 	= "./Lab.txt";
+	std::ofstream fs(file.c_str());
+
+	std::ifstream imgs(list.c_str());
+	std::string image;
+
+	std::vector<float64> lh(100,0);
+	std::vector<float64> ah(255,0);
+	std::vector<float64> bh(255,0);
+
+	while (imgs >> image) {
+		ImageSignal<float64,3> img;
+		ColorSpaceConverter<ImageSignal<float64,3> > conv;
+
+		img.read(images + "/" + image);
+		conv.convert(img, ColorSpaceLAB);
+
+		std::cout << "Image " << image << std::endl;
+
+		for (ImageSignal<float64,3>::iterator p = img.begin(); p != img.end(); ++p) {
+			lh[(int)(*p)(0)]++;
+			ah[(int)(*p)(1)]++;
+			bh[(int)(*p)(2)]++;
+		}
+	}
+
+	for (unsigned int i = 0; i < lh.size(); i++) fs << lh[i] << " "; fs << std::endl;
+	for (unsigned int i = 0; i < ah.size(); i++) fs << ah[i] << " "; fs << std::endl;
+	for (unsigned int i = 0; i < bh.size(); i++) fs << bh[i] << " "; fs << std::endl;
+}

@@ -1,0 +1,44 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file trainset.cpp
+//!
+//!  TrainSet
+//!
+
+#include <sstream>
+#include <string>
+
+#include <boost/foreach.hpp>
+
+#include <imageplus/semantic/instance.hpp>
+#include <imageplus/semantic/observation.hpp>
+#include <imageplus/semantic/trainset.hpp>
+
+using namespace imageplus::semantic;
+
+void TrainSet::add_observation(Observation observation, Instance::InstanceType type)
+{
+	_observations[type].push_back(observation);
+}
+
+const TrainSet::ObservationsType& TrainSet::get_observations(Instance::InstanceType type) const
+{
+	return _observations[type];
+}
+
+std::ostream& imageplus::semantic::operator<<(std::ostream &os, const TrainSet& ts)
+{
+	os << "Trainset:" << std::endl;
+	for (size_t instance_type=0; instance_type<Instance::NUM_INSTANCE_TYPES; instance_type++)
+	{
+		const char *instance_type_name = Instance::instance_type_names[instance_type];
+		os << " `- " << instance_type_name << " instances (" << ts._observations[instance_type].size() << ")" << std::endl;
+		BOOST_FOREACH(Observation observation, ts._observations[instance_type])
+			os << "    `- " << observation << std::endl;
+	}
+	return os;
+}

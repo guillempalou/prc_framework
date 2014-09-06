@@ -1,0 +1,176 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file async_sender.cpp
+ *
+ * \author Albert Gil
+ */
+
+#define IMAGEPLUS_CLIENT_CONFIG_NAME  async_sender
+#include <imageplus/toolbox/client_config.hpp>
+
+/*
+ * ImagePlus headers
+ */
+#include <imageplus/core.hpp>
+
+/*
+ * Std+Boost headers
+ */
+#include <boost/thread/thread.hpp>
+#include <boost/bind.hpp>
+
+/*
+ * namespaces config
+ */
+using namespace imageplus;
+using namespace imageplus::toolbox;
+using namespace std;
+
+
+void flow_sender( DataOutputFlow& flow, std::string id, int32 stime )
+{
+    int32*    bdata;
+    int32     counter = 0;
+    Timestamp ts;
+
+    CLIENT_CONFIG_WHILE_RUNNING()
+    {
+        /*
+         * Get output buffer from the flow
+         */
+        flow->get_buffer(bdata);
+
+        /*
+         * Capture or process the data to be sent and its Timestamp
+         */
+        ts = clock_ts();
+        ++counter;
+
+        sleep(stime); // to emulate different frame-rate (processing time)
+
+        /*
+         * Fills up the output buffer
+         */
+        *bdata = counter;
+
+        //
+        // Send and release the output buffer
+        //
+        std::cout << "Sending ID: " << id << " Counter: "<< counter << std::endl;
+        send_buffer(flow, ts);
+    }
+}
+
+
+IMAGEPLUS_CLIENT_CONFIG_BRIEF()
+
+    "This client is just and example about how to send multiple flows asynchronously\n";
+
+IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()
+
+    "This client is just and example about how to send multiple flows asynchronously\n";
+
+IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()
+
+    // options
+
+	// flags
+
+    // arguments
+
+    // flows
+    DataOutputFlow flow1;
+    DataOutputFlow flow2;
+
+IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description.
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLOWS()
+
+    //
+    // Here you have to define your FLOWS
+    //
+    CLIENT_CONFIG_DATA_OUT( flow1, int32 );
+    CLIENT_CONFIG_DATA_OUT( flow2, int32 );
+
+IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_METADATAS()
+
+    //
+    // Here you can get the metadatas from the input flows
+    // And you MUST set the metadata of your output flows
+    //
+    // Note that from now on you can access to the previously
+    // defined config parameters with the "cfg" object.
+    //
+
+//
+// This is the "main" function of your client.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the client with "--help" to see your configuration.
+//
+IMAGEPLUS_CLIENT_CONFIG_MAIN()
+{
+    //
+    // Here you can declare and initialize the variables that
+    // will be used in the main loop
+    //
+
+    //Configuring threads
+    boost::thread thread_flow1( boost::bind( &flow_sender, cfg.flow1, "flow1", 1 ));
+    boost::thread thread_flow2( boost::bind( &flow_sender, cfg.flow2, "flow2", 4 ));
+
+    // Waiting for the end of the threads ("running-loop threads")
+    thread_flow1.join();
+    thread_flow2.join();
+
+    return (0);
+}
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_CLIENT_CONFIG_END()

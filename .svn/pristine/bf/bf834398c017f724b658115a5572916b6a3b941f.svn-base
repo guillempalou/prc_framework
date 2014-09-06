@@ -1,0 +1,149 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file writebitstream.cpp
+//!
+//!  Implementation of classes for writing bitstreams to disk
+//!
+#include <imageplus/io/writebitstream.hpp>
+#include <imageplus/core/exceptions.hpp>
+#include <imageplus/core/config.hpp>
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+WriteBitStream::WriteBitStream( const std::string& filename, OpenMode mode )
+{
+	_space  = 8;
+	_buffer = 0;
+	open(filename, mode);
+}
+
+
+WriteBitStream::WriteBitStream( )
+{
+	_space  = 8;
+	_buffer = 0;
+}
+
+void WriteBitStream::open( const std::string& filename, OpenMode mode )
+{
+    _filename = filename;
+
+    if ( _fp.is_open() )
+        throw ImagePlusError("BitStream already open, close it first");
+
+    _space  = 8;
+    _buffer = 0;
+
+    // Open file to write
+    if (mode==NEW)
+    {
+        _fp.open(_filename.c_str(), std::ios::out | std::ios::binary );
+    }
+    else if  (mode==APPEND)
+    {
+        _fp.open(_filename.c_str(), std::ios::out | std::ios::binary | std::ios::app);
+    }
+    else
+    {
+        throw;// ImagePlusError("Unknowm open mode in WriteBitStream");
+    }
+    
+    if (!_fp.is_open())
+    {
+        throw ImagePlusFileNotFound(_filename);
+    }
+}
+
+void WriteBitStream::close( )
+{
+    force_write();
+    _fp.close();
+}
+
+
+void WriteBitStream::write( uint64 to_write, uint8 n_bits_to_write )
+{
+	
+//#ifdef
+    if (!_fp.is_open())
+    {
+        throw ImagePlusError("Call 'open' before trying to write to file.");
+    }
+//#endif
+    
+    ASSERT(n_bits_to_write<=64, "You asked to write more than 64 bits.");
+    ASSERT(n_bits_to_write>0, "You asked to write 0 bits.");
+    
+    if(n_bits_to_write > 64)
+    {
+        n_bits_to_write = 64;
+    }
+    
+	const uint64 mask = 255;
+    
+	if(n_bits_to_write)
+	{
+	    if(n_bits_to_write < _space)
+    	{
+    		_buffer = _buffer | ((uint8)(to_write << (_space-n_bits_to_write) ));
+    		_space = _space - n_bits_to_write;
+    	}
+    	else if (n_bits_to_write == _space)
+    	{
+    		_buffer = _buffer | ((uint8) to_write);
+    		_fp.write((char*)&_buffer, 1);
+    		_buffer = 0;
+    		_space = 8;
+    	}
+    	else
+    	{
+    		uint8 shift = n_bits_to_write-_space;
+    				
+    		_buffer = _buffer | ((uint8)(to_write >> shift));
+    		_fp.write((char*)&_buffer, 1);
+    		
+    		while(shift>8)
+    		{
+    			shift = shift-8;
+    			_buffer = (uint8)( (to_write & (mask << shift)) >> shift);
+    			_fp.write((char*)&_buffer, 1);
+    		}
+    		
+    		if (shift == 8)
+    		{
+    			_buffer = (uint8)(to_write);
+    			_fp.write((char*)&_buffer, 1);
+    			_buffer = 0;
+    			_space = 8;
+    		}
+    		else
+    		{
+    			_buffer = (uint8)(to_write << (8-shift) );
+    			_space = 8-shift;
+    		}
+    	}
+	}
+}
+
+
+void WriteBitStream::force_write( )
+{
+	// Write the remanining bits (padded with 0s)
+	if (_space < 8)
+	{
+		_fp.write((char*)&_buffer, 1);
+        _buffer = 0;
+        _space = 8;
+	}
+}
+
+
+WriteBitStream::~WriteBitStream()
+{
+}
+

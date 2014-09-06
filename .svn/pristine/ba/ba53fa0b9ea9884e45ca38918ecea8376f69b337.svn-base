@@ -1,0 +1,34 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file text.hpp
+//!
+//!  \brief Namespace for the caption text extraction
+//!
+
+#ifndef IMAGEPLUS_TEXT_HPP_
+#define IMAGEPLUS_TEXT_HPP_
+
+
+
+namespace imageplus
+{
+    //!
+    //! \namespace imageplus::text
+    //!
+    //! \brief Caption text extraction namespace
+    //!
+	//!This module contains the algorithm of the caption text extraction,	
+	//! the description of which could be found in paper <a href="http://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=05617687"> "REGION-BASED CAPTION TEXT EXTRACTION" 
+	//! by Miriam Leon, Veronica Vilaplana, Antoni Gasull, Ferran Marques </a> 
+	//!
+	//!
+    namespace text
+    {        
+    }
+} 
+
+#endif /* IMAGEPLUS_TEXT_HPP_ */

@@ -1,0 +1,239 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \example draw3d.cpp
+//!
+//! This is a real tool, but also an example of how to use essential multiview functions (fast_world2image), and drawn_in_image methods (draw_line). \n
+//! 
+//! \todo add some more comentaris on the code to be used as an example?
+//!
+
+#define IMAGEPLUS_TOOL_CONFIG_NAME  draw3d
+#define IMAGEPLUS_TOOL_CONFIG_GROUP multiview
+#include <imageplus/toolbox/tool_config.hpp>
+
+
+// general includes
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+// spacific includes
+#include <imageplus/multiview.hpp>
+#include <imageplus/toolbox/draw_in_image.hpp>
+
+// useful namespaces
+using namespace imageplus;
+using namespace imageplus::multiview;
+using namespace imageplus::toolbox;
+using namespace std;
+
+
+//
+// Auxiliar functions
+//
+Coord2D<> pointfloor(Point2D & in)
+{
+    Coord2D<> out;
+    out[0] = static_cast<int64>( std::floor(in[0]) );
+    out[1] = static_cast<int64>( std::floor(in[1]) );
+    return out;
+}
+
+
+//
+// Tool's code
+//
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+
+    "draw 3D coordinate axes and lines projected into an input image according to the camera parameters\n";
+
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+    "Draw 3D coordinate axes and lines in a input image according to the camera parameters.     \n"+
+    "\n" +
+    "To draw lines list 3D point coordinates as input arguments. A line will be drawn between   \n" +
+    "each consecutive pair of points.                                                           \n"+
+    "\n" +
+    "Example :    \n" +
+    "iplus-draw3d input.jpg TCameraParameters_cam3.dat output.jpg 100 150 0  300 150 0  300 400 0   \n" +
+    "\n" +
+    "Draw a line between (100,150,0) and (300,150,0) , and other line between (300,150,0) and (300,400,0)   \n" +
+    "It draws as lines as consecutive pairs of points given by argument.                                    \n";
+
+                
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+    string input_image;
+    string camera;
+    string output_image;
+    vector <float64> polyline;
+    
+    float64 axis_x;
+    float64 axis_y;
+    float64 axis_z;
+    
+    float64 axis_lenght;
+    
+    bool no_axes;
+
+    
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+
+    axis_x = 0.0;
+    axis_y = 0.0;
+    axis_z = 0.0;
+    
+    axis_lenght = 100.0;
+    
+    no_axes = false;
+    
+    
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+    IMAGEPLUS_TOOL_CONFIG_OPTION_ABV( axis_x,       "axis origin in x",     'x' );
+    IMAGEPLUS_TOOL_CONFIG_OPTION_ABV( axis_y,       "axis origin in y",     'y' );
+    IMAGEPLUS_TOOL_CONFIG_OPTION_ABV( axis_z,       "axis origin in z",     'z' );
+    IMAGEPLUS_TOOL_CONFIG_OPTION_ABV( axis_lenght,  "axis lenght in cm",    'l' );
+
+
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+    IMAGEPLUS_TOOL_CONFIG_FLAG_ABV( no_axes,    "do not draw axes",     'N' );
+
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    // add arguments in the desired order         
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( input_image,    "input image filename" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( camera,         "camera parameters filename" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( output_image,   "output image filename" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( polyline,       "polyline coordinates x1 y1 z1 x2 y2 z2 ... )");
+
+    
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    IMAGEPLUS_TOOL_CONFIG_READ( input_image );
+    IMAGEPLUS_TOOL_CONFIG_READ( camera );
+    IMAGEPLUS_TOOL_CONFIG_READ( output_image );
+    IMAGEPLUS_TOOL_CONFIG_READ( polyline );
+    IMAGEPLUS_TOOL_CONFIG_READ( axis_x );
+    IMAGEPLUS_TOOL_CONFIG_READ( axis_y );
+    IMAGEPLUS_TOOL_CONFIG_READ( axis_z );
+    IMAGEPLUS_TOOL_CONFIG_READ( axis_lenght );
+    IMAGEPLUS_TOOL_CONFIG_READ( no_axes );
+        
+
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{
+    string input_image  = cfg.input_image;
+    string output_image = cfg.output_image;
+    
+    string cam_filename = cfg.camera;
+    
+    std::vector<float64> polyline_coords = cfg.polyline;
+    
+    Camera camera ;
+    camera.read_parameters(cam_filename);
+    
+    io::ReadImage readImage;
+    ImageRGB<uint8> currentImage;
+    readImage.open(input_image);
+    
+    readImage >> currentImage ;
+
+    if(!cfg.no_axes)
+    {
+        Point3D axis_origin(cfg.axis_x,cfg.axis_y,cfg.axis_z);
+        
+        float64 axis_lenght = cfg.axis_lenght;
+        
+        Point3D axis_extrem_x;
+        Point3D axis_extrem_y;
+        Point3D axis_extrem_z;
+        
+        axis_extrem_x = axis_origin + Point3D(axis_lenght,0.0,0.0);
+        axis_extrem_y = axis_origin + Point3D(0.0,axis_lenght,0.0);
+        axis_extrem_z = axis_origin + Point3D(0.0,0.0,axis_lenght);
+    
+        Point2D axis_origin_2d;
+        Point2D axis_extrem_2d_x;
+        Point2D axis_extrem_2d_y;
+        Point2D axis_extrem_2d_z;
+        
+        fast_world2image(axis_origin , camera, axis_origin_2d );
+        
+        fast_world2image(axis_extrem_x , camera, axis_extrem_2d_x );
+        fast_world2image(axis_extrem_y , camera, axis_extrem_2d_y );
+        fast_world2image(axis_extrem_z , camera, axis_extrem_2d_z );
+        
+        Coord2D<> caxis_origin_2d = pointfloor(axis_origin_2d) ;
+        Coord2D<> caxis_extrem_2d_x = pointfloor(axis_extrem_2d_x) ;
+        Coord2D<> caxis_extrem_2d_y= pointfloor(axis_extrem_2d_y) ;
+        Coord2D<> caxis_extrem_2d_z= pointfloor(axis_extrem_2d_z) ;
+        
+        // draw axes
+        draw_line(currentImage, caxis_origin_2d, caxis_extrem_2d_x, (uint8)255,(uint8) 0,(uint8) 0);
+        draw_line(currentImage, caxis_origin_2d, caxis_extrem_2d_y, (uint8)0, (uint8)255,(uint8) 0);
+        draw_line(currentImage, caxis_origin_2d, caxis_extrem_2d_z, (uint8)0, (uint8)0, (uint8)255);
+    }
+    
+    if((polyline_coords.size()%3) == 0)
+    {
+        if(polyline_coords.size() >= 6)
+        {
+            Point2D init,end;
+            Point3D init3D, end3D;
+            
+            uint64 j =0;
+    
+            while((j+3)<= (polyline_coords.size()))
+            {
+                if(j== 0)
+                {
+                    for(uint64 i = 0; i < 3; i++)
+                    {
+                        init3D[i] = polyline_coords[j+i];
+                        
+                    }
+                    j += 3;
+                }
+                else
+                {
+                    init3D = end3D;
+                }
+                
+                fast_world2image( init3D, camera, init );
+            
+                
+                for(uint64 i = 0; i < 3; i++)
+                {
+                    end3D[i] = polyline_coords[j+i];
+                    
+                }
+                
+                fast_world2image( end3D, camera, end );
+                
+                Coord2D<> c_init = pointfloor(init) ;
+                Coord2D<> c_end = pointfloor(end) ;
+      
+                draw_line(currentImage, c_init, c_end, (uint8)255,(uint8) 0,(uint8) 0);
+                
+                //cout << "j " << j << endl;
+                j += 3;
+            }
+        }
+    }
+    else
+    {
+        cout << " LINES CANNOT BE DRAWN : AT LEAST 2 POINTS ARE NEEDED. USE 3D COORDINATES    " << endl;
+    }
+
+    io::WriteImage writeImage(output_image);
+    writeImage << currentImage;
+}
+IMAGEPLUS_TOOL_CONFIG_END()

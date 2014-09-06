@@ -1,0 +1,23 @@
+Import('moduleEnv')
+
+dependences = Split('''
+
+core
+
+''')
+
+externals = Split('''
+
+
+
+''')
+
+
+moduleEnv.Append(
+
+LIBS = externals
+
+)
+
+
+Return('dependences')

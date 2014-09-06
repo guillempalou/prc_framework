@@ -1,0 +1,525 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file mesh_transforms.cpp
+//!
+
+
+#include <imageplus/core/mesh.hpp>
+#include <imageplus/core/array_arithmetic.hpp>
+#include <cstdio> //GCC 4.4: avoid errors with fscanf, fopen, etc...
+
+using namespace imageplus;
+
+
+#ifdef USE_OPENMESH
+#ifdef USE_OPENGL
+
+void imageplus::draw_mesh(TriMesh &mesh)
+{
+    glColor3f(1.0,1.0,1.0); // default white   
+
+    for (TriMesh::FaceIter f_it=mesh.faces_begin(); f_it!=mesh.faces_end(); ++f_it)
+    {
+        glBegin(GL_TRIANGLES);            
+        for (TriMesh::FaceVertexIter fv_it=mesh.fv_iter(f_it.handle()); fv_it; ++fv_it)
+          {   
+            // use mesh vertex color
+            //glColor3ui(255,0,0);
+            glColor3f(((float64)mesh.color(fv_it)[0])/255.0,((float64)mesh.color(fv_it)[1])/255.0,((float64)mesh.color(fv_it)[2])/255.0);
+            glNormal3f(mesh.normal(fv_it)[0], mesh.normal(fv_it)[1], mesh.normal(fv_it)[2]);
+            glVertex3f(mesh.point(fv_it)[0], mesh.point(fv_it)[1], mesh.point(fv_it)[2]);
+          }
+        glEnd();
+    }
+}
+
+
+void imageplus::draw_mesh(TriMesh &mesh, uint8 r,  uint8 g, uint8 b, DrawMode drawmode, float64 alpha )
+{
+	
+    if(drawmode == Transparent)
+    {
+        glColor4f(((float64) r)/255.0,((float64) g)/255.0,((float64) b)/255.0, 0.2);
+    }else
+    {
+        glColor4f(((float64) r)/255.0,((float64) g)/255.0,((float64) b)/255.0, alpha);
+    }
+
+    if(drawmode == HiddenLine)
+    {
+        glDrawBuffer(GL_NONE);
+        glDepthRange(0.01, 1.0);
+     
+        for (TriMesh::FaceIter f_it=mesh.faces_begin(); f_it!=mesh.faces_end(); ++f_it)
+        {
+            glBegin(GL_TRIANGLES);
+            for (TriMesh::FaceVertexIter fv_it=mesh.fv_iter(f_it.handle()); fv_it; ++fv_it)
+              {   
+                //glColor4f(mesh.color(fv_it)[0],mesh.color(fv_it)[1],mesh.color(fv_it)[2],0.4);
+                glNormal3f(mesh.normal(fv_it)[0], mesh.normal(fv_it)[1], mesh.normal(fv_it)[2]);
+                 glVertex3f(mesh.point(fv_it)[0], mesh.point(fv_it)[1], mesh.point(fv_it)[2]);
+              }
+            glEnd();
+        }
+
+        glDrawBuffer(GL_BACK);
+        glDepthRange(0.0, 1.0);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glDepthFunc(GL_LEQUAL);
+
+        for (TriMesh::FaceIter f_it=mesh.faces_begin(); f_it!=mesh.faces_end(); ++f_it)
+        {
+            glBegin(GL_TRIANGLES);
+            for (TriMesh::FaceVertexIter fv_it=mesh.fv_iter(f_it.handle()); fv_it; ++fv_it)
+              {   
+                //glColor4f(mesh.color(fv_it)[0],mesh.color(fv_it)[1],mesh.color(fv_it)[2],0.4);
+                glNormal3f(mesh.normal(fv_it)[0], mesh.normal(fv_it)[1], mesh.normal(fv_it)[2]);
+                 glVertex3f(mesh.point(fv_it)[0], mesh.point(fv_it)[1], mesh.point(fv_it)[2]);
+              }
+            glEnd();
+        }
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glDepthFunc(GL_LESS);
+        
+    }
+    else if(drawmode == VertexOnly)
+    {
+        glBegin(GL_POINTS);
+        for (TriMesh::VertexIter v_it=mesh.vertices_begin(); v_it!=mesh.vertices_end(); ++v_it)
+        {
+            glVertex3f(mesh.point(v_it)[0], mesh.point(v_it)[1], mesh.point(v_it)[2]);
+        }
+        glEnd();
+
+    }
+    else // Solid or Transparent
+    {
+        for (TriMesh::FaceIter f_it=mesh.faces_begin(); f_it!=mesh.faces_end(); ++f_it)
+        {
+            glBegin(GL_TRIANGLES);            
+            for (TriMesh::FaceVertexIter fv_it=mesh.fv_iter(f_it.handle()); fv_it; ++fv_it)
+              {   
+             //   glColor3f(mesh.color(fv_it)[0],mesh.color(fv_it)[1],mesh.color(fv_it)[2]);
+                glNormal3f(mesh.normal(fv_it)[0], mesh.normal(fv_it)[1], mesh.normal(fv_it)[2]);
+                glVertex3f(mesh.point(fv_it)[0], mesh.point(fv_it)[1], mesh.point(fv_it)[2]);
+              }
+            glEnd();
+        }
+    }
+}
+
+
+//void imageplus::draw_mesh(FaceVertexMesh &mesh)
+//{
+//    glColor3f(0.5f,1.0f,0.8f); // default white   
+//
+//    for (std::vector<Coord3D<int64> >::iterator f_it=mesh._faces.begin(); f_it!=mesh._faces.end(); ++f_it)
+//    {
+//    	glBegin(GL_TRIANGLES);            
+//    	glColor3f(0.8f,0.8f,0.8f);
+//    	//glNormal3f(mesh.normal(fv_it)[0], mesh.normal(fv_it)[1], mesh.normal(fv_it)[2]);
+//    	glVertex3f(mesh._vertices[f_it->x()].x(), mesh._vertices[f_it->x()].y(), mesh._vertices[f_it->x()].z());
+//    	glVertex3f(mesh._vertices[f_it->y()].x(), mesh._vertices[f_it->y()].y(), mesh._vertices[f_it->y()].z());
+//    	glVertex3f(mesh._vertices[f_it->z()].x(), mesh._vertices[f_it->z()].y(), mesh._vertices[f_it->z()].z());
+//    	glEnd();
+//    }
+//}
+
+
+
+
+void imageplus::draw_mesh(FaceVertexMesh &mesh, uint8 r,  uint8 g, uint8 b, DrawMode drawmode, Point3D orig )
+{
+    if(drawmode == Transparent)
+    {
+        glColor4f(((float64) r)/255.0,((float64) g)/255.0,((float64) b)/255.0, 0.5);
+    }else
+    {
+        glColor3f(((float64) r)/255.0,((float64) g)/255.0,((float64) b)/255.0);
+    }
+
+    if(drawmode == HiddenLine)
+    {
+        glDrawBuffer(GL_NONE);
+        glDepthRange(0.01, 1.0);
+        uint64 f=0;
+        for (std::vector<Coord3D<int64> >::iterator f_it=mesh._faces.begin(); f_it!=mesh._faces.end(); ++f_it)
+        {
+        	glBegin(GL_TRIANGLES);
+        	for( uint32 i=0; i<3; i++ )
+        	{
+        		glColor3f( mesh._colors[ f_it->elems[i]].x()/(float64)256, mesh._colors[ f_it->elems[i]].y()/(float64)256,mesh._colors[ f_it->elems[i]].z()/(float64)256 );
+        		glNormal3f(mesh._face_normals[f].x(), mesh._face_normals[f].y(), mesh._face_normals[f].z());
+        		glVertex3f(mesh._vertices[f_it->elems[i]].x()-orig.x(), mesh._vertices[f_it->elems[i]].y()-orig.y(), mesh._vertices[f_it->elems[i]].z()-orig.z());
+        		        	
+        	}
+        	glEnd();
+        	++f;
+        }
+
+        glDrawBuffer(GL_BACK);
+        glDepthRange(0.0, 1.0);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glDepthFunc(GL_LEQUAL);
+        f=0;
+        for (std::vector<Coord3D<int64> >::iterator f_it=mesh._faces.begin(); f_it!=mesh._faces.end(); ++f_it)
+        {
+        	glBegin(GL_TRIANGLES);
+        	for( uint32 i=0; i<3; i++ )
+        	{
+        		glColor3f( mesh._colors[ f_it->elems[i]].x()/(float64)256, mesh._colors[ f_it->elems[i]].y()/(float64)256,mesh._colors[ f_it->elems[i]].z()/(float64)256 );
+        		glNormal3f(mesh._face_normals[f].x(), mesh._face_normals[f].y(), mesh._face_normals[f].z());
+        		glVertex3f(mesh._vertices[f_it->elems[i]].x()-orig.x(), mesh._vertices[f_it->elems[i]].y()-orig.y(), mesh._vertices[f_it->elems[i]].z()-orig.z());
+
+        	}
+        	glEnd();
+        	++f;
+        }
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glDepthFunc(GL_LESS);
+        
+    }
+    else if(drawmode == VertexOnly)
+    {
+    	glEnable(GL_POINT_SMOOTH);
+        glPointSize(4.0);
+        glBegin(GL_POINTS);
+        uint64 f=0;
+        for (std::vector<Point3D >::iterator v_it=mesh._vertices.begin(); v_it!=mesh._vertices.end(); ++v_it)
+        {
+    		glNormal3f(mesh._face_normals[f].x(), mesh._face_normals[f].y(), mesh._face_normals[f].z());
+    		glVertex3f(v_it->x()-orig.x(), v_it->y()-orig.y(),v_it->z()-orig.z());
+        }
+        glEnd();
+        ++f;
+        glPointSize(1.0);
+    }
+    else if(drawmode == Solid)
+    {
+    	uint64 f=0;
+    	        for (std::vector<Coord3D<int64> >::iterator f_it=mesh._faces.begin(); f_it!=mesh._faces.end(); ++f_it)
+    	        {
+    	        	glBegin(GL_TRIANGLES);
+    	        	for( uint32 i=0; i<3; i++ )
+    	        	{
+    	        		glColor3f( mesh._colors[ f_it->elems[i]].x()/(float64)256, mesh._colors[ f_it->elems[i]].y()/(float64)256,mesh._colors[ f_it->elems[i]].z()/(float64)256 );
+    	        		glNormal3f(mesh._face_normals[f].x(), mesh._face_normals[f].y(), mesh._face_normals[f].z());
+    	        		glVertex3f(mesh._vertices[f_it->elems[i]].x()-orig.x(), mesh._vertices[f_it->elems[i]].y()-orig.y(), mesh._vertices[f_it->elems[i]].z()-orig.z());
+
+    	        	}
+    	        	glEnd();
+    	        	++f;
+    	        }
+    }
+    else if(drawmode == VertexColors)
+    {
+    		glBegin(GL_TRIANGLES);
+            for( int64 i=0, maxi=mesh._faces.size(); i < maxi; ++i )
+            {
+                
+                Coord3D<int64> & f=mesh._faces[i];
+                
+                glNormal3f(mesh._face_normals[i][0], mesh._face_normals[i][1], mesh._face_normals[i][2]);
+                Point3D & v1=mesh._vertices[ f.x() ];                
+                glColor3f( (float64)mesh._colors[f.x()].x()/255.0, (float64)mesh._colors[f.x()].y()/255.0, (float64)mesh._colors[f.x()].z()/255.0);
+                glVertex3f( v1.x(), v1.y(), v1.z() );
+                glNormal3f(mesh._face_normals[i][0], mesh._face_normals[i][1], mesh._face_normals[i][2]);
+                Point3D & v2=mesh._vertices[ f.y() ];
+                glColor3f( (float64)mesh._colors[f.y()].x()/255.0, (float64)mesh._colors[f.y()].y()/255.0, (float64)mesh._colors[f.y()].z()/255.0);
+                glVertex3f( v2.x(), v2.y(), v2.z() );
+                glNormal3f(mesh._face_normals[i][0], mesh._face_normals[i][1], mesh._face_normals[i][2]);
+                Point3D & v3=mesh._vertices[ f.z() ];
+                glColor3f( (float64)mesh._colors[f.z()].x()/255.0, (float64)mesh._colors[f.z()].y()/255.0, (float64)mesh._colors[f.z()].z()/255.0);
+                glVertex3f( v3.x(), v3.y(), v3.z() );
+                
+            }
+            glEnd();
+    }
+    else
+    {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+        glPointSize(4.0);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+        uint64 idx = 0;
+            	for (std::vector<Coord3D<int64> >::iterator f_it=mesh._faces.begin(); f_it!=mesh._faces.end(); ++f_it)
+            	{
+            		glBegin(GL_TRIANGLES);
+            		//glColor4f(mesh.color(fv_it)[0],mesh.color(fv_it)[1],mesh.color(fv_it)[2],0.4);
+            		glNormal3f(mesh._face_normals[ idx ].x(), mesh._face_normals[ idx ].y(), mesh._face_normals[ idx ].z());
+            		glVertex3f(mesh._vertices[f_it->x()].x()-orig.x(), mesh._vertices[f_it->x()].y()-orig.y(), mesh._vertices[f_it->x()].z()-orig.z());
+            		glNormal3f(mesh._face_normals[ idx ].x(), mesh._face_normals[ idx ].y(), mesh._face_normals[ idx ].z());
+            		glVertex3f(mesh._vertices[f_it->y()].x()-orig.x(), mesh._vertices[f_it->y()].y()-orig.y(), mesh._vertices[f_it->y()].z()-orig.z());
+            		glNormal3f(mesh._face_normals[ idx ].x(), mesh._face_normals[ idx ].y(), mesh._face_normals[ idx ].z());
+            		glVertex3f(mesh._vertices[f_it->z()].x()-orig.x(), mesh._vertices[f_it->z()].y()-orig.y(), mesh._vertices[f_it->z()].z()-orig.z());
+            		idx += 1;
+            		glEnd();
+            	}
+    }
+}
+    
+	
+
+
+
+TriMesh imageplus::colorize_vertices(const TriMesh &mesh, uint8 r, uint8 g, uint8 b)
+{
+    TriMesh outmesh = mesh;
+
+    TriMesh::Color color(r,g,b);
+    
+    for (TriMesh::VertexIter v_it=outmesh.vertices_begin(); v_it!=outmesh.vertices_end(); ++v_it)
+    {
+        outmesh.set_color(v_it, color);
+    }
+    
+    return outmesh;
+}
+
+void imageplus::write_mesh(std::string filename, TriMesh &trimesh)
+{
+    std::cout << " (trimesh) " << std::flush; ; 
+    OpenMesh::IO::Options opt;
+    OpenMesh::IO::write_mesh(trimesh,filename,opt);
+}
+
+void  imageplus::read_mesh(std::string filename, TriMesh & mesh)
+{
+    FILE * fp;
+    fp = fopen( filename.c_str(), "r" );
+    
+    if( fp == NULL )
+    {
+        throw ImagePlusError( "ERROR(ReadListedMesh) Cannot open file " + filename );
+    }
+
+    int64 i=0 ;
+    long int size_v,size_f,v1,v2,v3;
+    double x,y,z;
+    int  r, g, b;
+    fscanf( fp, "ply\nformat ascii 1.0\n" );
+    fscanf( fp, "element vertex %ld\n", &size_v );
+    fscanf( fp, "property float x\nproperty float y\nproperty float z\n" );
+    fscanf( fp, "property uchar red\nproperty uchar green\nproperty uchar blue\n" );
+    fscanf( fp, "element face %ld\n", &size_f  );
+    fscanf( fp, "property list uint8 int32 vertex_indices\n" );
+    fscanf( fp, "end_header\n" );
+
+    for( i=0; i<size_v; i++ )
+    {
+        fscanf( fp, "%lf %lf %lf %d %d %d\n", &x, &y, &z, &r, &g, &b );
+        TriMesh::VertexHandle vh = mesh.add_vertex( Point3D(x,y,z) );
+        mesh.set_color(vh, TriMesh::Color(r,g,b));
+    }
+
+    for( i=0; i<size_f; i++ )
+    {
+        fscanf( fp, "3 %ld %ld %ld\n", &v1, &v2, &v3 );
+        TriMesh::VertexHandle vh1(v1);
+        TriMesh::VertexHandle vh2(v2);
+        TriMesh::VertexHandle vh3(v3);
+        mesh.add_face(vh1,vh2,vh3);
+    }
+}
+
+#endif /* USE_OPENGL   */
+#endif /* USE_OPENMESH */
+
+
+void imageplus::write_mesh(std::string filename, FaceVertexMesh &fvmesh)
+{
+	FILE * fp;
+	fp = fopen( filename.c_str(), "w" );
+
+	if( fp == NULL )
+	{
+		throw ImagePlusError( "ERROR(WriteListedMesh) Cannot open file " + filename );
+	}
+
+	uint64 i=0 ;
+	
+	fprintf( fp, "ply\nformat ascii 1.0\n" );
+	fprintf( fp, "element vertex %ld\n", (long int)fvmesh._vertices.size() );
+	fprintf( fp, "property float x\nproperty float y\nproperty float z\n" );
+	fprintf( fp, "property uchar red\nproperty uchar green\nproperty uchar blue\n" );
+	fprintf( fp, "element face %ld\n", (long int)fvmesh._faces.size() );
+	fprintf( fp, "property list uint8 int32 vertex_indices\n" );
+	fprintf( fp, "end_header\n" );
+
+	for( std::vector<Point3D>::iterator ite=fvmesh._vertices.begin(); ite != fvmesh._vertices.end(); ite++, i++ )
+	{
+		Point3D  p = *ite;
+		Coord3D<uint8> c = fvmesh._colors[i];
+		fprintf( fp, "%lf %lf %lf %d %d %d\n", p.x(), p.y(), p.z(), c.x(),  c.y(),  c.z() );
+	}
+
+	for( std::vector<Coord3D<int64> >::iterator f_ite=fvmesh._faces.begin(); f_ite != fvmesh._faces.end();  f_ite++ )
+	{
+		Coord3D<int64> v = *f_ite;
+		fprintf( fp, "3 %ld %ld %ld\n", (long int)v.x(), (long int)v.y(), (long int)v.z() );
+	}
+
+	fclose( fp );
+}
+
+void  imageplus::read_mesh(std::string filename, FaceVertexMesh & mesh)
+{
+	FILE * fp;
+	fp = fopen( filename.c_str(), "r" );
+	
+	if( fp == NULL )
+	{
+		throw ImagePlusError( "ERROR(ReadListedMesh) Cannot open file " + filename );
+	}
+
+	int64 i=0 ;
+	long int size_v,size_f,v1,v2,v3;
+	double x,y,z;
+	int  r, g, b;
+	fscanf( fp, "ply\nformat ascii 1.0\n" );
+	fscanf( fp, "element vertex %ld\n", &size_v );
+	fscanf( fp, "property float x\nproperty float y\nproperty float z\n" );
+	fscanf( fp, "property uchar red\nproperty uchar green\nproperty uchar blue\n" );
+	fscanf( fp, "element face %ld\n", &size_f  );
+	fscanf( fp, "property list uint8 int32 vertex_indices\n" );
+	fscanf( fp, "end_header\n" );
+
+	for( i=0; i<size_v; i++ )
+	{
+		fscanf( fp, "%lf %lf %lf %d %d %d\n", &x, &y, &z, &r, &g, &b );
+		mesh.add_vertex( Point3D(x,y,z), Coord3D<uint8>(r,g,b));
+	}
+
+	for( i=0; i<size_f; i++ )
+	{
+		fscanf( fp, "3 %ld %ld %ld\n", &v1, &v2, &v3 );
+		mesh.add_face(Coord3D<int64>(v1,v2,v3));
+	}
+}
+
+
+
+void imageplus::FaceVertexMesh::add_vertex( Point3D v )
+{
+	_vertices.push_back( v );
+	_colors.push_back( Coord3D<uint8>(128,128,128)); //default grey color
+	_vertex_faces.push_back( std::vector<int64>() );
+}
+
+
+void imageplus::FaceVertexMesh::add_vertex( Point3D v, Coord3D<uint8> c )
+{
+	_vertices.push_back( v );
+	_colors.push_back( c );
+	_vertex_faces.push_back( std::vector<int64>() );
+}
+
+void imageplus::FaceVertexMesh::add_color( Coord3D<uint8> c)
+{
+	_colors.push_back( c );
+}
+
+void imageplus::FaceVertexMesh::add_face( Coord3D<int64> f)
+{
+	_faces.push_back( f );
+	_vertex_faces[f.x()].push_back(_faces.size()-1);
+	_vertex_faces[f.y()].push_back(_faces.size()-1);
+	_vertex_faces[f.z()].push_back(_faces.size()-1);
+}
+
+void imageplus::FaceVertexMesh::add_face_normal( const Point3D & n )
+{
+    _face_normals.push_back( n );
+}
+
+Point3D imageplus::FaceVertexMesh::get_vertex( int64 ind )
+{
+	return _vertices[ind];
+}
+
+Coord3D<int64> imageplus::FaceVertexMesh::get_face( int64 ind)
+{
+	return _faces[ind];
+}
+
+const Point3D & imageplus::FaceVertexMesh::get_face_normal( int64 ind )
+{
+    return _face_normals[ind];
+}
+
+Coord3D<uint8> imageplus::FaceVertexMesh::get_color( int64 ind )
+{
+	return _colors[ind];
+}
+
+inline 
+Point3D cross( const Point3D & u, const Point3D & v )
+{
+    return Point3D( u.y()*v.z()-u.z()*v.y(), u.z()*v.x()-u.x()*v.z(), u.x()*v.y()-u.y()*v.x() );
+}
+
+inline 
+Point3D normalize( const Point3D & n )
+{
+    return float64(1.0/std::sqrt( n.x()*n.x()+n.y()*n.y()+n.z()*n.z() ))*n;
+}
+
+void imageplus::FaceVertexMesh::update_normals()
+{
+	_face_normals.clear();
+	_vertex_normals.clear();
+	_face_normals.reserve( _faces.size() );
+	_vertex_normals.reserve( _vertices.size() );
+	for( int64 i=0, maxi=_faces.size(); i < maxi; ++i )
+	{
+		Coord3D<int64> & f=_faces[i];
+		Point3D & v1=_vertices[ f.x() ];
+		_face_normals[i]=normalize( cross( _vertices[ f.y() ]-v1, _vertices[ f.z() ]-v1 ) );
+    }
+    for( int64 v=0, maxv=_vertices.size(); v < maxv; ++v )
+    {
+    	Point3D normal(0.0,0.0,0.0);
+    	for( size_t f=0; f<_vertex_faces[v].size(); f++ )
+    	{
+    		normal = normal + _face_normals[ _vertex_faces[v][f] ] ;
+    	}
+    	_vertex_normals.push_back( normalize( normal ) );
+    }
+}
+
+void imageplus::FaceVertexMesh::reset()
+{
+	_vertices.clear();
+	_faces.clear();
+	_colors.clear();
+	_face_normals.clear();
+	_vertex_normals.clear();
+
+}
+
+Point3D imageplus::FaceVertexMesh::compute_cog()
+{
+	float64 x=0,y=0,z=0;
+	for( std::vector<Point3D >::iterator v_it=_vertices.begin(); v_it!=_vertices.end(); v_it++ )
+	{
+		x += v_it->x();
+		y += v_it->y();
+		z += v_it->z();
+	}
+	x /= _vertices.size();
+	y /= _vertices.size();
+	z /= _vertices.size();
+	
+	return Point3D(x,y,z);
+}
+
+
+
+
+

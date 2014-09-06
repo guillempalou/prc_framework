@@ -1,0 +1,92 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \file bbox.cpp
+//!
+//! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+//! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.edu>
+//!
+//! Implementation for BBox class
+//!
+
+#include <imageplus/core/bbox.hpp>
+#include <imageplus/core/coord.hpp>
+#include <imageplus/core/multiarray_arithmetic.hpp>
+
+// for uint64 std::abs(int64)
+#include <imageplus/math.hpp>
+
+using namespace imageplus;
+
+#if 0 // AGIL: moved to hpp
+// IMAGEPLUS_INLINE not inline to big
+template<typename T, std::size_t D>
+imageplus::BBox<T,D>::BBox ( Coord<T,D> tl, Coord<T,D> op ) :
+    _origin(tl)
+{
+    Coord<T,D> tmp = op - tl;
+	
+    for (imageplus::size_type i = 0; i != _sides.size(); ++i)
+    {
+        _sides.data()[i] = std::abs(tmp[i]) + 1;
+    }
+}
+#endif
+
+// Coordinates of the center of the bbox
+template<typename T, std::size_t D>
+Coord<T,D> BBox<T,D>::center() const
+{
+    Coord<T,D> c(_origin);
+
+    uint64 ndims = _sides.size();
+    for (uint64 i=0; i != ndims; ++i)
+    {
+        c[i] += _sides[i] / 2;
+    }
+    return (c);
+}
+
+// Coordinates of the vertex opposite to the origin
+template<typename T, std::size_t D>
+Coord<T,D> BBox<T,D>::opposite() const
+{
+    Coord<T,D> c(_origin);
+
+    uint64 ndims = _sides.size();
+    for (uint64 i=0; i != ndims; ++i)
+    {
+        c[i] += _sides[i]-1;
+    }
+
+    return (c);
+}
+
+
+namespace imageplus
+{
+    template class BBox<int64,1>;
+
+    // 2 dimensions
+//    template class BBox<uint8,2>;
+//    template class BBox<int8,2>;
+    template class BBox<int64,2>;
+//    template class BBox<uint64,2>;
+//    template class BBox<int32,2>;
+//    template class BBox<uint32,2>;
+
+    // 3 dimensions
+//    template class BBox<uint8,3>;
+//    template class BBox<int8,3>;
+    template class BBox<int64,3>;
+//    template class BBox<uint64,3>;
+//    template class BBox<int32,3>;
+//    template class BBox<uint32,3>;
+
+}//imageplus
+
+
+

@@ -1,0 +1,225 @@
+/*
+ * learning_metric_kernel.hpp
+ *
+ *  Created on: Feb 22, 2013
+ *      Author: gpalou
+ */
+
+#ifndef LEARNING_METRIC_KERNEL_HPP_
+#define LEARNING_METRIC_KERNEL_HPP_
+
+#include <imageplus/math/math_types.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+	template<uint64 D>
+	struct KernelOptimizationStruct {
+
+		math::Matrix region_descriptors;
+		math::Vector mean;
+		math::Vector stddev;
+
+		math::Vector kernel_w;
+
+		math::Matrix triplets;
+		std::map<uint64,uint64> region_index;
+
+		float64 sigma;
+
+		void save(std::string file) {
+			std::ofstream ofs(file.c_str());
+			ofs << D << " " << kernel_w.rows() << " " << sigma << std::endl;
+			ofs << kernel_w << std::endl;
+			ofs << mean << std::endl;
+			ofs << stddev << std::endl;
+			ofs << region_descriptors << std::endl;
+		}
+
+		void read(std::string file) {
+			float64 d,N;
+
+			std::ifstream ifs(file.c_str());
+			ifs >> d >> N >> sigma;
+
+			kernel_w = math::Vector(N);
+			mean = math::Vector(D);
+			stddev = math::Vector(D);
+
+			region_descriptors = math::Matrix(N,D);
+
+			if (mean.rows() != (int) D) {
+				mean = math::Vector::Zero(D);
+				stddev = math::Vector::Ones(D);
+			}
+
+			for (uint64 i = 0; i < N; i++) ifs >> kernel_w(i);
+			for (uint64 i = 0; i < D; i++) ifs >> mean(i);
+			for (uint64 i = 0; i < D; i++) ifs >> stddev(i);
+
+			//std::cout << mean.transpose() << " ::: " << stddev.transpose() << std::endl;
+
+			for (uint64 i = 0; i < N; i++)
+					for (uint64 k = 0; k < D; k++)
+						ifs >> region_descriptors(i,k);
+		}
+
+	};
+
+	template<uint64 D, class DistanceModel>
+	void optimize_metric(OptimizationStruct<D> &opt, float64 c, float64 sigma)
+	{
+	    std::size_t n_reg = opt.region_descriptors.rows();
+	    std::size_t n_constr = opt.triplets.rows();
+
+	    math::Vector mean     = opt.region_descriptors.colwise().mean();
+	    math::Matrix zeromean = opt.region_descriptors.rowwise() - mean.transpose();
+	    math::Vector stddev = opt.region_descriptors.array().square().colwise().mean() - (mean.array()*mean.array()).transpose();
+	    stddev = stddev.array().sqrt();
+
+	    for (uint64 i = 0; i < n_reg; i++) {
+	    	for (uint64 k = 0; k < D; k++) {
+	    		if (stddev(k) == 0) {
+	    			opt.region_descriptors(i,k) = 0;
+	    		} else {
+	    			opt.region_descriptors(i,k) = zeromean(i,k) / stddev(k);
+	    		}
+	    	}
+	    }
+
+	    opt.mean = mean;
+	    opt.stddev = stddev;
+
+	    // Create matrix L
+	    math::Matrix L(n_reg,n_reg);
+	    for (std::size_t ii=0; ii<n_reg; ++ii)
+	    {
+	        for (std::size_t jj=ii; jj<n_reg; ++jj)
+	        {
+	            //float64 norm2 = (opt.region_descriptors.row(ii)-opt.region_descriptors.row(jj)).squaredNorm();
+	            L(ii,jj) =  DistanceModelType::kernel_distance(opt.region_descriptors.row(ii), opt.region_descriptors.row(jj), 2*sigma*sigma) ; //exp(-norm2/(sigma*sigma));
+
+	            L(jj,ii) = L(ii,jj);
+	        }
+	    }
+	    //std::cout << opt.region_descriptors << std::endl;
+	    //std::cout << n_reg << std::endl;
+	    //exit(0);
+
+	    L = L + 1e-5*math::Matrix::Identity(n_reg,n_reg);
+
+	    IloEnv env;
+	    math::Vector w(n_reg);
+
+	    try
+	    {
+	        // Variables
+	        // IloNumVarArray(const IloEnv env, IloInt n, IloNum lb, IloNum ub, IloNumVar::Type type=ILOFLOAT)
+	        IloNumVarArray omega(env, n_reg    , 0, +IloInfinity, ILOFLOAT);
+	        IloNumVarArray ksi  (env, n_constr , 0, +IloInfinity, ILOFLOAT);
+
+	        // Expression for the objective function
+	        IloExpr expr(env);
+	        for (std::size_t ii=0; ii<n_reg; ++ii)
+	            for (std::size_t jj=0; jj<n_reg; ++jj)
+	                expr += 0.5*L(ii,jj)*(omega[ii]*omega[jj]);
+	        for (std::size_t ii=0; ii<n_constr; ++ii)
+	            expr += c*ksi[ii];
+	        IloObjective obj(env, expr, IloObjective::Minimize);
+
+	        // Define model
+	        IloModel model(env);
+	        model.add(obj); // Add objective function
+
+	        // Add the constraints
+	        // Expression for the constraints
+	        for (std::size_t ii=0; ii<n_constr; ++ii)
+	        {
+	            // Triplet involved
+	            std::size_t i = opt.triplets(ii,0);
+	            std::size_t j = opt.triplets(ii,1);
+	            std::size_t k = opt.triplets(ii,2);
+
+	            // Compute delta (At*xi-At*xk)*(At*xi-At*xk)
+	            math::Vector deltaij(n_reg);
+	            math::Vector deltaik(n_reg);
+	            for (std::size_t n=0; n<n_reg; ++n)
+	            {
+
+	                float64 kni = DistanceModelType::kernel_distance(opt.region_descriptors.row(i), opt.region_descriptors.row(n), 2*sigma*sigma); //exp(-norm2/(sigma*sigma));exp(-normni/(2*sigma*sigma));
+	                float64 knj = DistanceModelType::kernel_distance(opt.region_descriptors.row(j), opt.region_descriptors.row(n), 2*sigma*sigma); //exp(-normnj/(2*sigma*sigma));
+	                float64 knk = DistanceModelType::kernel_distance(opt.region_descriptors.row(k), opt.region_descriptors.row(n), 2*sigma*sigma); //exp(-normnk/(2*sigma*sigma));
+
+	                deltaij(n) = (kni-knj)*(kni-knj);
+	                deltaik(n) = (kni-knk)*(kni-knk);
+	            }
+
+	            IloExpr cst_expr(env);
+	            for (std::size_t jj=0; jj<n_reg; ++jj)
+	                cst_expr += omega[jj]*(deltaik(jj)-deltaij(jj));
+	            cst_expr += ksi[ii];
+
+	            model.add(IloRange(env, 1, cst_expr, +IloInfinity));
+	        }
+
+	        // Solve the model
+	        IloCplex cplex(model);
+	        //cplex.setParam(IloCplex::TuningDisplay,0);
+	        //cplex.setParam(IloCplex::BarDisplay, 0);
+	        //cplex.setParam(IloCplex::SimDisplay,0);
+	        cplex.setParam(IloCplex::Threads,1);
+	        if ( !cplex.solve() )
+	        {
+	            env.error() << "Failed to optimize QP." << std::endl;
+	            throw(-1);
+	        }
+
+	        // Show the result
+	        env.out() << "Solution status = " << cplex.getStatus() << std::endl;
+	        env.out() << "Solution value  = " << cplex.getObjValue() << std::endl;
+	        IloNumArray vals_omega(env);
+	        cplex.getValues(vals_omega, omega);
+	        // env.out() << "Omega = " << vals_omega << std::endl;
+	        IloNumArray vals_ksi(env);
+	        cplex.getValues(vals_ksi, ksi);
+	        // env.out() << "Ksi = " << vals_ksi << std::endl;
+
+	        // Count the number of violated contraints
+	        uint64 num_violated = 0;
+	        uint64 num_equal = 0;
+	        for (std::size_t ii=0; ii<n_constr; ++ii)
+	        {
+	            if (vals_ksi[ii]>1+1e-6)
+	                num_violated += 1;
+	            else if ( (vals_ksi[ii]<1+1e-6) && (vals_ksi[ii]>1-1e-6))
+	                num_equal +=1;
+	        }
+	        std::cout << "------------------------" << std::endl;
+	        std::cout << "Constraints:" << std::endl;
+	        std::cout << " " << n_constr-num_equal-num_violated << " ok"       << std::endl;
+	        std::cout << " " << num_violated                    << " violated" << std::endl;
+	        std::cout << " " << num_equal                       << " equal"    << std::endl;
+	        std::cout << " " << n_constr                        << " total" << std::endl;
+	        std::cout << "------------------------" << std::endl;
+
+	        for (uint64 i =0 ; i < n_reg; i++)
+	        	w(i) = vals_omega[i];
+	    }
+	    catch (IloException& e) {
+	        std::cerr << "Concert exception caught: " << e << std::endl;
+	    }
+	    catch (...) {
+	        std::cerr << "Unknown exception caught" << std::endl;
+	    }
+
+	    env.end();
+
+	    opt.kernel_w = w;
+	}
+
+
+	}
+}
+
+
+#endif /* LEARNING_METRIC_KERNEL_HPP_ */

@@ -1,0 +1,96 @@
+/*
+ * output_segmentation.cpp
+ *
+ *  Created on: Jan 11, 2013
+ *      Author: gpalou
+ */
+
+/*
+ * video_relative_depth.cpp
+ *
+ *  Created on: Dec 17, 2012
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/partition/hierarchical_region_partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/bpt/pruning/merging_sequence_pruner.hpp>
+#include <imageplus/bpt/pruning/min_area_pruner.hpp>
+
+#include <boost/filesystem.hpp>
+#include <iomanip>
+#include <iostream>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef ImageSignal<float64,3> 																		ImageType;
+
+typedef ImageType::coord_type																		coord2d;
+
+typedef HierarchicalRegion<coord2d>																	Region2D;
+typedef segmentation::HierarchicalRegionPartition<Region2D>											BPT;
+typedef BPT::PartitionType																			PartitionType;
+
+int main(int argc, char *argv[]) {
+	std::string path 		= argv[1];
+	std::string segm_path 	= argv[2];
+	std::string result_path = argv[3];
+	std::vector<uint64> list_of_segmentations;
+
+	for (int64 i = 4; i < argc; i++) {
+		std::string a = argv[i];
+		std::cout << a << " ";
+		std::istringstream is(a);
+		uint64 n;
+		is >> n;
+		list_of_segmentations.push_back(n);
+	}
+	std::cout << std::endl;
+
+	std::string partition_path = segm_path + "/leaves.sgm";
+	std::string mergings_path  = segm_path + "/mergings.txt";
+
+	// create the necessary paths
+	//std::cout << "creating path " << result_path << std::endl;
+	boost::filesystem::path result_path_p(result_path);
+	boost::filesystem::create_directory(result_path_p);
+
+	std::cout << "Reading tree" << std::endl;
+	BPT bpt;
+	bpt.load_from_files(partition_path, mergings_path);
+	coord2d sizes = bpt.leaves_partition().sizes();
+
+	ImageType img;
+
+	std::cout << "Reading image" << std::endl;
+	img.read(path);
+
+	std::cout << "Creating segmentations " << std::endl;
+	BPT::PartitionType partition(img.sizes());
+
+	for (uint64 i = 0; i <  list_of_segmentations.size(); i++) {
+		bpt::MergingSequencePruner<BPT, ImageType> merging_sequence_pruner(list_of_segmentations[i],false);
+		merging_sequence_pruner.prune_bpt(bpt,img);
+		std::set<uint64> regs = merging_sequence_pruner.regions(); //optical_flow_pruner.regions();
+
+		for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r) {
+			for (BPT::RegionType::iterator p = bpt(*r).begin(); p != bpt(*r).end(); ++p) {
+				partition(*p)(0) = *r;
+			}
+		}
+
+		ImageType segmentation = segmentation::to_false_color<ImageType>(partition);
+
+		std::ostringstream os;
+		os << result_path << "/" << list_of_segmentations[i] << ".png";
+		segmentation.write(os.str());
+	}
+}

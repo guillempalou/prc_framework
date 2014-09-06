@@ -1,0 +1,149 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+#define IMAGEPLUS_TOOL_CONFIG_NAME  img2prl
+#define IMAGEPLUS_TOOL_CONFIG_GROUP converters
+
+#include <imageplus/toolbox/tool_config.hpp>
+
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+#include <iostream>
+
+
+using namespace std;
+using namespace imageplus;
+
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+
+    "Conversion from an image (PNG, TIFF or BMP) to a partition (PRL)\n";
+
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+    "This tool reads an image in PNG, TIFF or BMP and writes the represented partition in a PRL file.\n" +
+    "\n"+
+    "Notes: \n" +
+    "  - PNG and TIFF are the recomended formats to save 'image partitions'.\n"
+    "  - BMP supoprt is only available if the tool was compiled with USE_IMAGEMAGICK.\n" +
+    "  - This tool can also read lossy compression formats, like JPEG, but you shouldn't save 'partitions' in these formats.\n";
+
+
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+    //
+    // Here you have to declare all your configuration parameters:
+    // options, flags and arguments.
+    bool binarize;
+
+    // my arguments
+    string filename_in;
+    string filename_out_prl;
+
+
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+    // Note that vectors can be initialized with some values.
+    //
+    binarize = false;
+
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description
+    // and an optional abreviature
+    //
+
+
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description
+    // and an optional abreviature
+    //
+    IMAGEPLUS_TOOL_CONFIG_FLAG_ABV(binarize, "Binarize images to 0 and 1", 'b');
+
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description.
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+
+
+    // add arguments in the desired order
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_in      , "Input image in PNG, TIFF or BMP" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_out_prl , "Output file in PRL" );
+
+
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_in      );
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_out_prl );
+    IMAGEPLUS_TOOL_CONFIG_READ( binarize );
+
+
+//
+// This is the "main" function of your tool.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the exemple with "--help" to see your configuration.
+//
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{
+    io::ReadImage ri(cfg.filename_in);
+    ImageGray<uint8> temp_gray;
+    ri >> temp_gray;
+
+    ImagePartition<uint32> temp_part(temp_gray.size_x(), temp_gray.size_y());
+    temp_part = 0;
+    if(cfg.binarize)
+    {
+        for(std::size_t ii=0; ii<temp_part.size_x(); ++ii)
+        {
+            for(std::size_t jj=0; jj<temp_part.size_y(); ++jj)
+            {
+                if(temp_gray(0)[ii][jj]!=0)
+                    temp_part(0)[ii][jj] = 1;
+            }
+        }
+    }
+    else
+    {
+        temp_part(0) = convert<uint32>(temp_gray(0));
+    }
+    
+    io::WriteImage wi(cfg.filename_out_prl);
+    wi << temp_part;
+
+    return 0;
+}
+
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_TOOL_CONFIG_END()

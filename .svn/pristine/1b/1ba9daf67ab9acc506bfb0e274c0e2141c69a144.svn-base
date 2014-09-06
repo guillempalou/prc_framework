@@ -1,0 +1,85 @@
+/*
+ * region_occlusion.hpp
+ *
+ *  Created on: Jan 21, 2013
+ *      Author: gpalou
+ */
+
+#ifndef REGION_OCCLUSION_HPP_
+#define REGION_OCCLUSION_HPP_
+
+/*
+ * photo_consistency.hpp
+ *
+ *  Created on: Dec 5, 2012
+ *      Author: guillem
+ */
+
+#include <imageplus/core/image_signal.hpp>
+
+namespace imageplus {
+	namespace optical_flow {
+
+	template<class PartitionModel, class OpticalFlowType>
+	ImageSignal<float64,1> region_occlusion_error(PartitionModel partition, OpticalFlowType& forward, OpticalFlowType& backward, uint64 frame) {
+
+		ImageSignal<float64,1> reverse(forward.sizes());
+
+		for (typename OpticalFlowType::iterator v = forward.begin(); v != forward.end(); ++v) {
+
+			typename OpticalFlowType::coord_type pos = v.pos();
+
+			typename OpticalFlowType::coord_float_type pos_float = pos.template cast<float64>();
+			typename OpticalFlowType::value_type displacement = forward.interpolate_value(pos_float);
+			typename OpticalFlowType::coord_float_type new_pos = pos_float + displacement;
+
+			for (uint64 i = 0; i < 2; i++) pos(i) = round(new_pos(i));
+
+			if (!forward.inside(pos)) {
+				reverse(v.pos())(0) = 0; // error, we don't know because the flow goes outside the image
+				continue;
+			}
+
+			displacement = backward.interpolate_value(new_pos);
+
+			for (uint64 i = 0; i < 2; i++) pos(i) = round(new_pos(i) + displacement(i));
+
+			if (!forward.inside(pos)) {
+				reverse(v.pos())(0) = 0; // error, we don't know because the flow goes outside the image
+				continue;
+			}
+
+			// Check if the point should be tracked
+			// check the partition of the frame_other
+
+			typename	PartitionModel::value_type  i1  = partition(v.pos()(0),v.pos()(1), frame);
+			typename 	PartitionModel::value_type  i2 	= partition(pos(0),    pos(1),   frame);
+
+			float64 error = (i1(0) != i2(0));
+
+			/*typename PartitionModel::coord_type center(pos(0),pos(1),frame);
+			typename PartitionModel::coord_type radius(1,1,0);
+			typename PartitionModel::coord_type upper = center - radius;
+			typename PartitionModel::coord_type lower = center + radius;
+			typename PartitionModel::roi_iterator roi = partition.roi_begin(upper, lower);
+			typename PartitionModel::roi_iterator roi_end = partition.roi_end(upper, lower);
+			for (; roi != roi_end; ++roi) {
+				if (partition.inside(roi.pos())) {
+					if ((*roi)(0) == i1(0)) error = 0;
+				}
+			}*/
+;
+			reverse(v.pos())(0) = error;
+		}
+		//Blur the resulting image, to allow 1 pixel error
+		//cv::Mat b = to_opencv(reverse);
+		//cv::GaussianBlur(b, b, cv::Size(7,7), 1.5, 1.5);
+
+		return reverse;
+	}
+
+	}
+
+}
+
+#endif /* REGION_OCCLUSION_HPP_ */

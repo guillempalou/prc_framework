@@ -1,0 +1,198 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file models.hpp
+//!
+//!  Models
+//!
+
+
+#ifndef IMAGEPLUS_SEMANTIC_MODELS_HPP
+#define IMAGEPLUS_SEMANTIC_MODELS_HPP
+
+#include <iostream>
+#include <map>
+#include <string>
+
+#include <boost/foreach.hpp>
+
+#include <imageplus/core.hpp>
+#include <imageplus/semantic/map.hpp>
+#include <imageplus/semantic/model.hpp>
+#include <imageplus/semantic/ontology.hpp>
+
+namespace imageplus {
+	namespace semantic {
+
+		//!
+		//! \brief Classifier models of semantic classes of the ontology.
+		//!
+		//! This class is used to store classifier models for the semantic
+		//! classes included in the ontology. Before adding new models a valid
+		//! ontology instance has to be provided.
+		//!
+		//! Example: creating a new instance and adding a model for each
+		//!          semantic class in the ontology. (using the SVM classifier)
+		//! \code
+		//!	//... ontology is an instance of Ontology loaded from a file
+		//! Models<SVM> models;
+		//! models.set_ontology(ontology);
+		//! BOOST_FOREACH(int semantic_class_id, ontology)
+		//! {
+		//! 	Model<SVM>& model = models.get_model(semantic_class_id);
+		//! 	ModelPart<SVM> model_part;
+		//! 	//... train classifiers of the part for some descriptors
+		//! 	model.add_part(model_part);
+		//! }
+		//! \endcode
+		//!
+		//! Instances of this class are iterable, the iterator will iterate
+		//! through all model instances included in the instance.
+		//!
+		//! Example: print all models (using the SVM classifier)
+		//! \code
+		//! Models<SVM> models;
+		//! BOOST_FOREACH(Model<SVM> model, models)
+		//! 	std::cout << model << std::endl;
+		//! \endcode
+		//!
+		//!	In order to load an instance from a file and save it back again
+		//! see the ReadWriteModels class.
+		//!
+		//! \author Pau Haro Negre
+		//!
+		//! \date 10-6-2011
+		//!
+		template<class Classifier>
+		class Models
+		{
+		public:
+
+			//! Type of the models of this instance container
+			typedef std::map<int, Model<Classifier> > ModelsType;
+
+			//! Type of the models of this instance container iterator
+			typedef typename ModelsType::iterator ModelsIterator;
+
+			//! Type of the models of this instance container const iterator
+			typedef typename ModelsType::const_iterator ModelsConstIterator;
+
+			//! Auxiliary type for map of models values iterator
+			typedef typename boost::function<typename ModelsType::mapped_type (const typename ModelsType::value_type&)> F_val;
+
+			//! Type of the models of this instance iterator (DEFAULT models iterator)
+			typedef typename boost::transform_iterator<F_val, ModelsIterator> iterator;
+
+			//! Type of the models of this instance const iterator (DEFAULT models const iterator)
+			typedef typename boost::transform_iterator<F_val, ModelsConstIterator> const_iterator;
+
+
+            //! \brief Default constructor
+			Models() {}
+
+            //! \brief Destructor
+            ~Models() {}
+
+
+            //! Set the associated ontology
+            //!
+            //! \param[in] o Reference to the ontology
+            void set_ontology(const Ontology& o) { _ontology = o; }
+
+            //! Get the associated ontology
+            //!
+            //! \return Reference to the ontology
+            const Ontology& get_ontology() const { return _ontology; }
+
+
+            //! Return the model of the given semantic class id if it exists, otherwise add it and then return it
+            //!
+            //! \note The semantic class should be in the ontology (check Ontology::includes_semantic_class)
+            //!
+            //! \param[in] sc_id Semantic class id
+            //!
+            //!	\return Model instance for the given semantic class id
+            Model<Classifier>& get_model(uint32 sc_id) throw (ImagePlusError)
+			{
+            	if(!_ontology.includes_semantic_class(sc_id)) {
+            		std::string semantic_class = boost::lexical_cast<std::string>(sc_id);
+            		throw ImagePlusError("Semantic Class '" + semantic_class + "' is not defined in '" + _ontology.get_name() + "' ontology.");
+            	}
+
+            	// Get or add the model for the given semantic class id
+            	typename ModelsType::value_type new_model(sc_id, Model<Classifier>(sc_id));
+            	return _models.insert(_models.begin(), new_model)->second;
+			}
+
+
+			// Models Iteration Interface
+
+			//! Returns an iterator referring to the first Model in this Models instance.
+			//!
+			//! \return An iterator to the beginning of this Models instance
+			iterator begin() {
+				return boost::make_transform_iterator(_models.begin(),
+						&get_value<typename ModelsType::key_type, typename ModelsType::mapped_type>);
+			}
+
+			//! Returns an iterator referring to the past-the-end Model in this Models instance.
+			//!
+			//! \return An iterator to the element past the end of this Models instance
+			iterator end() {
+				return boost::make_transform_iterator(_models.end(),
+						&get_value<typename ModelsType::key_type, typename ModelsType::mapped_type>);
+			}
+
+			//! Returns a constant iterator referring to the first Model in this Models instance.
+			//!
+			//! \return A constant iterator to the beginning of this Models instance
+			const_iterator begin() const {
+				return boost::make_transform_iterator(_models.begin(),
+						&get_value<typename ModelsType::key_type, typename ModelsType::mapped_type> );
+			}
+
+			//! Returns a constant iterator referring to the past-the-end Model in this Models instance.
+			//!
+			//! \return A constant iterator to the element past the end of this Models instance
+			const_iterator end() const {
+				return boost::make_transform_iterator(_models.end(),
+						&get_value<typename ModelsType::key_type, typename ModelsType::mapped_type>);
+			}
+
+
+    		//! Output a representation of the given Models to an ostream.
+            //!
+            //! \param[in,out] os     Output stream where the representation will be appended
+            //! \param[in]     models %Instance of Models class to write to the stream
+    		//!
+    		//! \return Description of the Models is appended to the given ostream.
+    		friend std::ostream& operator<<(std::ostream &os, const Models& models)
+    		{
+    			os << "@@@ Models @@@" << std::endl;
+
+    			os << "> Models Ontology:" << std::endl;
+    			os << models._ontology << std::endl;
+
+    			os << "> Models:" << std::endl;
+    			BOOST_FOREACH(Model<Classifier> m, models)
+    				os << m << std::endl;
+
+    			os << "@@@ End of Models @@@" << std::endl;
+    			return os;
+    		}
+
+		private:
+			//! %Models ontology
+			Ontology _ontology;
+
+			//! Container of models for each semantic class
+			ModelsType _models;
+
+		};
+	}
+}
+
+#endif //IMAGEPLUS_SEMANTIC_MODELS_HPP

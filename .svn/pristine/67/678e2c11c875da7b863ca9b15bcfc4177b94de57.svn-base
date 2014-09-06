@@ -1,0 +1,58 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file particlefilters.hpp
+//!
+//!  \brief Public class for the basic particlefilter and particle
+//!
+
+#ifndef IMAGEPLUS_PARTICLEFILTERS_HPP_
+#define IMAGEPLUS_PARTICLEFILTERS_HPP_
+
+#include <imageplus/particlefilters/pf_basic.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \namespace imageplus::particlefilters
+    //!
+    //! \brief Particlefilters basic class
+    //!
+    //! This module contains the basic implementation of the Particlefilter and the Particle of ImagePlus.
+    //! Both classes should not be instantiated, they should be used to create the specific Particle and Particlefilter for the application desired.
+	//! An example of a simple implementation using these basic classes is the pf_example tool.
+	//! For a more complex use of the particlefilters basic classes refer to the tumult_detector tool.
+    //!
+	//! For a more detailed explanation of particlefilters refer to <a href="http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.16.3641">
+	//! A tutorial on particle filters for online nonlinear/non-Gaussian Bayesian tracking</a>. 
+	//!
+	//! The simple use of these classes can be seen in the following example having the Particlefilter and the Particle adequatelly 
+	//! redefined and adapted to the application:
+	//! \code
+	//! // Create the particlefilter with the number of particles desired
+	//! ParticleFilter pf( number_of_particles );
+	//!
+	//! // Define and initiliaze adequatly the input_data and the initialization_data defined in the particle
+	//! Particle::input_data_type input_data;
+	//! Particle::init_data_type init_data;
+	//! 
+	//! // Initialize the particlefilter
+	//! pf.init_particles( init_data );
+	//! 
+	//! // Calculate the particlefilter estimation
+	//! pf.filter( input_data );
+	//!
+	//! // Obtain the result of the particlefilter estimation
+	//! result = pf.estimate(); // The result obtained corresponds to a ParticleType of the current particlefilter used
+	//! 
+	//! \endcode
+	//!
+    namespace particlefilters
+    {        
+    }
+} 
+
+#endif /* IMAGEPLUS_PARTICLEFILTERS_HPP_ */

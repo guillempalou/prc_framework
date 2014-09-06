@@ -1,0 +1,136 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file rle.hpp
+//!
+//!  Interface for the Run Length Encoding class, widely used loseless compressor for image and volume files.
+//!
+
+#ifndef IMAGEPLUS_COMPRESS_RLE_HPP
+#define IMAGEPLUS_COMPRESS_RLE_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \namespace imageplus::compress
+    //!
+    //! \brief compression routines
+    //!
+    namespace compress
+    {
+        //!
+        //! \brief Run Length Encoding Compressor (Id: rle.h,v 1.2)
+        //!
+        //! \author Marcus Geelnard <marcus.geelnard at home.se>
+        //! \author Adapted by Adolfo López <alopez@gps.tsc.upc.es>
+        //!
+        //! \date 17-02-2004  (adapted to C++ on 11-01-2008)
+        //!
+        //! Simple class version of the Run Length Encoding compressor algorithm.
+        //! The public interface only provides an empty constructor, a destructor
+        //! and the two basic methods compress and uncompress.
+        //! RLE (Run Length Encoding) is the simplest possible lossless compression
+        //! method. Nevertheless it serves a purpose, even in state of the art
+        //! compression (it is used in JPEG compression, for instance). The basic
+        //! principle is to identify sequences of equal bytes, and replace them with
+        //! the byte in question and a repetition count (coded in some clever
+        //! fashion).
+        //!
+        //! There are several different ways to do RLE. The particular method
+        //! implemented here is a very efficient one. Instead of coding runs for
+        //! both repeating and non-repeating sections, a special marker byte is
+        //! used to indicate the start of a repeating section. Non-repeating
+        //! sections can thus have any length without being interrupted by control
+        //! bytes, except for the rare case when the special marker byte appears in
+        //! the non-repeating section (which is coded with at most two bytes). For
+        //! optimal efficiency, the marker byte is chosen as the least frequent
+        //! (perhaps even non-existent) symbol in the input stream.
+        //!
+        //! Repeating runs can be as long as 32768 bytes. Runs shorter than 129
+        //! bytes require three bytes for coding (marker + count + symbol), whereas
+        //! runs longer than 128 bytes require four bytes for coding (marker +
+        //! counthi|0x80 + countlo + symbol). This is normally a win in compression,
+        //! and it's very seldom a loss of compression ratio compared to using a
+        //! fixed coding of three bytes (which allows coding a run of 256 bytes in
+        //! just three bytes).
+        //!
+        //! With this scheme, the worst case compression result is
+        //! (257/256)*insize + 1.
+        //!
+        //! Note: This code is based on the code found in "codrle2.c" and
+        //! "dcodrle2.c" by David Bourgin, as described in "Introduction to the
+        //! losslessy compression schemes", 1994. The main differences from Davids
+        //! implementation are the addition of long (15-bit) run counts, the removal
+        //! of file I/O (this implementation works solely with preallocated memory
+        //! buffers), and that the code is now 100% reentrant.
+        //!
+        //!
+        //! Copyright (c) 2003-2004 Marcus Geelnard
+        //!
+        //!
+        class Rle
+        {
+            public:
+                //!
+                //! \brief Default constructor, creates an RLE class
+                //!
+                Rle();
+
+                //!
+                //! \brief Destructor.
+                //!
+                ~Rle();
+
+                //!
+                //! \brief RLE Compress method
+                //!
+                //! \param[in] in: pointer to input buffer (the original data)
+                //! \param[out] out: pointer to output buffer (for compressed data)
+                //! \param[in] insize: size (in bytes) of the input data
+                //!
+                //! \return Size of compressed data.
+                //!
+                uint64 compress( const uint8 *in, uint8 *out, uint64 insize );
+
+                //!
+                //! \brief RLE Uncompress method
+                //!
+                //! \param[in] in: pointer to input buffer (compressed data)
+                //! \param[out] out: pointer to output buffer (for uncompressed data; has to be large enoguh to store uncompressed data)
+                //! \param[in] insize: size (in bytes) of the input data
+                //!
+                void uncompress( const uint8 *in, uint8 *out, uint64 insize );
+
+            private:
+                //!
+                //! \brief Encode a repetition of 'symbol' repeated 'count' times.
+                //!
+                //! \param[out] out : pointer to output buffer (for compressed data)
+                //! \param[in] outpos : stores the compressed file position update
+                //! \param[in] marker : output data character for parsing
+                //! \param[in] symbol : data byte
+                //! \param[in] count : repetitions of symbol
+                //!
+                void write_rep(uint8 *out, uint64 *outpos, uint8 marker, uint8 symbol, uint64 count);
+
+                //!
+                //! \brief Encode a non-repeating symbol, 'symbol'. 'marker' is the marker symbol, and special care has to be taken for the case
+                //! when 'symbol' == 'marker'.
+                //!
+                //! \param[out] out : pointer to output buffer (for compressed data)
+                //! \param[in] outpos : stores the compressed file position update
+                //! \param[in] marker : marker output data character for parsing
+                //! \param[in] symbol : data byte
+                //!
+                void write_non_rep( uint8 *out, uint64 *outpos, uint8 marker, uint8 symbol );
+        };
+    }//namespace compress
+} //namespace imageplus
+
+
+#endif

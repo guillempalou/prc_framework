@@ -1,0 +1,153 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file openni.hpp
+ *
+ * Auxiliary functions to use the OpenNI framework
+ */
+
+#ifndef IMAGEPLUS_TOOLBOX_OPENNI_HPP
+#define IMAGEPLUS_TOOLBOX_OPENNI_HPP
+
+
+#include <imageplus/core.hpp>
+
+#include <XnCppWrapper.h>
+//#include <XnLog.h>
+
+
+namespace imageplus
+{
+namespace toolbox
+{
+    /*!
+     * Overloaded conversor to convert a depth map from OpenNI to Point Cloud
+     *
+     * \param[in]  depth  : the depth map from OpenNI to be converted
+     * \param[out] points : A MultiArray with x,y,z coordinates of the points
+     */
+    inline
+    void oni2img(const xn::DepthGenerator& depth, MultiArray<float64,3> & points )
+    {
+#ifndef NDEBUG
+        xn::DepthMetaData dmd;
+        depth.GetMetaData(dmd);
+
+        ASSERT( dmd.XRes() == points.dims(0) &&
+                dmd.YRes() == points.dims(1),
+                "Depth dimensions mismatch: " << dmd.XRes()     << "x" << dmd.YRes() << " / "
+                                              << points.dims(0) << "x" << points.dims(1) );
+#endif
+
+        /*
+         * Allocating the projected and the real-world vector of points
+         */
+        std::size_t number_of_points = points.dims(0)*points.dims(1);
+
+        MultiArray<XnPoint3D,2> projective(points.dims(0), points.dims(1));
+        MultiArray<XnPoint3D,2> real_world(points.dims(0), points.dims(1));
+
+        /*
+         * Creating the projected points from depth
+         */
+        const XnDepthPixel* pdepth = depth.GetDepthMap();
+
+        for(XnUInt32 yy = 0; yy < points.dims(1); ++yy)
+        for(XnUInt32 xx = 0; xx < points.dims(0); ++xx)
+        {
+            projective[xx][yy].X =                  xx;
+            projective[xx][yy].Y = points.dims(1) - yy;
+            projective[xx][yy].Z = *pdepth++;
+        }
+
+        /*
+         * Convert to real world all the projected points
+         */
+        depth.ConvertProjectiveToRealWorld(number_of_points, projective.data(),
+                                                             real_world.data());
+
+        /*
+         * Saving the real-world points to the output MultiArray
+         */
+        for(XnUInt32 yy = 0; yy < points.dims(1); ++yy)
+        for(XnUInt32 xx = 0; xx < points.dims(0); ++xx)
+        {
+            points[xx][yy][0] = real_world[xx][yy].X;
+            points[xx][yy][1] = real_world[xx][yy].Y;
+            points[xx][yy][2] = real_world[xx][yy].Z;
+        }
+    }
+
+
+    /*!
+     * Overloaded conversor to convert a depth map from OpenNI to ImagePlus
+     *
+     * \param[in]  depth : the depth map from OpenNI to be converted
+     * \param[out] gry   : the ImageGray to save the depth map
+     */
+    inline
+    void oni2img(const xn::DepthGenerator& depth, ImageGray<uint16>& gry )
+    {
+#ifndef NDEBUG
+        xn::DepthMetaData dmd;
+        depth.GetMetaData(dmd);
+
+        ASSERT(dmd.XRes() == gry.size_x() && dmd.YRes() == gry.size_y(), "Depth dimensions mismatch: " << dmd.XRes() << "x" << dmd.YRes() << " / " << gry.size_x() <<"x" << gry.size_y() );
+#endif
+
+
+        /*
+         * Conversion from oni to imageplus type
+         */
+        const XnDepthPixel* pdepth = depth.GetDepthMap();
+
+        for(XnUInt32 y = 0; y < gry.size_y(); ++y)
+        {
+            for(XnUInt32 x = 0; x < gry.size_x(); ++x)
+            {
+                gry(0)[x][y] = *pdepth++;
+            }
+        }
+
+    }
+
+    /*!
+     * Overloaded conversor to convert an image from OpenNI to ImagePlus
+     *
+     * \param[in]  image : the image from OpenNI to be converted
+     * \param[out] rgb   : the ImageRGB to save the image from OpenNI
+     */
+    inline
+    void oni2img(const xn::ImageGenerator& image, ImageRGB<uint8>& rgb )
+    {
+#ifndef NDEBUG
+        xn::ImageMetaData imd;
+        image.GetMetaData(imd);
+
+        ASSERT(imd.XRes() == rgb.size_x() && imd.YRes() == rgb.size_y(), "Image dimensions mismatch: " << imd.XRes() << "x" << imd.YRes() << " / " << rgb.size_x() <<"x" << rgb.size_y() );
+#endif
+
+
+        const XnRGB24Pixel* pimage = image.GetRGB24ImageMap();
+
+        for(XnUInt32 y = 0; y<rgb.size_y(); ++y)
+        {
+            for(XnUInt32 x = 0; x<rgb.size_x(); ++x)
+            {
+                rgb(0)[x][y] = pimage->nRed;
+                rgb(1)[x][y] = pimage->nGreen;
+                rgb(2)[x][y] = pimage->nBlue;
+
+                ++pimage;
+            }
+        }
+    }
+
+} // namespace toolbox
+} // namespace imageplus
+
+#endif //IMAGEPLUS_TOOLBOX_OPENNI_HPP
+

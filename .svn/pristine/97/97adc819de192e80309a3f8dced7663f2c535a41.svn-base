@@ -1,0 +1,64 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file geometry/auxiliar.test
+ */ 
+
+#include <imageplus/descriptors/geometry/auxiliar.hpp>
+#include <imageplus/core/imagepartition.hpp>
+#include <imageplus/core/imagergb.hpp>
+#include <imageplus/core/coord2d.hpp>
+#include <imageplus/core/partition.hpp>
+#include <imageplus/core/region_contour.hpp>
+#include <imageplus/core/partition_functions.hpp>
+
+BOOST_AUTO_TEST_SUITE ( Descriptors_Geometry_Auxiliar_Suite );
+
+using namespace imageplus;
+using namespace descriptors;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE( CoordSum_test)
+{   
+    ImagePartition<> my_im_part(6,5);
+    my_im_part[0][0] = 3;   my_im_part[0][1] = 3;   my_im_part[0][2] = 5;   my_im_part[0][3] = 4;   my_im_part[0][4] = 4;
+    my_im_part[1][0] = 3;   my_im_part[1][1] = 5;   my_im_part[1][2] = 5;   my_im_part[1][3] = 5;   my_im_part[1][4] = 4;
+    my_im_part[2][0] = 6;   my_im_part[2][1] = 5;   my_im_part[2][2] = 3;   my_im_part[2][3] = 5;   my_im_part[2][4] = 1;
+    my_im_part[3][0] = 6;   my_im_part[3][1] = 5;   my_im_part[3][2] = 5;   my_im_part[3][3] = 5;   my_im_part[3][4] = 1;
+    my_im_part[4][0] = 6;   my_im_part[4][1] = 2;   my_im_part[4][2] = 5;   my_im_part[4][3] = 2;   my_im_part[4][4] = 1;
+    my_im_part[5][0] = 6;   my_im_part[5][1] = 2;   my_im_part[5][2] = 2;   my_im_part[5][3] = 2;   my_im_part[5][4] = 1;
+    
+    ImageRGB<uint8> my_image(6,5);
+
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions( 1,  2,  8, my_part);
+    merge_regions( 3,  4,  9, my_part);
+    merge_regions( 5,  6, 10, my_part);
+    merge_regions( 8,  9, 11, my_part);
+    merge_regions(10, 11, 12, my_part);  
+   
+    CoordSum<Coord2D<int64> > desc;
+    desc= calc_descriptor(new CoordSum<Coord2D<int64> > ,  my_image, my_part[6]);
+    BOOST_CHECK_EQUAL(desc[0], (int64)14);
+    BOOST_CHECK_EQUAL(desc[1], (int64) 0);
+    
+    desc= calc_descriptor(new CoordSum<Coord2D<int64> > ,  my_image, my_part[3]);
+    BOOST_CHECK_EQUAL(desc[0], (int64)3);
+    BOOST_CHECK_EQUAL(desc[1], (int64)3);
+    
+    desc= calc_descriptor(new CoordSum<Coord2D<int64> > ,  my_image, my_part[12]);
+    BOOST_CHECK_EQUAL(desc[0], (int64)75);
+    BOOST_CHECK_EQUAL(desc[1], (int64)60);
+}
+
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+

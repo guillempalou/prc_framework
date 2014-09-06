@@ -1,0 +1,139 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file numeric/distances.test
+ */
+
+#include <iostream>
+#include <imageplus/core.hpp>
+#include <imageplus/math/numeric/products.hpp>
+#include <imageplus/math/numeric/distances.hpp>
+#include <cmath>
+
+#include <boost/test/floating_point_comparison.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( distancesSuite );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+//typedef boost::mpl::list<uint8,int64,float64> DataTypes;
+
+typedef boost::mpl::list<
+    boost::mpl::pair<   uint8, boost::mpl::int_<1> >,
+    boost::mpl::pair<  uint16, boost::mpl::int_<1> >,
+    boost::mpl::pair<    int8, boost::mpl::int_<1> >,
+    boost::mpl::pair<   int16, boost::mpl::int_<1> >,
+    boost::mpl::pair<   int32, boost::mpl::int_<1> >,
+    boost::mpl::pair<   int64, boost::mpl::int_<1> >,
+    boost::mpl::pair< float64, boost::mpl::int_<1> >,
+
+    boost::mpl::pair<   uint8, boost::mpl::int_<2> >,
+    boost::mpl::pair<  uint16, boost::mpl::int_<2> >,
+    boost::mpl::pair<    int8, boost::mpl::int_<2> >,
+    boost::mpl::pair<   int16, boost::mpl::int_<2> >,
+    boost::mpl::pair<   int32, boost::mpl::int_<2> >,
+    boost::mpl::pair<   int64, boost::mpl::int_<2> >,
+    boost::mpl::pair< float64, boost::mpl::int_<2> >
+> DataTypes;
+
+//
+// This types have problems with std::abs and std::pow
+//
+//boost::mpl::pair<  uint32, boost::mpl::int_<1> >,
+//boost::mpl::pair<  uint64, boost::mpl::int_<1> >,
+//boost::mpl::pair< float32, boost::mpl::int_<1> >,
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( distances_test_multiarray, TT, DataTypes )
+{
+    typedef typename TT::first  T;
+    typedef typename TT::second N;
+
+    boost::array< size_t, N::value> dims;
+    
+    
+    for (int i=0; i < N::value; i++) dims[i] = static_cast<std::size_t>(std::pow( 64, 1.0/N::value));
+    
+    //
+    // Old tests with only N=1 uses 10 elements
+    // Their results are also commented below
+    //
+    //for (int i=0; i < N::value; i++) dims[i] = 10;
+    
+    MultiArray< T, N::value> v1(dims);
+    MultiArray< T, N::value> v2(dims);
+    
+    T* pv1 = v1.data();
+    T* pv2 = v2.data();
+    for (std::size_t i=0; i < v1.num_elements(); i++)
+    {
+        *(pv1++) = i;
+        *(pv2++) = v1.num_elements() - i;
+    }
+
+
+    float64 n2 = euclidean_distance (v1, v2);
+    float64 p2 = p_norm_distance (v1, v2, 2.0); // Euclidean
+    float64 p1 = p_norm_distance (v1, v2, 1.0); // Manhattan
+    float64 mh = manhattan_distance (v1, v2);
+    float64 in = infinity_norm_distance (v1, v2);
+
+    
+    
+
+    //
+    // Results with old tests
+    //
+//    BOOST_CHECK_SMALL(std::abs(n2 - 18.43908),  1.0e-5);
+//    BOOST_CHECK_SMALL(std::abs(n2 - p2), 1.0e-5);
+//    BOOST_CHECK_SMALL(std::abs(mh - 50.0), 1.0e-5);
+//    BOOST_CHECK_SMALL(std::abs(mh - p1),   1.0e-5);
+//    BOOST_CHECK_SMALL(std::abs(in - 10.0),  1.0e-5);
+    
+    BOOST_CHECK_SMALL(std::abs(n2 - 295.6754978),  1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(n2 - p2),           1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(mh - 2048.0),       1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(mh - p1),           1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(in - 64.0),         1.0e-5);
+
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( distances_test_array, TT, DataTypes )
+{
+    
+    typedef typename TT::first  T;
+    typedef typename TT::second N;
+
+    boost::array<T,64> v1;
+    boost::array<T,64> v2;
+
+    for (int i=0; i < 64; i++)
+    {
+        v1[i] = i;
+        v2[i] = 64 - i;
+    }
+
+    float64 n2 = euclidean_distance (v1, v2);
+    float64 p2 = p_norm_distance (v1, v2, 2.0); // Euclidean
+    float64 p1 = p_norm_distance (v1, v2, 1.0); // Manhattan
+    float64 mh = manhattan_distance (v1, v2);
+    float64 in = infinity_norm_distance (v1, v2);
+
+    
+    BOOST_CHECK_SMALL(std::abs(n2 - 295.6754978),  1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(n2 - p2),           1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(mh - 2048.0),       1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(mh - p1),           1.0e-5);
+    BOOST_CHECK_SMALL(std::abs(in - 64.0),         1.0e-5);
+}    
+
+
+
+BOOST_AUTO_TEST_SUITE_END ();

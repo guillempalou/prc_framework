@@ -1,0 +1,149 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imageyuv.hpp
+//!
+//!  Interface for ImageCIELab class
+//!
+
+#ifndef IMAGEPLUS_CORE_IMAGECIELAB_HPP
+#define IMAGEPLUS_CORE_IMAGECIELAB_HPP
+
+#include <imageplus/core/image.hpp>
+
+namespace imageplus
+{
+
+    //!
+    //! \brief base class to CIE L*ab images
+    //!
+    //! \author Guillem Palou Visa <gpalou@gps.upc.es>
+    //!
+    //! \date 3-12-2009
+    //!
+    //! Template T is the type of the data
+    //!
+    //! The declaration should be:
+    //! \code
+    //!    ImageCIELab<uint8> a(4,4);
+    //! \endcode
+    //!
+    //! This creates an ImageYUV of uint8 values with size 4x4.
+    //!
+    //! The access of a pixel is done as the ImaVol class:
+    //! \code
+    //!    a(L_CHANNEL)[1][3] = 0 // Access to pixel (x=1,y=3) in the L channel
+    //! \endcode
+    //! or
+    //! \code
+    //!    a(A_CHANNEL)[1][3] = 0 // Access to pixel (x=1,y=3) in the *a channel
+    //! \endcode
+    //!
+    //! See file multiarray.hpp to a more detail explanation on access
+    //!
+    template<typename T>
+    class ImageCIELab :public Image <T,3>
+    {
+        public:
+
+            //!
+            //! \brief Default constructor
+            //!
+            ImageCIELab();
+
+            //!
+            //! \brief Constructor for 2 dimensions
+            //!
+            //! \param[in] x : X size of the image
+            //! \param[in] y : Y size of the image
+            //!
+            ImageCIELab(uint64 x, uint64 y);
+
+            //!
+            //! \brief Copy constructor for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this imavol
+            //!
+            ImageCIELab(const ImaVol<T,3,2>& copy);
+
+            //!
+            //! \brief Copy constructor for Image
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this image
+            //!
+            ImageCIELab(const Image<T,3>& copy);
+
+            //!
+            //! \brief Copy constructor for ImageCIELab
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this image
+            //!
+            ImageCIELab(const ImageCIELab<T>& copy);
+
+            //!
+            //! \brief Constructor with a vector of dimentions
+            //!
+            //! \param[in] dims: Vector of vectors with the dimension of each channel
+            //!
+            explicit ImageCIELab(const std::vector< std::vector<uint64> >& dims);
+
+            //!
+            //! \brief Destructor
+            //!
+            virtual ~ImageCIELab();
+
+            //!
+            //! \brief Assignment operator for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this imavol
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            ImageCIELab& operator=( const ImaVol<T,3,2>& copy );
+
+            //!
+            //! \brief Assignment operator for Image
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this Image
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            ImageCIELab& operator=( const Image<T,3>& copy );
+
+            //!
+            //! \brief Assignment operator for ImageCIELab
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this ImageCIELab
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            ImageCIELab& operator=( const ImageCIELab<T>& copy );
+
+            //!
+            //! \brief Assignment operator for values (fills the entire image)
+            //!
+            //! \param[in] val : Value to fill all pixel
+            //!
+            //! \return val, to concatenate
+            //!
+            const T& operator=( const T& val );
+
+            //!
+            //! \brief Color space
+            //!
+            //! \return Color space
+            //!
+            virtual
+            ColorSpace color_space() const
+            {
+                return CIELab;
+            }
+
+    };
+
+}
+
+#endif

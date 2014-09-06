@@ -1,0 +1,62 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file io_auxiliar.hpp
+ *
+ * Auxiliar methos for io module
+ */
+
+#ifndef IMAGEPLUS_IO_AUXILIAR_HPP
+#define IMAGEPLUS_IO_AUXILIAR_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/io_types.hpp>
+
+#include <string>
+
+namespace imageplus
+{
+    namespace io
+    {
+        //!
+        //! \brief Gets the format from the filename extension
+        //!
+        //! \param[in] file_path  : Filename to get the extension (format)
+        //! 
+        //! \return the image format from the filename
+        //!
+        //! \author Albert Gil Moreno <agil@tsc.upc.edu>
+        //!
+        ImageFormat get_image_format(const std::string& file_path);
+
+        /*!
+         * \returns the ImageFormat reading the the "MagickNumbers" of the file headers
+         *
+         * See <a ref="http://en.wikipedia.org/wiki/Magic_number_%28programming%29"> Magick Numbers </a> for
+         * further information
+         *
+         * \param[in] file_path : filename to get the format (normally has no extension)
+         *
+         * \author 2010-2011 - Jordi Pont - Created because it was necessary to communicate
+         *                                  with UPSeek ("i3media" project)
+         */
+        ImageFormat get_image_format_from_header(const std::string& file_path);
+
+        //!
+        //! \brief Gets dimensions from image file
+        //!
+        //! \param[in] file_path  : Filename to get the extension (format)
+        //! \param[in]     format : Format of th einput image
+        //! 
+        //! \return dimensions of the image
+        //!
+        //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+        //!
+        std::vector<uint64> get_image_dimensions(const std::string& file_path, const ImageFormat format);
+    }
+}
+
+#endif // IMAGEPLUS_IO_AUXILIAR_HPP

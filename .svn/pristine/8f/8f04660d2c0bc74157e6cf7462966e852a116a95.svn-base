@@ -1,0 +1,169 @@
+/*
+ * graph_io.hpp
+ *
+ *  Created on: Nov 9, 2011
+ *      Author: guillem
+ */
+
+#ifndef GRAPH_IO_HPP_
+#define GRAPH_IO_HPP_
+
+#include <fstream>
+#include <boost/graph/adjacency_list_io.hpp>
+#include <boost/graph/graphviz.hpp>
+#include <boost/filesystem/path.hpp>
+#include <boost/filesystem/operations.hpp>
+
+#include <imageplus/math/graphs/graph.hpp>
+
+namespace imageplus {
+	namespace math {
+		namespace graphs {
+
+
+	//! Class to read graphs from files
+	//! It detects automatically the .dot extension and reads accordingly
+	//! \pram Graph : BoostGraph<> class
+	template<class Graph>
+	class ReadGraph {
+
+		//! Input file stream
+		std::ifstream _ifs;
+
+	public:
+		//! Default constructor
+		ReadGraph() {
+		}
+
+		//! Read a graph from a file
+		//! \param[in] path : path to the file to read from
+		//! \param[in] g : graph where the read info will be stored
+		//! \param[in] properties : true(default) if the edge/node properties should be read
+		void read(std::string path, Graph& g, bool properties = true) {
+			_read(path, g, properties);
+		}
+
+	private:
+
+		/*!
+		 * \cond SKIP_DOC
+		 *
+		 * Private common implementation.
+		 */
+		void _read(std::string path, Graph& g, bool properties) {
+			boost::filesystem::path p = path;
+			if (!boost::filesystem::exists(p)) throw ImagePlusError("No file to read a Graph from");
+
+			_ifs.open(path.c_str());
+
+			// Fo the moment, reading dot syntax files is unsupported
+			//if (p.extension() == ".dot") {
+			//	boost::read_graphviz(_ifs, g.graph());
+			//} else
+
+			_ifs >> boost::read(g.graph());
+		}
+		/*!
+		 * \endcond SKIP_DOC
+		 */
+
+	};
+
+	//! Class to write graphs to files
+	//! It detects automatically the .dot extension and writes accordingly
+	//! \pram Graph : BoostGraph<> class
+	template<class Graph>
+	class WriteGraph {
+
+		//! Output file stream
+		std::ofstream _ofs;
+
+	public:
+
+		//! Default constructor
+		WriteGraph() {
+		}
+
+		//!  Write a graph to a file
+		//! \param[in] path : path to the file to write to
+		//! \param[in] g : graph to write
+		//! \param[in] properties : true(default) if the edge/node properties should be written
+		void write(const Graph& g, std::string path, bool properties = true) {
+			_write(g, path, properties);
+		}
+
+	private:
+
+		/*!
+		 * \cond SKIP_DOC
+		 *
+		 * Private common implementation.
+		 */
+		void _write(const Graph& g, std::string path, bool properties) {
+
+			_ofs.open(path.c_str());
+
+			boost::filesystem::path p = path;
+
+			if (p.extension() == ".dot") {
+				boost::write_graphviz(_ofs, g.graph());
+			} else
+			_ofs << boost::write(g.graph());
+
+			_ofs.close();
+		}
+		/*!
+		 * \endcond SKIP_DOC
+		 */
+	};
+
+	/**************************************************
+	 * 												  *
+	 *  Helpers for writing the default structures    *
+	 *                                                *
+	 **************************************************/
+
+	//! operator<< overloading for the Default node properties. needed to read/write
+	//! param[in] os : output stream
+	//! param[in] n : node properties
+	inline std::ostream& operator<<(std::ostream& os,const NodeDefaultProperties& n) {
+		os << n.id << " ";
+		return os;
+	}
+
+	//! operator<< overloading for the Default edge properties. needed to read/write
+	//! param[in] os : output stream
+	//! param[in] e : edge properties
+	inline std::ostream& operator<<(std::ostream& os,const EdgeDefaultProperties& e) {
+		os << e.weight << " ";
+		return os;
+	}
+
+	/**************************************************
+	 * 												  *
+	 *  Helpers for reading the default structures    *
+	 *                                                *
+	 **************************************************/
+
+	//! operator<< overloading for the Default node properties. needed to read/write
+	//! param[in] is : input stream
+	//! param[in] n : node properties
+	inline std::istream& operator>>(std::istream& is,NodeDefaultProperties& n) {
+		is >> n.id;
+		return is;
+	}
+
+	//! operator<< overloading for the Default edge properties. needed to read/write
+	//! param[in] is : input stream
+	//! param[in] e : edge properties
+	inline std::istream& operator>>(std::istream& is,EdgeDefaultProperties& e) {
+		is >> e.weight;
+		return is;
+	}
+
+		}
+	}
+}
+
+
+#endif /* GRAPH_IO_HPP_ */

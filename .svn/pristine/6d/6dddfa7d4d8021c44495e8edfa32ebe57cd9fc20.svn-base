@@ -1,0 +1,148 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file normalization.hpp
+//!
+//!  Methods for normalization
+//!
+
+#ifndef IMAGEPLUS_MATH_NUMERIC_NORMALIZATION_HPP 
+#define IMAGEPLUS_MATH_NUMERIC_NORMALIZATION_HPP
+
+#include <imageplus/core.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            //!
+            //! \brief Type of normalization (ROWWISE / COLUMNWISE) for 2D matrices
+            //!
+            enum NormalizationType
+            {
+                ROWWISE_NORMALIZATION,
+                COLUMNWISE_NORMALIZATION
+            };
+
+            //!
+            //! \brief Row or column-wise matrix normalization
+            //!
+            //! \tparam T1 : Type of the input data. Must be a floating point type (i.e. float32 or float64)
+            //! \tparam T2 : Type of the output data. Must be a floating point type (i.e. float32 or float64)
+            //!
+            //! For each column (row) of a matrix calculates its mean and its variance. Later it substracts the   
+            //! mean from each element of the column (row) and divides by the variance. 
+            //!
+            //! \param[in] in : Input matrix
+            //! \param[in] dir : Direction of the normalization. Allowed values are ROWWISE_NORMALIZATION or COLUMNWISE_NORMALIZATION (default)
+            //!
+            //! \return Normalized matrix
+            //!
+            //! \exception ImagePlusNotImplemented : Exception is thrown when normalization type is different from ROWWISE or COLUMNWISE
+            //!
+            //! \date 22-5-2008
+            //!
+            //! \author Roger Gimeno Hernandez <algimeno@gps.tsc.upc.edu>
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //!
+            template<typename T1, typename T2>
+            MultiArray<T1,2> mean_var_normalization(const MultiArray<T2,2>& in, NormalizationType dir = COLUMNWISE_NORMALIZATION) throw (ImagePlusNotImplemented);
+            
+            //!
+            //! \brief Row or column-wise matrix mean normalization
+            //!
+            //! \tparam T1 : Type of the input data. Must be a floating point type (i.e. float32 or float64)
+            //! \tparam T2 : Type of the output data. Must be a floating point type (i.e. float32 or float64)
+            //!
+            //! Calculate the mean of each column (row) in a matrix and substract it from each element of the column (row)
+            //!
+            //! \param[in] in  : Input matrix
+            //! \param[in] dir : Direction of the normalization. Allowed values are ROWWISE_NORMALIZATION or COLUMNWISE_NORMALIZATION (default)
+            //!
+            //! \return Normalized matrix
+            //!
+            //! \exception ImagePlusNotImplemented : Exception is thrown when normalization type is different from ROWWISE or COLUMNWISE
+            //!
+            //! \date 30-5-2008
+            //!
+            //! \author Roger Gimeno Hernandez <algimeno@gps.tsc.upc.edu>
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //!
+            template<typename T1, typename T2>
+            MultiArray<T1,2> mean_normalization(const MultiArray<T2,2>& in, NormalizationType dir = COLUMNWISE_NORMALIZATION) throw (ImagePlusNotImplemented);
+            
+            //!
+            //! \brief Row or column-wise matrix mean-norm normalization (mean 0, norm 1)
+            //!
+            //! \tparam T1 : Type of the input data. Must be a floating point type (i.e. float32 or float64)
+            //! \tparam T2 : Type of the output data. Must be a floating point type (i.e. float32 or float64)
+            //!
+            //! Normalize a matrix in norm (mean 0, norm 1) column by column (row by row)
+            //!
+            //! \param[in] xmat : Input matrix
+            //! \param[in] dir  : Direction of the normalization. Allowed values are ROWWISE_NORMALIZATION or COLUMNWISE_NORMALIZATION (default)
+            //!
+            //! \return Normalized matrix
+            //!
+            //! \exception ImagePlusNotImplemented : Exception is thrown when normalization type is different from ROWWISE or COLUMNWISE
+            //!
+            //! \date 10-7-2008
+            //!
+            //! \author Roger Gimeno Hernandez <algimeno@gps.tsc.upc.edu>
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //!
+            template<typename T1, typename T2>
+            MultiArray<T1,2> mean_norm_normalization(const MultiArray<T2,2>& xmat, NormalizationType dir = COLUMNWISE_NORMALIZATION) throw (ImagePlusNotImplemented);
+            
+            //!
+            //! \brief Vector normalization (mean 0, norm 1) 
+            //!
+            //! \tparam T1 : Type of the input data. Must be a floating point type (i.e. float32 or float64)
+            //! \tparam T2 : Type of the output data. Must be a floating point type (i.e. float32 or float64)
+            //!
+            //! \param[in] xmat :   Input vector
+            //!
+            //! \return Normalized vector
+            //!
+            //! \date 10-7-2008
+            //!
+            //! \author Roger Gimeno Hernandez <algimeno@gps.tsc.upc.edu>
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //!
+            template<typename T1, typename T2>
+            MultiArray<T1,1> mean_norm_normalization(const MultiArray<T2,1>& xmat);
+            //!
+            //! \brief Row or column-wise matrix norm normalization (norm 1)
+            //!
+            //! \tparam T1 : Type of the input data. Must be a floating point type (i.e. float32 or float64)
+            //! \tparam T2 : Type of the output data. Must be a floating point type (i.e. float32 or float64)
+            //!
+            //! Normalize a matrix in norm (norm 1) column by column (row by row)
+            //!
+            //! \param[in] xmat : Input matrix
+            //! \param[in] dir  : Direction of the normalization. Allowed values are ROWWISE_NORMALIZATION or COLUMNWISE_NORMALIZATION (default)
+            //!
+            //! \return Normalized matrix
+            //!
+            //! \exception ImagePlusNotImplemented : Exception is thrown when normalization type is different from ROWWISE or COLUMNWISE
+            //!
+            //! \date 10-7-2009
+            //!
+            //! \author Adolfo López <alopez@gps.tsc.upc.edu>
+            //! \author Roger Gimeno Hernandez <algimeno@gps.tsc.upc.edu>
+            //! \author Ramon Morros <ramon.morros@upc.edu>
+            //!
+            template<typename T1, typename T2>
+            MultiArray<T1,2> norm_normalization(const MultiArray<T2,2>& xmat, NormalizationType dir = COLUMNWISE_NORMALIZATION) throw (ImagePlusNotImplemented);
+            
+        }
+    } 
+}
+
+#endif

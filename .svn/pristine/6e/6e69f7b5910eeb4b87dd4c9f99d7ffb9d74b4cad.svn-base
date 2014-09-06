@@ -1,0 +1,59 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file bpt_models.hpp
+//!
+//!  \brief Mandatory properties and functions of the BPT models and merging criteria
+//!
+
+#ifndef IMAGEPLUS_BPT_BPT_MODELS_HPP
+#define IMAGEPLUS_BPT_BPT_MODELS_HPP
+
+#include <imageplus/segmentation/partition/hierarchical_region_partition.hpp>
+#include <imageplus/descriptors/descriptor_manager.hpp>
+
+namespace imageplus
+{    
+    namespace bpt
+    {
+        
+        //! Class from which any model must inherit to work properly
+        template<class SignalModel, class BPT, typename order_type=float64>
+        class BaseDistanceModel
+        {
+        	typedef typename BPT::RegionType					RegionType;
+
+        public:
+
+        	struct Parameters {
+
+        	};
+
+        	static const Parameters default_parameters() {
+        		return Parameters();
+        	}
+
+
+        	BaseDistanceModel(const Parameters& pars = default_parameters()) {
+
+        	}
+            
+            //! This function computes the order of a given link (edge of the RAG)
+            //!
+            //! \param reg1 : Region of one extremum of the link
+            //! \param reg2 : Region of the other extremum of the link
+            //! \param image : Image being processed
+            //! \param bpt : Partition at the moment of the merging
+            //! \return The order of the link
+            virtual order_type region_distance(RegionType& reg1, RegionType& reg2, SignalModel& image, BPT& bpt, descriptors::DescriptorManager& manager) {return 0.;};
+            
+        };
+        
+    }
+}
+
+#endif
+

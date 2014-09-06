@@ -1,0 +1,180 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file ortho_basis_codec.test
+ */
+
+#include <iostream>
+
+#include <boost/format.hpp>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io.hpp>
+
+#include <imageplus/math/statistics/random_generators.hpp>
+#include <imageplus/coding/texture/ortho_basis_codec.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( OrthoBasisCodec_Compress_Suite );
+
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace imageplus::coding::texture;
+
+namespace ms = imageplus::math::statistics;
+
+BOOST_AUTO_TEST_CASE ( OrthoBasisCodec_Compress )
+{
+    const uint64 num_channels = 1;
+    
+    for (uint64 regs = 0; regs < 1; regs++)
+    { 
+        int32 nregs = ms::rand_uniform_int((int32)10,(int32)100);
+
+        // Create a fake label image
+        ImagePartition<uint32> label(11,11);
+        label = 1; uint64 p = 0;
+        for (int32 n = 2; n <= nregs; n++)
+        {
+            label(0).data()[p++] = (uint32)n;
+        }
+
+        
+        for (uint64 order=1; order<4; order++)
+        {
+            uint64 dim = (order+1)*(order+1);
+            
+            for (uint8 q=1; q<11; q++)
+            {
+
+                for (uint8 ac_model = 0; ac_model < 3; ac_model++)
+                {
+                  
+                    const uint64 number_frames = 5;
+                    int32 gop = ms::rand_uniform_int((int32)2,(int32)4);
+ 
+                    //std::cerr << "nregs = " << nregs << "; order = " << order << "; q = " << (int16)q << "; ac_model = " << (int16)ac_model << "; gop = " << gop << std::endl;
+
+                    // 
+                    // Create coeffs data
+                    //
+                    std::vector< QTextureCoeffs<num_channels> > vec_coeffs;
+
+                    // Set probability for each coefficient
+                    MultiArray<float64,1> prob(dim);
+                    imageplus::random(prob,0.99);
+
+                    for (uint64 f = 0; f < number_frames; f++)
+                    {
+                        
+                        // Declare variable
+                        QTextureCoeffs<num_channels> coeffs(nregs+1,dim,q);
+                        
+                        const int64 max_value =  ( 1 << (12 - q) ) - 1 ;
+                        //const int64 middle_value = ( 1 << (12 - q - 1) ) - 1;
+                        
+                        // Fill it with data
+                        for (uint64 i = 1 ; i < coeffs.size(); i++)
+                        {
+                            //uint8  nbits = (uint8)((int64)13 - (int64)coeffs[i].quant);
+                            for (uint64 j = 0 ; j < num_channels; j++)
+                            {
+                                for (uint64 k = 0 ; k < coeffs[i][j].size(); k++)
+                                {
+                                    coeffs[i][j][k] = ms::rand_binomial(max_value,prob[k]);
+                                }
+                            }
+                        }
+                        
+                        vec_coeffs.push_back(coeffs);
+                        
+                    }
+
+
+                    // 
+                    // Compress coeffs
+                    //
+                    WriteBitStream wbs(std::string(TEST_DATA_PATH_W) + std::string("/ortho_basis_compress.bin"));
+
+                    OrthoBasisCodec obc(order, ac_model, gop, q);
+                    OrthoBasisCodec obc_single(order, ac_model, gop, q);
+               
+                    for (uint64 f = 0; f < number_frames; f++)
+                    {
+
+                        uint64 b, b_single;
+                        std::string filenames = std::string(TEST_DATA_PATH_W) + boost::str(boost::format("/ortho_basis_compress_f%03d.bin") % f);
+                        
+                        b = obc.compress(label,
+                                         vec_coeffs[f],
+                                         filenames);
+
+                        b_single = obc_single.compress(label,
+                                                       vec_coeffs[f],
+                                                       wbs);
+
+                        BOOST_CHECK ( b == b_single );
+
+                        //std::cerr << "frame = " << f << "; bits = " << b << std::endl;
+
+                    }
+                    
+                    wbs.close();
+
+                    //
+                    // Decompress data
+                    //
+                    std::vector< QTextureCoeffs<num_channels> > vec_coeffs2;
+                    std::vector< QTextureCoeffs<num_channels> > vec_coeffs3;
+
+                    ReadBitStream rbs(std::string(TEST_DATA_PATH_W) + std::string("/ortho_basis_compress.bin"));
+
+                    OrthoBasisCodec obc2(order, ac_model, gop, q);
+                    OrthoBasisCodec obc3(order, ac_model, gop, q);
+               
+                    for (uint64 f = 0; f < number_frames; f++)
+                    {
+                        std::string filenames = std::string(TEST_DATA_PATH_W) + boost::str(boost::format("/ortho_basis_compress_f%03d.bin") % f);
+                        
+                        QTextureCoeffs<num_channels> coeffs;
+                        obc2.decompress(label,
+                                       filenames,
+                                       coeffs);
+                        vec_coeffs2.push_back(coeffs);
+
+                        obc3.decompress(label,
+                                        rbs,
+                                        coeffs);
+                        vec_coeffs3.push_back(coeffs);
+
+                    }
+
+                    rbs.close();
+
+                    //
+                    // Check data
+                    // 
+                    BOOST_CHECK( vec_coeffs.size() == vec_coeffs2.size() );
+                    BOOST_CHECK( vec_coeffs.size() == vec_coeffs3.size() );
+
+                    for (uint64 c = 0; c < vec_coeffs.size(); c++)
+                    {
+                        BOOST_CHECK( vec_coeffs[c] == vec_coeffs2[c] );
+                        BOOST_CHECK( vec_coeffs[c] == vec_coeffs3[c] );
+                    }
+
+
+                } // ac_model
+
+            } // q
+
+        } // order
+
+    } // nreg
+
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

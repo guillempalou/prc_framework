@@ -1,0 +1,416 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file convert_colorspace.hpp
+//!
+//!  Several conversion functions for multiarrays, imavols and images
+//!
+
+#ifndef IMAGEPLUS_CORE_CONVERT_COLORSPACE_HPP
+#define IMAGEPLUS_CORE_CONVERT_COLORSPACE_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+#include <imageplus/core/imavol.hpp>
+#include <imageplus/core/imagegray.hpp>
+#include <imageplus/core/imagergb.hpp>
+#include <imageplus/core/imagecielab.hpp>
+#include <imageplus/core/imageyuv.hpp>
+#include <imageplus/core/imageyiq.hpp>
+#include <imageplus/core/imageriq.hpp>
+#include <imageplus/core/imagercq.hpp>
+#include <imageplus/core/imageruv.hpp>
+#include <imageplus/core/imageyuv420.hpp>
+#include <imageplus/core/imageyuv422.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \brief Convert an ImageRGB to an ImageGray
+    //!
+    //! \tparam T : Type of the data 
+    //!
+    //! \param[in] image : image to convert
+    //!
+    //! \return Gray scale image (ImageGray)
+    //!
+    //! \relatedalso ImageGray
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //! \date 10-1-2008
+    //!
+    template<typename T>
+    const ImageGray<T> to_gray( const ImageRGB<T>& image);
+    
+    //!
+    //! \brief Convert an ImageYUV to an ImageGray (gets the Y channel)
+    //!
+    //! \tparam T : Type of the data 
+    //!
+    //! \param[in] image : image to convert
+    //!
+    //! \return Gray scale image (ImageGray)
+    //!
+    //! \relatedalso ImageGray
+    //!
+    //! \author Carles Ventura <cventura@gps.tsc.upc.edu>
+    //! \date 27-07-2009
+    //!
+    template<typename T>
+    const ImageGray<T> to_gray( const ImageYUV<T>& image);
+    
+    //!
+    //! \brief Convert an ImageRGB to an ImageGray
+    //!
+    //! \tparam T : Type of the data 
+    //!
+    //! \param[in] image : image to convert
+    //!
+    //! \return Gray scale image (ImageGray)
+    //!
+    //! \relatedalso ImageGray
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //! \date 10-1-2008
+    //!
+    template<typename T>
+    const ImageGray<T> to_gray( const ImaVol<T,3,2>& image);
+    
+    //!
+    //! \brief Done for generalization purposes, it does nothing
+    //!
+    //! \tparam T : Type of the data 
+    //!
+    //! \param[in] image : image to convert
+    //!
+    //! \return Gray scale image (ImageGray)
+    //!
+    //! \relatedalso ImageGray
+    //!
+    //! \author Carles Ventura <cventura@gps.tsc.upc.edu>
+    //! \date 27-07-2009
+    //!
+    template<typename T>
+    const ImageGray<T> to_gray( const ImaVol<T,1,2>& image);
+ 
+    //!
+    //! \brief Convert an ImageRGB to an ImageYUV
+    //!
+    //! Y, Cb, and Cr are converted from R, G, and B as defined in CCIR Recommendation 601
+    //! See the <a href="http://en.wikipedia.org/wiki/Ycbcr">wikipedia</a>.
+    //!
+    //! Please note that in this RGB <-> YCbCr conversion there can be color differences when converting back
+    //! to RGB.
+    //! 
+    //! \param[in] image : image uint8 to convert (RGB)
+    //!
+    //! \return YUV image (ImageYUV<uint8>)
+    //!
+    //! \relatedalso ImageYUV
+    //!
+    //! \date 18-1-2008
+    //!
+    const ImageYUV<uint8> to_yuv( const ImageRGB<uint8>& image);
+    
+    //!
+    //! \brief Done for generalization purposes, it does nothing
+    //!
+    //! \param[in] image : image uint8 to convert (YUV)
+    //!
+    //! \return YUV image (ImageYUV<uint8>)
+    //!
+    //! \relatedalso ImageYUV
+    //!
+    //! \author Carles Ventura <cventura@gps.tsc.upc.edu>
+    //! \date 27-07-2009
+    //!
+    const ImageYUV<uint8> to_yuv( const ImageYUV<uint8>& image);
+
+    //!
+    //! \brief Convert an ImageRGB to an ImageYUV (specialization for float64 type)
+    //!
+    //! This function is not implemented on pourpose 
+    //! because it is not clear how the conversion is defined. Contact the ImagePlus
+    //! gurus if you need it.
+    //!
+    //! \param[in] image : image to convert (RGB)
+    //!
+    //! \return Nothing!
+    //!
+    //! \exception ImagePlusNotImplemented : Exception is thrown because function is not implemented
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //! \date 18-1-2008
+    //!
+    const ImageYUV<float64> to_yuv( const ImageRGB<float64>& image) throw (ImagePlusNotImplemented);
+    
+    //!
+    //! \brief Done for generalization purposes, it does nothing
+    //!
+    //! \param[in] image : 3-channel image uint8 to convert (YUV)
+    //!
+    //! \return YUV image (ImageYUV<uint8>)
+    //!
+    //! \exception ImagePlusNotImplemented : Exception is thrown because the colorspace is not known
+    //!
+    //! \author Carles Ventura <cventura@gps.tsc.upc.edu>
+    //! \date 27-07-2009
+    //!
+    const ImageYUV<uint8> to_yuv( const Image<uint8, 3>& image) throw (ImagePlusNotImplemented);
+
+    //!
+    //! \brief Convert an ImageYUV420 to an ImageYUV 
+    //!
+    //! The conversion is done using the normative (H.264) upsampling method
+    //!
+    //! \tparam T : Type of the data 
+	//!
+    //! \param[in] image : image to convert (YUV420)
+    //!
+    //! \return YUV image (ImageYUV)
+    //!
+    //! \relatedalso ImageYUV
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \date 25-3-2008
+    //!
+    template<typename T>
+    const ImageYUV<T> to_yuv( const ImageYUV420<T>& image);
+
+    //!
+    //! \brief Convert an ImageYUV422 to an ImageYUV 
+    //!
+    //! The conversion is done using the normative (H.264) upsampling method
+    //!
+    //! \tparam T : Type of the data 
+	//!
+    //! \param[in] image : image to convert (YUV422)
+    //!
+    //! \return YUV image (ImageYUV)
+    //!
+    //! \relatedalso ImageYUV
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \date 25-3-2008
+    //!
+    template<typename T>
+    const ImageYUV<T> to_yuv( const ImageYUV422<T>& image);
+
+    //!
+    //! \brief Convert an ImageYUV to an ImageRGB
+    //!
+    //! Y, Cb, and Cr are converted to R, G, and B as defined in CCIR Recommendation 601
+    //! See the <a href="http://en.wikipedia.org/wiki/Ycbcr">wikipedia</a>.
+    //!
+    //! Please note that in this RGB <-> YCbCr conversion there can be color differences when converting back
+    //! to YCbCr
+    //! 
+    //! \param[in] image : image to convert (YUV)
+    //!
+    //! \return RGB image (ImageRGB)
+    //!
+    //! \relatedalso ImageRGB
+    //!
+    //! \date 18-1-2008
+    //!
+    const ImageRGB<uint8> to_rgb( const ImageYUV<uint8>& image);
+
+    //!
+    //! \brief Convert an ImageYUV to an ImageRGB (specialization for float64 type)
+    //!
+    //! This function is not implemented on pourpose 
+    //! because it is not clear how the conversion is defined. Contact the ImagePlus
+    //! gurus if you need it.
+    //!
+    //! \param[in] image : image to convert (YUV)
+    //!
+    //! \return RGB image (ImageRGB)
+    //!
+    //! \exception ImagePlusNotImplemented : Exception is thrown because function is not implemented
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //! \date 18-1-2008
+    //!
+    const ImageRGB<float64> to_rgb( const ImageYUV<float64>& image) throw (ImagePlusNotImplemented);
+
+    //!
+    //! \brief Convert an ImageYUV to an ImageRGB
+    //!
+    //! \tparam T : Type of the data 
+    //!
+    //! \param[in] image : image to convert (Gray)
+    //!
+    //! \return RGB image (ImageRGB)
+    //!
+    //! \relatedalso ImageRGB
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \date 18-1-2008
+    //!
+    template<typename T> 
+    const ImageRGB<T> to_rgb(const ImageGray<T>& image);
+
+    //!
+    //! \brief Convert an ImageRGB to an ImageRIQ
+    //!
+    //! \param[in] image : image uint8 to convert (RGB)
+    //!
+    //! \return RIQ image (ImageRIQ<uint8>)
+    //!
+    //! \relatedalso ImageYIQ
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //! \date   2010-05
+    //!
+    const ImageYIQ<uint8> to_yiq(const ImageRGB<uint8>& image);
+    
+    //!
+    //! \brief Convert an ImageRGB to an ImageRIQ
+    //!
+    //! \param[in] image : image uint8 to convert (RGB)
+    //!
+    //! \return RIQ image (ImageRIQ<uint8>)
+    //!
+    //! \relatedalso ImageRIQ
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //! \date   2010-05
+    //!
+    const ImageRIQ<uint8> to_riq( const ImageRGB<uint8>& image);
+    
+    //!
+    //! \brief Convert an ImageRGB to an ImageRCQ
+    //!
+    //! \param[in] image : image uint8 to convert (RGB)
+    //!
+    //! \return RCQ image (ImageRCQ<uint8>)
+    //!
+    //! \relatedalso ImageRCQ
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //! \date   2010-05
+    //!
+    const ImageRCQ<uint8> to_rcq( const ImageRGB<uint8>& image);
+
+    //!
+    //! \brief Convert an ImageRGB to an ImageRUV
+    //!
+    //! \param[in] image : image uint8 to convert (RGB)
+    //!
+    //! \return RUV image (ImageRUV<uint8>)
+    //!
+    //! \relatedalso ImageRUV
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //! \date   2010-05
+    //!
+    const ImageRUV<uint8> to_ruv( const ImageRGB<uint8>& image);
+    
+    //!
+    //! \brief Convert an ImageGray to an ImageCIELab
+    //!
+    //! This function converts a gray image to a CIE L*a*b image
+    //! Only the luminance values are used
+    //!
+    //! \param[in] image : image to convert (Gray)
+    //!
+    //! \return image: image CIE L*a*b  (ImageCIELab)
+    //!
+    //! \relatedalso ImageCIELab
+    //!
+    //! \author Guillem Palou <gpalou@gps.upc.edu>
+    //! \date 16-12-2009
+    //!
+    template<typename T>
+    const ImageCIELab<T> to_cielab( const ImageGray<T>& image);
+
+    //!
+    //! \brief Convert an ImageYUV to an ImageCIELab
+    //!
+    //! This function converts a YUV image to a CIE L*a*b image
+    //!
+    //! \param[in] image : image to convert (YUV)
+    //!
+    //! \return image: image CIE L*a*b  (ImageCIELab)
+    //!
+    //! \relatedalso ImageCIELab
+    //!
+    //! \author Guillem Palou <gpalou@gps.upc.edu>
+    //! \date 16-12-2009
+    //!
+    template<typename T>
+    const ImageCIELab<T> to_cielab( const ImageYUV<T>& image);
+
+    //!
+    //! \brief Convert an ImageRGB to an ImageCIELab
+    //!
+    //! This function converts a RGB image to a CIE L*a*b image
+    //!
+    //! \param[in] image : image to convert (RGB)
+    //!
+    //! \return image: image CIE L*a*b  (ImageCIELab)
+    //!
+    //! \relatedalso ImageCIELab
+    //!
+    //! \author Guillem Palou <gpalou@gps.upc.edu>
+    //! \date 16-12-2009
+    //!
+    template<typename T>
+    const ImageCIELab<T> to_cielab( const ImageRGB<T>& image);
+
+    //!
+    //! \brief Convert an ImageCIELab to an ImageRGB
+    //!
+    //! This function converts a CIE L*a*b image to a RGB image
+    //! Only the luminance values are used
+    //!
+    //! \param[in] image : image to convert (CIE L*a*b)
+    //!
+    //! \return image: image RGB  (ImageRGB)
+    //!
+    //! \relatedalso ImageRGB
+    //!
+    //! \author Guillem Palou <gpalou@gps.upc.edu>
+    //! \date 16-12-2009
+    //!
+    template<typename T>
+    const ImageRGB<T> to_rgb( const ImageCIELab<T>& image);
+
+    //!
+    //! \brief Convert an ImageCIELab to an ImageYUV
+    //!
+    //! This function converts a CIE L*a*b image to a YUV image
+    //! Only the luminance values are used
+    //!
+    //! \param[in] image : image to convert (CIE L*a*b)
+    //!
+    //! \return image: image YUV (ImageYUV)
+    //!
+    //! \relatedalso ImageYUV
+    //!
+    //! \author Guillem Palou <gpalou@gps.upc.edu>
+    //! \date 16-12-2009
+    //!
+    template<typename T>
+    const ImageYUV<T> to_yuv( const ImageCIELab<T>& image);
+
+    //!
+    //! \brief Convert an ImageCIELab to an ImageGray
+    //!
+    //! \param[in] image : image to convert (CIE L*a*b)
+    //!
+    //! \return image: image Gray (ImageGray)
+    //!
+    //! \relatedalso ImageGray
+    //!
+    //! \author Guillem Palou <gpalou@gps.upc.edu>
+    //! \date 16-12-2009
+    //!
+    template<typename T>
+    const ImageGray<T> to_gray( const ImageCIELab<T>& image);
+}
+
+#endif //IMAGEPLUS_CORE_CONVERT_COLORSPACE_HPP

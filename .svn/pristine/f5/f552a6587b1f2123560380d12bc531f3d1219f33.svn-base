@@ -1,0 +1,266 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file extract_foreground.cpp
+//!
+//!  Tool to foreground extraction
+//!
+
+#include <iostream>
+#include <imageplus/toolbox/tool_config.hpp>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+#include <imageplus/foreground2d/pixel_model.hpp>
+#include <imageplus/foreground2d/onegaussian_pm.hpp>
+#include <imageplus/foreground2d/onegaussian_ss.hpp>
+#include <imageplus/foreground2d/foreground2d.hpp>
+#include <imageplus/foreground2d/frame_model.hpp>
+
+
+using namespace imageplus;
+using namespace imageplus::foreground2d;
+using namespace std;
+
+
+namespace tools
+{
+    //!
+    //! \namespace tools::fg_detector
+    //!
+    //! \brief Tool to foreground extraction
+    //!
+    //! 
+    //!
+    //! \author Marcel Alcoverro <marcel@gps.tsc.upc.edu>
+    //!
+    //! \date 09-06-2008
+    //!
+    namespace fg_detector
+    {
+        //! Tool name
+        static const string TOOL_NAME   = "fg-detector";
+        //! Tool brief
+        static const string BRIEF       = "extracts foreground objects from a given sequence\n";
+        //! Tool description
+        static const string DESCRIPTION = (string)
+    "Tool to extract foreground objects from a given secuence  \n" +
+    "The secuence of input images is segmented such that  \n" +
+    "foreground pixels are in white and background pixels in black.  \n" +
+    "************************************************************* \n"+
+    "Background pixels are modeled by a gaussian. The parameters of the    \n"+
+    "Gaussian (mean, variance) are learned during a training period. The     \n"+
+    "training period must be at the beginning of the secuence. 50 training frames may  \n"+
+    "be enough for an indoor secuence.  After the training period the parameters are updated  \n"+
+    "with 'rho' learning rate (default rho = 0.01)\n"+
+    "***********************************************************************\n"+
+    "Foreground pixels are detected when its color value differs from the background model mean   \n"+
+    "more than a given threshold, proportional to its variance. By default is 'std_dev_factor = 2.5'.   \n"+
+    "********************************************************************************************** \n"+
+    "A shadow and highlight removal procedure is applied. Shadows and Highlights are detected and removed \n"+
+    "when chromacity distortion is less than 'CD' threshold, and brightness distortion is higher than 'bd_low'   \n"+
+    "and lower than 'bd_high'. A morphological reconstruction is also applied. \n"+
+    "***********************************************************************\n"+
+    "'jpg' and 'png' file formats can be used either as input or output format. WARNING  using 'jpg' as\n"+
+    "output format may produce losses\n"+
+    "***********************************************************************\n";
+        
+        
+    } // namespace fg_detector
+} // namespace tools
+
+
+
+
+#ifndef IMAGEPLUS_DOXYGEN_DO_NOT_COMMENT_MAIN_FUNCTION
+
+using namespace imageplus;
+using namespace tools::fg_detector;
+
+class ExtractionConfig : public toolbox::ToolConfig
+{
+public:
+    // my options
+    float64 initial_variance;
+    float64 ro;
+    float64 std_dev_factor;
+    float64 bd_low ;
+    float64 bd_high;
+    float64 cd;
+    int32 training_frames;
+    int32 initial_frame;
+    int32 frames2process;
+
+
+     
+    // my flags
+    bool not_ss;
+
+    // my arguments
+    string in_dir_prefix;
+    string input_filetype;
+
+    string out_dir_prefix;
+    string output_filetype;
+
+        
+     
+    // constructor
+    ExtractionConfig(int argc, char* argv[]) :
+        toolbox::ToolConfig(TOOL_NAME, BRIEF, DESCRIPTION)         
+    {
+        // default values
+        initial_variance = 20;
+        ro = 0.01;
+        std_dev_factor = 2.5;
+        bd_low = 0.7;
+        bd_high = 1.2;
+        cd = 40;
+        training_frames = 50;
+        initial_frame = 0;
+        frames2process = 3000;
+
+        not_ss = false;
+        
+  //      optimization = 3;
+  //      out_dir_prefix      = "./seq_";
+ //       debug        = false;
+        input_filetype = "jpg";
+        output_filetype = "png";
+        
+        
+        // add options and flags
+        add_option(initial_frame, "initial_frame", "first frame to process", 'A');
+        add_option(frames2process, "frames2process", "number of frames  to process", 'N');
+        add_option  ( initial_variance , "initial_variance" , "initial variance", 'i' );
+        add_option  (ro, "rho", "rho, updating rate" , 'r' );
+        add_option  (std_dev_factor , "std_dev_factor ", "standard deviation factor (variance threshold)",'s');
+        add_option  (bd_low , "bd_low ", "brightness distortion low threshold", 'l'   );
+        add_option  (bd_high , "bd_high ", "brightness distortion high threshold", 'h'   );
+        add_option  (cd , "cd", "chromacity distortion threshold", 'c'   );
+        add_option  (training_frames , "training_frames", "number of training frames", 't'   );
+        add_option  ( input_filetype, "input_filetype", "input filetype: jpg, png", 'I'   );
+        add_option  ( output_filetype, "output_filetype", "input filetype: jpg, png", 'O'   );
+        
+        add_flag    ( not_ss        , "not_ss"        , "Fast mode, not shadow suppression "            , 'F' );
+         
+        // add arguments in the desired order         
+        add_argument( in_dir_prefix   , "in_dir_prefix"   , "input_directory/file_prefix" );
+        add_argument( out_dir_prefix, "out_dir_prefix", "output_directory/file_prefix " );
+        
+        // configure
+        configure(argc, argv);
+
+        // read
+        read("initial_frame", initial_frame);
+        read("frames2process", frames2process);
+        read( "initial_variance" , initial_variance);
+        read("rho", ro );
+        read("not_ss", not_ss );
+        read("std_dev_factor",std_dev_factor);
+        read("bd_low ",bd_low  );
+        read("bd_high ",bd_high);
+        read("cd", cd );
+        read("training_frames",training_frames);
+        read("input_filetype", input_filetype);
+        read("output_filetype", output_filetype);
+
+        read("in_dir_prefix"      , in_dir_prefix     );
+        read("out_dir_prefix"      , out_dir_prefix     );
+
+    }
+ };
+
+int main(int argc, char* argv[])
+{
+    // only this line is needed 
+    ExtractionConfig cfg(argc, argv);
+    
+    float64 initial_variance = cfg.initial_variance;
+    float64 ro = cfg.ro;
+    float64 std_dev_factor_2 = (cfg.std_dev_factor)*(cfg.std_dev_factor);
+    float64 bd_low = cfg.bd_low;
+    float64 bd_high = cfg.bd_high;
+    float64 cd = cfg.cd;
+
+    int32 initial_frame = cfg.initial_frame;
+    int32 current_frame = cfg.initial_frame;
+    
+    int32 frames2process = cfg.frames2process;
+    int32 training_frames = cfg.training_frames;
+    int8 framenumber[10];
+      
+    
+    sprintf(framenumber,"%06d",current_frame);
+    
+    string inputdir = cfg.in_dir_prefix;
+    string outputdir = cfg.out_dir_prefix;
+
+    string ifiletype = cfg.input_filetype;
+    string ofiletype = cfg.output_filetype;
+    
+    //init io objects
+    io::ReadImage readImage;
+    ImageRGB<uint8> currentImage;
+    readImage.open(inputdir + string(framenumber) + "." + ifiletype );
+    
+    readImage >> currentImage ;
+    
+    size_t im_x= currentImage.size_x();
+    size_t im_y= currentImage.size_y();
+    ImageGray<uint8> resultImage(im_x,im_y);
+    FrameModel<OneGaussianPM> fmodelPM(im_x,im_y);
+    FrameModel<OneGaussianSS> fmodelSS(im_x,im_y);
+    if(cfg.not_ss)
+    {
+        fmodelPM.set_pixel_models(OneGaussianPM(initial_variance, ro, std_dev_factor_2));
+    }
+    else
+    {
+        fmodelSS.set_pixel_models(OneGaussianSS(initial_variance, ro, std_dev_factor_2, bd_low, bd_high, cd));
+    }
+
+    //init method object
+    Foreground2D foreground2d(training_frames,current_frame, im_x,im_y);
+
+    int32 numframes = initial_frame + frames2process;
+    
+    while(current_frame < numframes)
+    {
+        readImage.open(inputdir + string(framenumber) + "." + ifiletype );
+        readImage >> currentImage ;
+        if(cfg.not_ss){
+            foreground2d.segmentation<OneGaussianPM,3>(fmodelPM,currentImage, resultImage);            
+        }
+        else 
+        {
+            foreground2d.segmentation_ss<OneGaussianSS,3>(fmodelSS,currentImage, resultImage);    
+        }
+        io::WriteImage writeImage(outputdir + string(framenumber) + "." + ofiletype);
+        writeImage << resultImage;
+       
+        std::cout << "frame " << current_frame << endl; ;
+        
+        current_frame ++;
+        sprintf(framenumber,"%06d",current_frame);
+        
+    }
+
+    
+    
+    
+    
+    
+    
+    return 0;
+}
+#endif // IMAGEPLUS_DOXYGEN_DO_NOT_COMMENT_MAIN_FUNCTIO
+
+
+
+

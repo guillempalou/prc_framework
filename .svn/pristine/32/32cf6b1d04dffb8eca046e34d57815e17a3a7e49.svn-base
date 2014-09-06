@@ -1,0 +1,208 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file circle_geometry.hpp
+//!
+//!  \brief Basic functionalities and operators for circle related geometry
+//!
+#ifndef IMAGEPLUS_MATH_GEOMETRY_CIRCLE_GEOMETRY_HPP
+#define IMAGEPLUS_MATH_GEOMETRY_CIRCLE_GEOMETRY_HPP
+
+#include <imageplus/core.hpp>
+
+namespace imageplus {
+    
+    namespace math {
+    
+        namespace geometry {
+    
+        	//!
+        	//! \brief Computes the bounding box containing the circle.
+        	//!
+        	//! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.es>
+        	//!
+        	//! \date 16-5-2008
+        	//! 
+        	//! Computes a BBoX that contains a circle with given center and
+        	//! radious. Take into acount that BBoX is discrete whereas the cicle
+        	//! is real and so adjustments were made so that the circle fits
+        	//! within the BBoX.
+        	//! 
+        	//! \param[in] center : center point of the circle
+        	//! \param[in] radius : radius of the circle
+        	//!
+        	//! \return BBox containing the circle
+        	//!
+        	inline
+        	BBox2D circle_bbox(const Point2D& center, const float64 radius) {
+        
+        	    ASSERT(radius > 0, "Radius has to be greater than zero.")
+        	
+        	    Coord2D<>  origin((int64)std::floor(center.x()-radius), (int64)std::floor(center.y()-radius));
+        	    Coord2D<>  opposite((int64)std::ceil(center.x()+radius), (int64)std::ceil(center.y()+radius));
+        
+        	    return BBox2D(origin, opposite);
+        	}
+               
+        	//!
+        	//! \brief Checks whether a point is or not on the circle.                 
+        	//!                                                                                      
+        	//! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.es>
+        	//!                                                                                      
+        	//! \date 16-5-2008
+        	//!                                                                                      
+        	//! Determines if a point belongs or not to the circle defined by center and sqrt(pow2_radius)
+        	//! As an optimization the value of the radius must be raised to the two power.          
+        	//!                                                                                      
+        	//! \param[in] point_x : coordinates of the point.                                                
+        	//! \param[in] point_y : coordinates of the point.                                                
+        	//! \param[in] center : center point of the circle.                    
+        	//! \param[in] pow2_radius : Radius of the circle raised to the two power (radius^2).        
+        	//!
+        	//! \return True if the point belongs to the circle:             
+        	//!          (point_x - center.x())^2 + (point_y - center.y())^2 <= radius^2 
+        	//!
+        	inline
+        	bool on_circle(const int64 point_x,
+        		       const int64 point_y,
+        		       const Point2D& center,
+        		       const float64 pow2_radius) {
+        	    
+        	    float64 diff_x = pow((float64)point_x - center.x(), 2);
+        	    float64 diff_y = pow((float64)point_y - center.y(), 2);
+        
+        	    return (diff_x+diff_y) <= pow2_radius;
+        	}
+        
+        	//!
+        	//! \brief Checks whether a point is or not on the circle.                 
+        	//!                                                                                      
+        	//! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.es>
+        	//!                                                                                      
+        	//! \date 16-5-2008
+        	//!                                                                                      
+        	//! Determines if a point belongs or not to the circle defined by center and sqrt(pow2_radius)
+        	//! As an optimization the value of the radius must be raised to the two power.          
+        	//!                                                                                      
+        	//! \param[in] point : coordinates of the point.                                                
+        	//! \param[in] center : center point of the circle.                    
+        	//! \param[in] pow2_radius : Radius of the circle raised to the two power (radius^2).        
+        	//!
+        	//! \return True if the point belongs to the circle:             
+        	//!          (point.x() - center.x())^2 + (point.y() - center.y())^2 <= radius^2 
+        	//!
+        	inline
+        	bool on_circle(const Coord2D<> & point,
+        		       const Point2D& center,
+        		       const float64 pow2_radius) {
+        	    
+        	    
+        	    return on_circle(point.x(), point.y(), center, pow2_radius);
+        	}
+        
+        	//!
+        	//! \brief Checks wheter a point is or not on the circumference.                         
+        	//!
+        	//! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.es>
+        	//!
+        	//! \date 16-5-2008
+        	//!
+        	//! Determines if a point is or not on top of the circumference. The
+        	//! circumference is defined by center and sqrt(pow2_radius_in) and
+        	//! sqrt(pow2_radius_out) that represent the inner and outer bound of
+        	//! the circumference.
+        	//! As an optimization the value of the radius must be raised to the
+        	//! two power.          	
+        	//!                                                                          
+        	//! \param[in] point_x          : Coordinates of the point.                                                
+        	//! \param[in] point_y          : Coordinates of the point.                                                
+        	//! \param[in] center           : Center point of the circumference.               
+        	//! \param[in] pow2_radius      : Radius of the outer boundary circumference                   
+        	//!                               raised to the two power (radius^2).
+        	//! \param[in] pow2_radius_in   : Radius of the inner boundary circumference                   
+        	//!                               raised to the two power (radius_in^2).
+        	//!                                                                                      
+        	//! \return True if the point belongs on top of the circumference:                      
+        	//!         radius_in^2 <= (point_x - center.x())^2 + 
+        	//!                        (point_y - center.y())^2 <= radius^2                 	
+        	//!                                 	
+        	inline
+        	bool on_circumference(const int64 point_x,
+        			      const int64 point_y,
+        			      const Point2D& center,
+        			      const float64 pow2_radius,
+        			      const float64 pow2_radius_in) {
+        	    
+        	    float64 diff_x = pow((float64)point_x - center.x(), 2);
+        	    float64 diff_y = pow((float64)point_y - center.y(), 2);
+        	    
+        	    return pow2_radius_in <= (diff_x+diff_y) && (diff_x+diff_y) <= pow2_radius;
+        	}
+        
+        	//!
+        	//! \brief Checks wheter a point is or not on the circumference.                         
+        	//!
+        	//! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.es>
+        	//!
+        	//! \date 16-5-2008
+        	//!
+        	//! Determines if a point is or not on top of the circumference. The
+        	//! circumference is defined by center and sqrt(pow2_radius_in) and
+        	//! sqrt(pow2_radius_out) that represent the inner and outer bound of
+        	//! the circumference.
+        	//! As an optimization the value of the radius must be raised to the
+        	//! two power.          	
+        	//!                                                                          
+        	//! \param[in] point            : Coordinates of the point.                                                
+        	//! \param[in] center           : Center point of the circumference.               
+        	//! \param[in] pow2_radius      : Radius of the outer boundary circumference                   
+        	//!                               raised to the two power (radius^2).
+        	//! \param[in] pow2_radius_in   : Radius of the inner boundary circumference                   
+        	//!                               raised to the two power (radius_in^2).
+        	//!                                                                                      
+        	//! \return True if the point belongs on top of the circumference:                      
+        	//!         radius_in^2 <= (point.x() - center.x())^2 + (point.y() - center.y())^2 <= radius^2               
+          	//!                                 	
+        	inline
+        	bool on_circumference(Coord2D<>  point,
+        			      Point2D center,
+        			      float64 pow2_radius,
+        			      float64 pow2_radius_in) {
+        	    
+        	    return on_circumference(point.x(), point.y(), center, pow2_radius, pow2_radius_in);
+        	}
+        	
+        	//!
+        	//! \brief Compute all the points that are bound by a circle..                           
+        	//!
+        	//! \author Eduardo Mendon�a <eduardo@gps.tsc.upc.es>
+        	//!
+        	//! \date 16-5-2008                                                                      
+        	//!
+        	//! All the points of the circle are returned. A bounding box is used as                 
+        	//! boundaries. In fact the points are defined by the union of the circle                
+        	//! defined by center and radius, and the bounding box defined by             
+        	//! bbox. The lowest value of the radius of the circle            
+        	//! has to be at least 0.71 so that one point is returned. This functions
+        	//! scans the circle progressively only trough the contours of the circle.               
+        	//!
+        	//! \param[in] center    : Center point of the circle.                    
+        	//! \param[in] radius    : Radius of the circle.                                                
+        	//! \param[in] bbox      : Bounding box of the circle.                        
+        	//! \param[in] point     : array of points with the selected points.
+        	//!
+        	//! \return Number of selected points.                     
+        	//!                                                                                       
+        	//! \warning radius has to be at least 0.71
+        	//!
+        	size_type points_on_circle(const Point2D& center, const float64 radius,
+        				   const BBox2D& bbox, MultiArray<Coord2D<> , 1>& point) throw (ImagePlusError);
+        }
+    }
+}
+
+
+#endif

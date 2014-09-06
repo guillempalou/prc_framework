@@ -1,0 +1,273 @@
+/*
+ * evaluate_model_error.cpp
+ *
+ *  Created on: Feb 14, 2013
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+#include <imageplus/core/opencv.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/video_segmentation/trajectory_bpt/trajectory.hpp>
+#include <imageplus/video_segmentation/trajectory_bpt/motion_color_distance.hpp>
+#include <imageplus/video_segmentation/trajectory_bpt/motion_color_histogram_distance.hpp>
+
+#include <imageplus/optical_flow/flow_io.hpp>
+#include <imageplus/optical_flow/trajectory_tracking.hpp>
+
+#include <imageplus/bpt/binary_partition_tree.hpp>
+#include <imageplus/bpt/models/mean_color_distance.hpp>
+
+#include <boost/filesystem.hpp>
+#include <imageplus/toolbox/tictoc.hpp>
+
+#include <iostream>
+#include <iomanip>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef VideoSignal<float64,3> 																						VideoType;
+typedef VideoSignal<float64,3>::ImageType																			FrameType;
+typedef VideoSignal<float64,2>																						OpticalFlowType;
+typedef OpticalFlowType::ImageType																					OpticalFlowFrame;
+
+typedef VideoType::coord_type 																						coord3d;
+
+// The vector is of the same type
+typedef VideoType::value_type																						lab_type;
+typedef VideoType::value_type																						rgb_type;
+
+typedef video_segmentation::Trajectory<VideoType> 																	TrajectoryType;
+
+typedef segmentation::HierarchicalRegionPartition<TrajectoryType, Connectivity3D2>									BPT;
+typedef BPT::RegionType																								RegionType;
+typedef BPT::PartitionType																							PartitionType;
+
+typedef descriptors::ColorSignature<VideoType>																		ColorSignatureDescriptor;
+typedef descriptors::TemporalSignature<OpticalFlowType>																MotionSignatureDescriptor;
+typedef descriptors::Area																							AreaDescriptor;
+
+float64 estimate_motion_damping(OpticalFlowType& flow) {
+
+	OpticalFlowType::iterator p = flow.begin();
+	OpticalFlowType::iterator end = flow.end();
+
+	typedef OpticalFlowType::coord_type coord_type;
+
+	float64 d = 5;
+
+	float64 max_dist = 0;
+	float64 av_dist = 0;
+	float64 N = 0;
+	for (; p != end; ++p) {
+		coord_type radius = p.pos(); radius.fill(d); radius(2) = 0;
+		coord_type center = p.pos();
+		coord_type upper = center - radius;
+		coord_type lower = center + radius;
+		float64 av_d = 0;
+		float64 n = 0;
+		for (OpticalFlowType::roi_iterator x = flow.roi_begin(upper,lower); x != flow.roi_end(upper,lower); ++x) {
+			if (flow.inside(x.pos())) {
+				float64 w = std::exp(-(p.pos() - x.pos()).squaredNorm() / 4);
+				if (w == 1) continue;
+				float64 dist = ((*p) - (*x)).norm();
+
+				av_dist+= w*dist;
+				av_d += w*dist;
+
+				N+=w;
+				n+=w;
+			}
+		}
+		av_d /= n;
+
+		max_dist= (av_d > max_dist) ? av_d : max_dist;
+	}
+
+	return max_dist;
+}
+
+float64 estimate_color_damping(VideoType& video) {
+
+	VideoType::iterator p = video.begin();
+	VideoType::iterator end = video.end();
+
+	typedef VideoType::coord_type coord_type;
+
+	float64 d = 5;
+
+	float64 max_dist = 0;
+	float64 av_dist = 0;
+	float64 N = 0;
+	for (; p != end; ++p) {
+		coord_type radius = p.pos(); radius.fill(d); radius(2) = 0;
+		coord_type center = p.pos();
+		coord_type upper = center - radius;
+		coord_type lower = center + radius;
+		float64 av_d = 0;
+		float64 n = 0;
+		for (VideoType::roi_iterator x = video.roi_begin(upper,lower); x != video.roi_end(upper,lower); ++x) {
+			if (video.inside(x.pos())) {
+				float64 w = std::exp(-(p.pos() - x.pos()).squaredNorm() / 4);
+				if (w == 1) continue;
+				float64 dist = ((*p) - (*x)).norm();
+
+				av_dist+= w*dist;
+				av_d += w*dist;
+
+				N+=w;
+				n+=w;
+			}
+		}
+		av_d /= n;
+		max_dist= (av_d > max_dist) ? av_d : max_dist;
+	}
+
+	return max_dist;
+}
+
+float64 color_signature_approximation_error(VideoType& signal, BPT::RegionType& reg, ColorSignatureDescriptor::type& signature) {
+
+	float64 e = 0;
+	for (RegionType::iterator p = reg.begin(); p!= reg.end(); ++p) {
+
+		float64 minv = (signature.features[0] - signal(*p)).squaredNorm();
+		for (uint64 i = 0; i < signature.elements(); i++) {
+			float64 v = (signature.features[0] - signal(*p)).squaredNorm();
+			if (v < minv) minv = v;
+		}
+		e+=minv;
+	}
+	return e;
+}
+
+float64 motion_signature_approximation_error(OpticalFlowType& signal, BPT::RegionType& reg, MotionSignatureDescriptor::type& temporal_signature) {
+
+	float64 e = 0;
+	for (RegionType::iterator p = reg.begin(); p!= reg.end(); ++p) {
+
+		uint64 f = (*p)(2);
+
+		float64 minv = 1e100;
+		for (uint64 i = 0; i < temporal_signature.signature(f).elements(); i++) {
+			float64 v = (temporal_signature.signature(f).features[i] - signal(*p)).norm() / (signal(*p).norm());
+			if (v < minv) minv = v;
+		}
+		e+=minv;
+
+	}
+	return e;
+}
+
+void evaluate_color_and_motion_models(VideoType& video, OpticalFlowType& forward, BPT& bpt) {
+	float64 motion_damping = estimate_motion_damping(forward);
+	float64 color_damping = estimate_color_damping(video);
+
+	// iterate over regions
+	descriptors::DescriptorManager manager;
+	bpt.set_max_number_of_regions(bpt.max_label());
+
+	uint64 num_colors = 16;
+
+	ColorSignatureDescriptor::Parameters color_pars;
+	color_pars.num_colors = num_colors;
+	color_pars.weights = VideoType::value_float_type::Ones()*color_damping;
+
+	MotionSignatureDescriptor::Parameters motion_pars;
+	motion_pars.num_points = num_colors;
+	motion_pars.weights = OpticalFlowType::value_float_type::Ones()*(motion_damping);
+
+	uint64 N = 0;
+	for (BPT::leaves_iterator r = bpt.begin(); r != bpt.end(); ++r) N++;
+
+	math::Vector ce = math::Vector::Zero(N);
+	math::Vector me = math::Vector::Zero(N);
+	math::Vector a  = math::Vector::Zero(N);
+
+	uint64 idx = 0;
+	for (BPT::leaves_iterator r = bpt.begin(); r != bpt.end(); ++r) {
+		//std::cout << "Computing descriptors " << (*r).label() << std::endl;
+		ColorSignatureDescriptor::type 	color 	= manager.calc_descriptor<ColorSignatureDescriptor>(video, *r, color_pars);
+		MotionSignatureDescriptor::type motion 	= manager.calc_descriptor<MotionSignatureDescriptor>(forward, *r, motion_pars);
+		AreaDescriptor::type 			area1 	= manager.calc_descriptor<AreaDescriptor>(video,*r);
+
+		// Compute color error
+		float64 c = color_signature_approximation_error(video,*r,color);
+		float64 m = motion_signature_approximation_error(forward, *r,motion);
+
+		ce(idx) = c;
+		me(idx) = m;
+		a(idx) = area1;
+
+		idx++;
+	}
+
+	//Total error
+	float64 ace = std::sqrt(ce.sum() / a.sum());
+	float64 ame = me.sum() / a.sum();
+
+	//Mean error per region
+	float64 rce = std::sqrt((ce.array() / a.array()).sum()) / N;
+	float64 rme = (me.array() / a.array()).sum() / N;
+
+	std::cout << N << " " << ace << " " << rce << " " << ame << " " << rme << std::endl;
+}
+
+int main(int argc, char* argv[]) {
+
+	std::string path_video = argv[1];
+	std::string path_partition = argv[2];
+
+	PartitionType partition;
+
+	partition.read_partition(path_partition);
+
+	uint64 Nframes = partition.sizes()(2);
+
+	VideoType video(Nframes);
+
+	//Read frames
+	for (uint64 k = 0; k < Nframes; k++) {
+		std::ostringstream os;
+		os << path_video << "/frames/frame" << std::setw(3) << std::setfill('0') << k << ".png";
+		video.read_frame(os.str(),k); // read frame k and put it to the position k-i of the current block
+	}
+
+	ColorSpaceConverter<VideoType> converter;
+	converter.convert(video, ColorSpaceLAB);
+
+	uint64 sx = video.size_x();
+	uint64 sy = video.size_y();
+
+	OpticalFlowType forward_flows(sx,sy,Nframes);
+	OpticalFlowType backward_flows(sx,sy,Nframes);
+
+	// Read forward optical flows
+	for (uint64 k = 0; k < Nframes; k++) {
+		std::ostringstream os;
+		os << path_video << "/flows/flow_" << k << "_" << k+1 << ".flo";
+		OpticalFlowFrame flow = forward_flows.frame(k);
+		optical_flow::read_optical_flow(flow, os.str());  // read flow k,k+1 and put it to the position k-i of the current block
+	}
+
+	//std::cout << "Files read " << std::endl;
+
+	BPT bpt;
+
+	bpt.init(partition);
+
+
+
+	evaluate_color_and_motion_models(video, forward_flows, bpt);
+}

@@ -1,0 +1,109 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+//!
+//! \example pugixml_example.cpp
+//!
+//! This is an example of how to use the pugixml XML lib.
+//!
+
+#ifndef IMAGEPLUS_DOXYGEN_DO_NOT_COMMENT_MAIN_FUNCTION
+
+#include <boost/foreach.hpp>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/pugixml/pugixml.hpp>
+#include <imageplus/io/pugixml/foreach.hpp>
+
+using namespace imageplus;
+
+int main (int argc, char* argv[])
+{
+	// Output merging sequence
+	std::vector<uint32> fathers, sons1, sons2;
+
+	// Other variables
+	uint32 num_father, num_son1, num_son2;
+
+	// Open XML file and initialize the structure
+	pugi::xml_document doc;
+	pugi::xml_parse_result result = doc.load_file("tests/data_r/io/xml_example.xml");
+	if (! result)
+		throw ImagePlusError(result.description());
+
+	// Check that the name of the node is "Mpeg7"
+	if (! doc.child("Mpeg7"))
+		throw ImagePlusError("XML reading: 'Mpeg7' node not found");
+
+	// Obtain the root node of the XML ("Mpeg7")
+	pugi::xml_node mpeg7_node = doc.child("Mpeg7");
+
+	// Check that there is a sequence of sons named:
+	// "Description/MultimediaContent/Image"
+	// and returns the "Image" node
+	pugi::xml_node image_node = mpeg7_node.child("Description").child("MultimediaContent").child("Image");
+
+	// Let's check that there is  a node "CreationInformation/RelatedMaterial (id=PartitionSearchFile)/MediaLocator/MediaUri
+	pugi::xml_node creation_information_node = image_node.child("CreationInformation");
+	pugi::xml_node rel_material_node = creation_information_node.find_child_by_attribute("RelatedMaterial", "id", "NotAvailableID");
+	if (rel_material_node)
+		throw ImagePlusError("We shouldn't find a node called 'RelatedMaterial' with an 'id' field with 'NotAvailableID'.");
+
+	rel_material_node = creation_information_node.find_child_by_attribute("RelatedMaterial", "id", "PartitionSearchFile");
+	if (! rel_material_node)
+		throw ImagePlusError("We should find a node called 'RelatedMaterial' with an 'id' field with 'PartitionSearchFile'.");
+
+	std::string text = rel_material_node.child("MediaLocator").child_value("MediaUri");
+	if (text != "Dummy data")
+		   throw ImagePlusError("The text node should have 'dummy data'.");
+
+
+	// Go on with the structure:
+
+	// We go through all the children "StillRegion" of "SpatialDecomposition"
+	BOOST_FOREACH(pugi::xml_node still_region_node, image_node.child("SpatialDecomposition"))
+	{
+		// Get an specific attribute "id"
+    	std::string region_id = still_region_node.attribute("id").value();
+
+		// We expect it to be of the form "Regioni", so we get the value
+		sscanf(region_id.c_str(), "Region%u", &num_father);
+
+		// We go through all the children "StillRegionRef" of the "SpatialDecomposition" of the current "StillRegion"
+		int num_sons_found = 0;
+
+		BOOST_FOREACH(pugi::xml_node still_region_ref_node, still_region_node.child("SpatialDecomposition"))
+		{
+			if (strcmp(still_region_ref_node.name(), "StillRegionRef") == 0)
+			{
+				std::string idref = still_region_ref_node.attribute("idref").value();
+				if (num_sons_found == 0)
+					sscanf(idref.c_str(), "Region%u", &num_son1);
+				else
+					sscanf(idref.c_str(), "Region%u", &num_son2);
+				num_sons_found++;
+			}
+
+			// Stop iterating when 2 sons have been found
+			if (num_sons_found == 2) break;
+		}
+
+		// We expect every "father" to have 2 children
+		if(num_sons_found < 2)
+			throw ImagePlusError("There is a region description that is not correct.");
+
+		// Save the values obtained
+		fathers.push_back(num_father);
+		sons1.push_back(num_son1);
+		sons2.push_back(num_son2);
+	}
+
+	// Show the result
+	std::cout << "Father" << "\t" << "Son1" << "\t" << "Son2" << std::endl;
+	for (uint32 ii=0; ii<fathers.size(); ii++)
+		std::cout << fathers[ii] << "\t" << sons1[ii] << "\t" << sons2[ii] << std::endl;
+
+}
+
+#endif

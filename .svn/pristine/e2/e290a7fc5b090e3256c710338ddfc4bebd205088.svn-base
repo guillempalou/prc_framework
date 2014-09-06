@@ -1,0 +1,157 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file volumegray.hpp
+//!
+//!  Interface for VolumeGray class
+//!
+
+#ifndef IMAGEPLUS_CORE_VOLUMEGRAY_HPP
+#define IMAGEPLUS_CORE_VOLUMEGRAY_HPP
+
+#include <boost/multi_array.hpp>
+
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/volume.hpp>
+
+
+namespace imageplus
+{
+
+    //!
+    //! \brief base class to gray volumes
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    //! Template T is the type of the data
+    //!
+    //! The declaration should be:
+    //! \code
+    //!    VolumeGray<uint8> a(4,4,4);
+    //! \endcode
+    //!
+    //! This creates a volume of uint8 values with 1 gray channel with size 4x4x4.
+    //!
+    //! The access of a voxel is done as the ImaVol class:
+    //! \code
+    //!    a(0)[1][3][2] = 0; // Access to voxel (x=1,y=3,z=2)
+    //! \endcode
+    //!
+    //! or directly (and equally fast):
+    //! \code
+    //!    a[1][3][2] = 0; // Access to voxel (x=1,y=3,z=2)
+    //! \endcode
+    //!
+    //! See file multiarray.hpp to a more detail explanation on access
+    //!
+    template<typename T>
+    class VolumeGray :public Volume <T,1>
+    {
+        public:
+
+            //!
+            //! \brief Default constructor
+            //!
+            VolumeGray();
+
+            //!
+            //! \brief Constructor for 3 dimensions
+            //!
+            //! \param[in] sizeX : X size of the image
+            //! \param[in] sizeY : Y size of the image
+            //! \param[in] sizeZ : Z size of the image
+            //!
+            VolumeGray(uint64 sizeX, uint64 sizeY, uint64 sizeZ);
+
+            //!
+            //! \brief Copy constructor for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this imavol
+            //!
+            VolumeGray(const ImaVol<T,1,3>& copy);
+
+            //!
+            //! \brief Copy constructor for Volume
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this volume
+            //!
+            VolumeGray(const Volume<T,1>& copy);
+
+            //!
+            //! \brief Copy constructor for VolumeGray
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this volume
+            //!
+            VolumeGray(const VolumeGray& copy);
+
+            //!
+            //! \brief Constructor with a vector of dimentions
+            //!
+            //! \param[in] dims: Vector of vectors with the dimension of each channel
+            //!
+            explicit VolumeGray(const std::vector< std::vector<uint64> >& dims);
+
+            //!
+            //! \brief Destructor
+            //!
+            virtual ~VolumeGray();
+
+            //!
+            //! \brief Assignment operator for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this imavol
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            const VolumeGray& operator=( const ImaVol<T,1,3>& copy );
+
+            //!
+            //! \brief Assignment operator for Volume
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this volume
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            const VolumeGray& operator=( const Volume<T,1>& copy );
+
+            //!
+            //! \brief Assignment operator for Volume
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this volume
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            const VolumeGray& operator=( const VolumeGray<T>& copy );
+
+            //!
+            //! \brief Assigment operator for values (fills the entire volume)
+            //!
+            //! \param[in] val : Value to fill all voxels
+            //!
+            //! \return Reference to value to a = b = 1; works
+            //!
+            const T& operator=(const T& val);
+
+            //!
+            //! \brief Overload of operator[] to be able to use volumegray[x][y] instead of volumegray(0)[x][y]
+            //!
+            //! \param[in] pos : coordenate X of the volume
+            //!
+            //! \return Reference to sub_array with 2 dimension (to be able to access coordinate Y and Z)
+            //!
+            IMAGEPLUS_INLINE
+            boost::detail::multi_array::sub_array<T,2> operator[]( std::size_t pos )
+            {
+                return (*this)(0)[pos];
+            }
+    };
+}
+
+#endif
+

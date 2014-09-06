@@ -1,0 +1,163 @@
+/*
+ * separate_points_pruner.hpp
+ *
+ *  Created on: Dec 18, 2012
+ *      Author: gpalou
+ */
+
+#ifndef SEPARATE_POINTS_PRUNER_HPP_
+#define SEPARATE_POINTS_PRUNER_HPP_
+
+#include <imageplus/bpt/pruning/bpt_pruner.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+		//! Class that prunes the BPT according to two sets of incompatible coordinates.
+		//! The tree finds the minimum number of regions that maintain given pairs of incompatible pixels in different regions
+		//! \param BPT: BPT type
+		//! \param ImageModel: Image type
+		template <class BPT, class ImageModel>
+		class SeparateCoordinatesPruner : public BPTPruner<BPT,ImageModel> {
+
+			//! Region type
+			typedef typename BPT::RegionType RegionType;
+
+			//! Base class
+			typedef BPTPruner<BPT,ImageModel> Pruner;
+
+			//! RegionIDs
+			typedef typename Pruner::RegionsIDs RegionsIDs;
+
+			//! pair type
+			typedef std::pair<uint64,uint64> PUI;
+
+		public:
+
+			//! Maximum number of allowed regions
+			//! \param[in] max_regions: maximum
+			void set_max_regions(int64 max_regions) {_max_regions = max_regions;}
+
+			//! Tolerance for splitting regions. two region will form the partition if there are more than 'tolerance' incompatible pixel pairs between them
+			//! \param[in] tolerance : minimum number of incompatible pair to consider two regions incompatible
+			void set_tolerance(int64 tolerance) {_tolerance = tolerance;}
+
+			//! Sets the first set of points. setA[i] point will be incompatible with setB[i] point.
+			//! \param[in] setA : point set
+			void set_points_A(std::vector<Coord2D<> > setA) {_setA = setA;}
+
+			//! Sets the first set of points. setB[i] point will be incompatible with setA[i] point.
+			//! \param[in] setB : point set
+			void set_points_B(std::vector<Coord2D<> > setB) {_setB = setB;}
+
+			//! Brother of a region in the tree
+			//! \param[in] bpt: tree
+			//! \param[in] region: region id
+			//! \return id of the brother region
+			int64 brother(BPT& bpt, uint64 region) {
+				RegionType& r = bpt[region];
+				if (r.parent() == NULL)
+					return -1;
+				if (r.parent()->parts()[0]->id() == region)
+					return r.parent()->parts()[1]->id();
+				return r.parent()->parts()[0]->id();
+			}
+
+			//! Level of a region in the tree (the root is 0)
+			//! \param[in] bpt: tree
+			//! \param[in] region: region id
+			//! \return level of the region
+			uint64 level_of_node(BPT& bpt, uint64 id) {
+				if (bpt[id].parent() == NULL) return 0;
+
+				uint64 level = 1;
+				uint64 p = bpt[id].parent()->id();
+				while (true) {
+					if (bpt[p].parent() == NULL) break;
+					p = bpt[p].parent()->id();
+					level++;
+				}
+				return level;
+			}
+
+			//! Find the regions to be pruned
+			//! \param[in] bpt : tree
+			//! \return set containing the regions to prune
+			const RegionsIDs& find_pruned_regions(BPT& bpt) {
+				int64 Np = _setA.size();
+
+				ImagePartition<> part = bpt.leaves_partition();
+
+				std::set<PUI> incompatible;
+				std::map<PUI,int64> nums;
+				for (int64 i = 0; i < Np; i++) {
+					Coord2D<> pA = _setA[i];
+					Coord2D<> pB = _setB[i];
+					int64 idA = part[pA.x()][pA.y()];
+					int64 idB = part[pB.x()][pB.y()];
+
+					if (idA * idB == 0) continue;
+					int64 lA = level_of_node(bpt, idA);
+					int64 lB = level_of_node(bpt, idB);
+
+					if (idA != idB) {
+						while (brother(bpt,idA) != idB) {
+							if (lA >= lB) {idA = bpt[idA].parent()->id(); lA--; }
+							if (lB > lA) {idB = bpt[idB].parent()->id(); lB--; }
+						}
+					}
+					if (idA > idB) {int64 idC = idA; idA = idB; idB = idC;}
+					incompatible.insert(PUI(idA,idB));
+					nums[PUI(idA,idB)]++;
+				}
+
+				std::priority_queue<PUI> pq;
+				for (std::set<PUI>::iterator i = incompatible.begin(); i != incompatible.end(); i++) {
+					int64 l = level_of_node(bpt, i->first);
+					if (nums[PUI(i->first, i->second)] > _tolerance) {
+						pq.push(PUI(l, i->first));
+						pq.push(PUI(l, i->second));
+					}
+				}
+
+				SUI has_pruned_sons;
+				while (!pq.empty()) {
+					PUI p = pq.top(); pq.pop();
+
+					if (bpt[p.second].parent() == NULL) continue;
+
+					int64 parent = bpt[p.second].parent()->id();
+					//std::cout << p.second " -> " << std::endl;
+					int64 bro = brother(bpt, p.second);
+
+					if (has_pruned_sons.find(p.second) == has_pruned_sons.end()) {Pruner::_regions.insert(p.second);}
+					if (has_pruned_sons.find(bro) == has_pruned_sons.end()) {Pruner::_regions.insert(bro); }
+
+					has_pruned_sons.insert(parent);
+
+					pq.push(PUI(p.first-1,parent));
+				}
+
+				return Pruner::_regions;
+			}
+
+
+		private:
+			//! set of coordinates A
+			std::vector<Coord2D<> > _setA;
+
+			//! set of coordinates B
+			std::vector<Coord2D<> > _setB;
+
+			//! tolerance
+			int64 _tolerance;
+
+			//! maximum number of regions
+			int _max_regions;
+
+		};
+
+	}
+}
+
+#endif /* SEPARATE_POINTS_PRUNER_HPP_ */

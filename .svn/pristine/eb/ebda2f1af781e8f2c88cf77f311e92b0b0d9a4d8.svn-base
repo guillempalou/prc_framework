@@ -1,0 +1,118 @@
+/*
+ * ordering.hpp
+ *
+ *  Created on: Nov 10, 2011
+ *      Author: guillem
+ */
+
+#ifndef ORDERING_HPP_
+#define ORDERING_HPP_
+
+#include <imageplus/math/graphs/graph.hpp>
+#include <boost/graph/topological_sort.hpp>
+
+namespace imageplus {
+	namespace math {
+		namespace graphs {
+
+		//! Class to compute the topological order of a directed acyclic graph (DAG).
+		//! No cycles can be present
+		//! \param Graph : BoostGraph class
+	template<class Graph>
+	class TopologicalSort {
+
+		//! Node type
+		typedef typename Graph::Node Node;
+
+		//! Edge type
+		typedef typename Graph::Edge Edge;
+
+	public:
+
+		//! Sorts the nodes in the graph
+		//! \param[in] g : graph
+		void calculate(Graph& g) {
+			boost::topological_sort(g.graph(), std::back_inserter(_sorted_nodes));
+		}
+
+		//! Vector of sorted nodes
+		//! \return vector of sorted nodes
+		const std::vector<Node> sorted_nodes() {return _sorted_nodes; }
+
+	private:
+		//! sorted node vector
+		std::vector<Node> _sorted_nodes;
+	};
+
+	//! Class to compute the topological partial order of a directed acyclic graph (DAG). Two nodes can have the same order
+	//! No cycles can be present
+	//! \param Graph : BoostGraph class
+	template<class Graph>
+	class TopologicalPartialSort {
+
+		//! Node type
+		typedef typename Graph::Node Node;
+
+		//! Edge type
+		typedef typename Graph::Edge Edge;
+
+	public:
+
+		//! Calculates the topological partial sort
+		//! \param[in]g : graph
+		void calculate(Graph& g) {
+			uint32 N = g.num_nodes();
+			uint32 assigned = 0;
+
+			_sorted_nodes.resize(N);
+
+			// Store how many connections arrive at a node
+			std::vector<uint32> incoming(N);
+			std::vector<Node> zero_incoming;
+
+			// find number of incoming connections
+			for (typename Graph::node_iterator n = g.nodes_begin(); n != g.nodes_end(); ++n) {
+				incoming[*n] = g.num_in_edges(*n);
+				if (incoming[*n] == 0) zero_incoming.push_back(*n);
+			}
+
+			// Assign the partial order
+			uint32 order = 0;
+			while(!zero_incoming.empty()) {
+				std::vector<Node> new_zero;
+
+				// Put the order to nodes with no incoming edges
+				for (uint32 i = 0; i < zero_incoming.size(); i++) {
+					_sorted_nodes[zero_incoming[i]] = order;
+					assigned++;
+
+					//Decrease the adjacent nodes incoming order
+					for (typename Graph::out_edge_iterator e = g.out_edges_begin(zero_incoming[i]); e != g.out_edges_end(zero_incoming[i]); ++e) {
+						Node t = g.target(*e);
+						incoming[t]--;
+						if (incoming[t] == 0) new_zero.push_back(t);
+					}
+				}
+
+				zero_incoming = new_zero;
+				order++;
+			}
+
+			if (assigned != N) throw ImagePlusError("Impossible Ordering. The Graph has cycles");
+		}
+
+		//! Returns a vector of labels
+		//! \return each position is the label of the corresponding node
+		const std::vector<uint64> nodes_order() {return _sorted_nodes; }
+
+	private:
+
+		//! label vector
+		std::vector<uint64> _sorted_nodes;
+	};
+
+		}
+	}
+}
+
+#endif /* ORDERING_HPP_ */

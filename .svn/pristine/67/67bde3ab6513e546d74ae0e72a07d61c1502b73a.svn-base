@@ -1,0 +1,171 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file integralimage.test
+//!
+
+
+#include <fstream>
+#include <imageplus/math/transforms/zigzag.hpp>
+
+#include <boost/test/floating_point_comparison.hpp>
+
+BOOST_AUTO_TEST_SUITE ( zigzag_suite );
+
+using namespace imageplus;
+using namespace imageplus::math::transforms;
+
+
+typedef boost::mpl::list<uint8,int64,float64> DataTypes;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_zigzag, T, DataTypes )
+{
+    uint64 width  = 16;
+    uint64 height = 16;
+    MultiArray<T,2> ma(width, width);
+
+
+    // Define a test matrix
+    for (uint64 j=0; j < height; j++)
+    for (uint64 i=0; i < width;  i++)
+    {
+        ma[i][j] = static_cast<T>(i*j);
+    }
+
+    ZigZagScan zz(16);
+
+    
+    MultiArray<Coord2D<int64>,1> zzcoord = zz.coords();
+    MultiArray<T,1>              zzcoefs = zz.coefs(ma);
+
+
+    MultiArray<T,2>              ma_rec  = zz.dezigzag(zzcoefs);
+
+    BOOST_CHECK (ma == ma_rec);
+
+
+    std::string full_coords_file =  std::string(TEST_DATA_PATH_R) + "/zigzag_coords_16x16_full.txt";
+    std::string full_coeffs_file =  std::string(TEST_DATA_PATH_R) + "/zigzag_coeffs_16x16_full.txt";
+
+
+    std::ifstream fp1;
+    fp1.open(full_coords_file.c_str(), std::ios::in ); 
+
+
+    // Read all data
+    for (uint64 i=0; i < width*height; i++)
+    {
+        uint64 cx, cy;
+
+        fp1 >> cx >> cy;
+
+        //std::cout <<  "(" << zzcoord[i].x() << "," <<  zzcoord[i].y() << ") " ;
+        //std::cout << " (" << cx << "," << cy << ")" << std::endl;
+
+        BOOST_CHECK_SMALL (static_cast<float64>(zzcoord[i].x() - cx), 1.e-5);
+        BOOST_CHECK_SMALL (static_cast<float64>(zzcoord[i].y() - cy), 1.e-5);
+    }
+
+    fp1.close();
+
+    std::ifstream fp2;
+    fp2.open(full_coeffs_file.c_str(), std::ios::in ); 
+
+    for (uint64 i=0; i < width*height; i++)
+    {
+        uint64 coeff;
+        fp2 >> coeff;
+
+        //std::cout <<  "(" << zzcoefs[i] << ") - " << coeff << std::endl;
+        BOOST_CHECK_SMALL (static_cast<float64>(zzcoefs[i] - coeff), 1.e-5);
+    }
+
+    // Close file
+    fp2.close();
+
+
+    const uint64 BLOCK_SIZE = 8;
+
+    uint64 nblocks_x = width  / BLOCK_SIZE;
+    uint64 nblocks_y = height / BLOCK_SIZE;
+    
+    Coord2D<int64> ori(0,0);
+
+    ZigZagScan zz2(ori, BLOCK_SIZE);
+
+    MultiArray<T,2> ma_rec2(width, height);
+
+    std::string block_coords_file =  std::string(TEST_DATA_PATH_R) + "/zigzag_coords_16x16_8x8.txt";
+    std::string block_coeffs_file =  std::string(TEST_DATA_PATH_R) + "/zigzag_coeffs_16x16_8x8.txt";
+
+    std::ifstream fp3;
+    fp3.open(block_coords_file.c_str(), std::ios::in ); 
+
+    for (uint64 j=0; j < nblocks_y; j++)
+    for (uint64 i=0; i < nblocks_x; i++)
+    {
+        // Update top-left coordinate of current block
+        Coord2D<int64> tl(i*BLOCK_SIZE,j*BLOCK_SIZE);
+        zz2.update_block(tl);
+
+        // Get coordinates/coefficients
+        MultiArray<Coord2D<int64>,1> zzcoord2 = zz2.coords();
+
+        // Read all data
+        for (uint64 k=0; k < BLOCK_SIZE*BLOCK_SIZE; k++)
+        {
+            uint64 cx, cy;
+            
+            fp3 >> cx >> cy;
+        
+            //std::cout <<  "(" << zzcoord2[k].x() << "," <<  zzcoord2[k].y() << ") ";
+            //std::cout << " (" << cx << "," << cy << ")" << std::endl;
+            BOOST_CHECK_SMALL (static_cast<float64>(zzcoord2[k].x() - cx), 1.e-5);
+            BOOST_CHECK_SMALL (static_cast<float64>(zzcoord2[k].y() - cy), 1.e-5);
+        }
+    }
+
+    fp3.close();
+
+
+    std::ifstream fp4;
+    fp4.open(block_coeffs_file.c_str(), std::ios::in ); 
+
+    for (uint64 j=0; j < nblocks_y; j++)
+    for (uint64 i=0; i < nblocks_x; i++)
+    {
+        // Update top-left coordinate of current block
+        Coord2D<int64> tl(i*BLOCK_SIZE,j*BLOCK_SIZE);
+        zz2.update_block(tl);
+
+        // Get coordinates/coefficients
+        MultiArray<T,1> zzcoefs2 = zz2.coefs(ma);
+
+        // Read all data
+        for (uint64 k=0; k < BLOCK_SIZE*BLOCK_SIZE; k++)
+        {
+            uint64 coeff;
+            fp4 >> coeff;
+
+            // std::cout <<  "(" << zzcoefs2[k] << ") " << coeff << std::endl;
+            BOOST_CHECK_SMALL (static_cast<float64>(zzcoefs2[k] - coeff), 1.e-5);
+        }
+
+        zz2.dezigzag (zzcoefs2, ma_rec2);
+    }
+
+
+    BOOST_CHECK (ma == ma_rec2);
+
+    fp4.close();
+
+}
+
+
+
+
+BOOST_AUTO_TEST_SUITE_END ();

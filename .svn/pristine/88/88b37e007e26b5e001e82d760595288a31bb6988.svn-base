@@ -1,0 +1,203 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+//
+// This is the validation tets for ToolConfig class 
+//
+
+
+
+#include <imageplus/toolbox/tool_config.hpp>
+#include <iostream>
+
+
+BOOST_AUTO_TEST_SUITE ( ToolConfigSuite );
+
+using namespace imageplus;
+using namespace imageplus::toolbox;
+
+/*!
+ * \cond TestStructures
+ */
+class ToolConfigFixture : public ToolConfig
+{
+public:
+    // my options
+    int32 optimization;
+    std::string out_dir;
+    std::vector <std::string> include_paths;
+    std::vector <uint32> random_nums;
+     
+    // my flags
+    bool debug;
+
+    // my arguments
+    std::string out_file;     
+    std::vector <std::string> input_files;
+    
+    // basic variables
+    int ac;
+    char* av[20]; 
+     
+    // constructor
+    ToolConfigFixture(std::vector<std::string> avs) :
+        ToolConfig("name", "brief", "description")         
+    {
+        // default values
+        optimization = 3;
+        out_dir      = ".";
+        debug        = false;
+        input_files.push_back("file.in");
+        include_paths.push_back("/usr/include");
+        include_paths.push_back("/usr/local/include");
+        random_nums.push_back(15);
+        random_nums.push_back(25);
+        
+
+        // add options and flags
+        add_option  ( optimization , "optimization" , "the optimization level", 'o' );
+        add_option  ( include_paths, "include_paths", "default include paths" , 'I' );
+        add_option  ( out_dir      , "out_dir"      , "output directory"            );
+        add_option  ( random_nums  , "random_nums"  , "some random numbers"   , 'r' );
+        
+        add_flag    ( debug        , "debug"        , "debug mode"            , 'd' );
+         
+        // add arguments in the desired order         
+        add_argument( out_file   , "out_file"   , "name of the output file"         );
+        add_argument( input_files, "input_files", "input files"             , false );
+        // Note that since we have added a (no manfatory) vector we can not add more arguments here.
+        // The same will happen with a mandatory vector, or with an optional argument. 
+
+        // configure
+        ac = avs.size();
+        for(size_t i =0; i<avs.size(); i++)
+        {
+            av[i] = (char *)malloc(avs.at(i).length()*sizeof(char) + 1);
+            strcpy(av[i], avs.at(i).c_str());
+        }
+        configure(ac, av);
+
+        // read
+        read("optimization" , optimization  );
+        read("out_dir"      , out_dir       );
+        read("include_paths", include_paths );
+        read("input_files"  , input_files   );
+        read("out_file"     , out_file      );
+        read("debug"        , debug         );
+        read("random_nums"  , random_nums   );
+        
+//        std::cout << "SIZE: " << input_files.size() << std::endl;
+//        for(size_t i=0; i<input_files.size();i++ )
+//        {
+//            std::cout << "INTERNAL: " << input_files.at(i) << std::endl;
+//        }
+        
+        // free temporal memory
+        for(size_t i =0; i<avs.size(); i++)
+        {
+            free(av[i]);
+        }
+     }
+};
+
+/*!
+ * \endcond
+ */
+BOOST_AUTO_TEST_CASE( test_default_values )
+{	
+    std::vector<std::string> avs;
+    std::vector<std::string> includes;
+    std::vector<uint32> randoms;
+    std::vector<std::string> inputs;
+    
+    avs.push_back("toolname");
+    avs.push_back("file.out");
+            
+    ToolConfigFixture cfg(avs);
+    
+    inputs.push_back("file.in");
+    includes.push_back("/usr/include");
+    includes.push_back("/usr/local/include");
+    
+    randoms.push_back(15);
+    randoms.push_back(25);
+    
+    BOOST_CHECK_EQUAL(cfg.out_file, avs.at(1));
+    BOOST_CHECK_EQUAL(cfg.optimization, 3);
+    BOOST_CHECK_EQUAL(cfg.out_dir, (std::string)".");
+    BOOST_CHECK_EQUAL(cfg.debug, false);
+    BOOST_CHECK(cfg.include_paths == includes);
+    BOOST_CHECK(cfg.input_files == inputs);
+    BOOST_CHECK(cfg.random_nums == randoms);
+    
+}
+
+BOOST_AUTO_TEST_CASE( tool_config_test_command_line )
+{
+    std::vector<std::string> avs;
+    std::vector<std::string> includes;
+    std::vector<std::string> inputs;
+    
+    avs.push_back(std::string("toolname"));
+    avs.push_back(std::string("file.out"));
+    avs.push_back(std::string("-d"));
+    avs.push_back(std::string("--optimization=5"));
+    avs.push_back(std::string("--out_dir=mydir"));
+    avs.push_back(std::string("-I/myinclude_1"));
+    avs.push_back(std::string("-I/myinclude_2"));
+//    avs.push_back("myinput_1.in");
+//    avs.push_back("myinput_2.in\n");
+    
+    includes.push_back("/myinclude_1");
+    includes.push_back("/myinclude_2");
+    inputs.push_back("myinput_1.in");
+    inputs.push_back("myinput_2.in");
+    
+    ToolConfigFixture cfg(avs);
+    
+    BOOST_CHECK_EQUAL(cfg.out_file, avs.at(1));
+    BOOST_CHECK_EQUAL(cfg.optimization, 5);
+    BOOST_CHECK_EQUAL(cfg.out_dir, (std::string)"mydir");
+    BOOST_CHECK_EQUAL(cfg.debug, true);
+    BOOST_CHECK(cfg.include_paths == includes);
+    
+//    for(size_t i; i<inputs.size();i++ )
+//    {
+//        std::cout << "INPUTS: " << inputs.at(i) << std::endl;
+//    }
+//    for(size_t i; i<cfg.input_files.size();i++ )
+//    {
+//        std::cout << "IN FIL: " << cfg.input_files.at(i) << std::endl;
+//    }
+
+    // TODO: this check crashes
+//    BOOST_CHECK(cfg.input_files == inputs);
+}
+
+BOOST_AUTO_TEST_CASE( test_config_file )
+{   
+    std::vector<std::string> avs;
+    std::vector<std::string> includes;
+    
+    avs.push_back("toolname");
+    avs.push_back("file.out");
+    avs.push_back(std::string("--config_file=") + TEST_DATA_PATH_R + "/toolconfig.cfg");
+    avs.push_back("-I/myinclude_1");
+    avs.push_back("-I/myinclude_2");
+    includes.push_back("/myinclude_1");
+    includes.push_back("/myinclude_2");
+    includes.push_back("/myinclude_3");
+    
+    ToolConfigFixture cfg(avs);
+    
+    BOOST_CHECK_EQUAL(cfg.out_file, avs.at(1));
+    BOOST_CHECK_EQUAL(cfg.optimization, 33);
+    BOOST_CHECK_EQUAL(cfg.out_dir, (std::string)"mydir");
+    BOOST_CHECK_EQUAL(cfg.debug, false);
+    BOOST_CHECK(cfg.include_paths == includes);
+    
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

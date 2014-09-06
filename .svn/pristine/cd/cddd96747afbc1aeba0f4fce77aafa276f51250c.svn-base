@@ -1,0 +1,471 @@
+
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file point.hpp
+ */
+
+#ifndef IMAGEPLUS_CORE_POINT_HPP
+#define IMAGEPLUS_CORE_POINT_HPP
+
+#include <boost/array.hpp>
+
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+
+
+#include <boost/math/constants/constants.hpp> // to use PI
+
+namespace imageplus
+{
+    /*!
+     * Class to represent spatial points
+     *
+     * A point is represented by an ordered tuple of n terms, \f$(a_1,a_2,...,a_D)\f$ where
+     * D is the dimension of the space in which the point is located.\n
+     *
+     * A Point is used to represent an analog (or real or "continuous") coordinate of the space,
+     * while a Coord is used to represent a digital (or discrete) one.
+     *
+     * So, use Coord to access to ImaVol, and Point to, for instance, interpolate values.
+     *
+     * You can also use Point2D or point3D as typedef from Point with specific D=2 and D=3
+     * respectively.
+     *
+     * This class inherits from <a href="http://www.boost.org/doc/html/array.html">boost::array</a>, so check the
+     * <a href="http://www.boost.org/doc/html/array.html">boost::array documentation</a> for a complete reference
+     * of the available methods.
+     *
+     * \tparam D : The dimension of the space of the Point
+     *
+     * \see Coord
+     *
+     * \author 01-2008 - Josep Ramon Morros <ramon.morros@upc.edu> - Creation
+     * \author 07-2011 - Albert Gil Moreno                         - Review
+     */
+    template < std::size_t D >
+    class Point : public boost::array<float64,D>
+    {
+    protected:
+        typedef boost::array<float64,D> Base;          //!< the base array class
+
+    public:
+        typedef typename Base::value_type data_type;      //!< The data_type of the Point
+        static const     std::size_t      dimensions = D; //!< The dimension of the Point space
+
+        /*!
+         * Default constructor.
+         * All values are initialized to 0.0.
+         */
+        Point()
+        {
+            (*this).assign(0.0);
+        }
+
+        /*!
+         * Copy constructor from base class, with an implicit data type conversion.
+         *
+         * Please note that it can be used also as a copy-constructor from Point<D>,
+         * and also for Coord<TC,D>.
+         *
+         * \tparam TP : This template allows us to use different Point types
+         *
+         * \param[in] copy : Array with coordinates (you can also use a Point<D> or Coord<TC,D>)
+         */
+        template<typename TC>
+        Point(const boost::array<TC,dimensions>& copy)
+        {
+            Base::operator=(copy);
+        }
+
+        /*!
+         * Copy constructor from a 1D MultiArray, with an implicit conversion of the data type (TC)
+         *
+         * Sometimes we have a point variable stored in a MultiArray,
+         * this constructor allows a conversion.
+         *
+         * \tparam TP : the MultiArray data type
+         *
+         * \param[in] ma_coord : a 1D MultiArray with coordinates
+         *
+         * \todo is this function really necessary? Point now depends on MultiArray!
+         */
+        template<typename TP>
+        Point( const  MultiArray<TP,1> & ma_coord )
+        {
+            ASSERT(ma_coord.dims(0) == dimensions, "Cannot create a Point from a MultiArray with dimension = "
+                                                    << ma_coord.dims(0)
+                                                    << " when the Point has dimension = "
+                                                    << dimensions);
+
+            std::copy(ma_coord.begin(),ma_coord.end(), this->begin());
+        }
+
+        /*!
+         * Constructor from a constant value.
+         *
+         * All dimensions will have the same value.
+         *
+         * Please note that this constructor is also useful for 1D Point.
+         *
+         * \param[in] v : the value of all dimensions
+         */
+        Point (data_type v)
+        {
+            (*this).assign(v);
+        }
+
+        /*!
+         * Specific constructor for 2D Point, just for convenience
+         *
+         * \param[in] x : the value of the first dimension
+         * \param[in] y : the value of the second dimension
+         */
+        Point (data_type x, data_type y)
+        {
+            ASSERT(dimensions == 2, "Cannot create a Point with 2 arguments when dimension = " << dimensions);
+
+            (*this)[0] = x;
+            (*this)[1] = y;
+         }
+
+        /*!
+         * Specific constructor for 3D Point, just for convenience
+         *
+         * \param[in] x : the value of the first dimension
+         * \param[in] y : the value of the second dimension
+         * \param[in] z : the value of the third dimension
+         */
+        Point (data_type x, data_type y, data_type z)
+        {
+            ASSERT(dimensions == 3, "Cannot create a Point with 3 arguments when dimension =" << dimensions);
+
+            (*this)[0] = x;
+            (*this)[1] = y;
+            (*this)[2] = z;
+        }
+
+        /*!
+         * Assignment operator (=) from the base class, with an implicit data type conversion
+         *
+         * Please note that it can be used also as a assignment operator from another Point<D>,
+         * and also for Coord<TC,D>.
+         *
+         * \param[in] copy : the object to copy from (it can be also a Coord<TC,D>)
+         *
+         * \returns this, just to concatenate
+         */
+        template<typename TC>
+        const Point& operator= (const boost::array<TC,dimensions>& copy)
+        {
+            Base::operator=(copy);
+            return *this;
+        }
+
+        /*!
+         * Set/Assignment from another a base class, with an implicit data type conversion (alternative to operator=)
+         *
+         * Please note that it can be used also as a set/assignment from another Point<D>,
+         * and also for Coord<TC,D>.
+         *
+         * \param[in] copy : object to copy from
+         */
+        template<typename TC>
+        void set(const boost::array<TC,dimensions>& copy)
+        {
+            Base::operator=(copy);
+        }
+
+        /*!
+         * Set/Assignment from values (1D)
+         *
+         * \param[in] x : first dimension
+         */
+        void set(data_type x)
+        {
+            ASSERT(dimensions == 1, "Cannot set a Point with (x) with dimension = " << dimensions);
+            (*this)[0] = x;
+        }
+
+        /*!
+         * Set/Assignment from values (2D)
+         *
+         * \param[in] x : first dimension
+         * \param[in] y : second dimension
+         */
+        void set(data_type x, data_type y)
+        {
+            ASSERT(dimensions == 2, "Cannot set a Point with (x,y) with dimension = " << dimensions);
+
+            (*this)[0] = x;
+            (*this)[1] = y;
+        }
+
+        /*!
+         * Set/Assignment from values (3D)
+         *
+         * \param[in] x : first dimension
+         * \param[in] y : second dimension
+         * \param[in] z : third dimension
+         */
+        void set(data_type x, data_type y, data_type z)
+        {
+            ASSERT(dimensions == 3, "Cannot set a Point with (x,y,z) with dimension = " << dimensions);
+
+            (*this)[0] = x;
+            (*this)[1] = y;
+            (*this)[2] = z;
+        }
+
+        /*!
+         * \returns the dimensions of the Point: 2, 3...
+         */
+        size_type dims() const
+        {
+            return dimensions;
+        }
+
+        /*!
+         * \returns the coordinate of the first dimension (const access)
+         */
+        const data_type& x() const
+        {
+            return (*this)[0];
+        }
+
+        /*!
+         * \returns the coordinate of the first dimension
+         */
+        data_type& x()
+        {
+            return (*this)[0];
+        }
+
+        /*!
+         * \returns the coordinate of the second dimension (const access)
+         */
+        const data_type& y() const
+        {
+            ASSERT(dimensions >= 2, "Cannot access to the y coordinate with S=" << dimensions);
+            return (*this)[1];
+        }
+
+        /*!
+         * \returns the coordinate of the second dimension
+         */
+        data_type& y()
+        {
+            ASSERT(dimensions >= 2, "Cannot access to the y coordinate with S=" << dimensions);
+            return (*this)[1];
+        }
+
+        /*!
+         * \returns the coordinate of the third dimension (const access)
+         */
+        const data_type& z() const
+        {
+            ASSERT(dimensions >= 3, "Cannot access to the z coordinate with S=" << dimensions);
+            return (*this)[2];
+        }
+
+        /*!
+         * \returns the coordinate of the third dimension
+         */
+        float64& z()
+        {
+            ASSERT(dimensions >= 3, "Cannot access to the z coordinate with S=" << dimensions);
+            return (*this)[2];
+        }
+    };
+    
+    typedef Point<2> Point2D; //!< A 2D Point
+    typedef Point<3> Point3D; //!< A 3D Point
+
+    /*!
+     * Class to represent a Point (3D) in spheric coordinates.
+     *
+     * Theta and Phi angles are in radians with [0, PI] and (-PI,PI] as their respectively intervals.
+     * Also the radius must be always >=0.
+     *
+     * \author Javi Vidal        - 2009-09 - First version (not a class)
+     * \author Sergio Segura     - 2011-05 - Class creation
+     * \author Albert Gil Moreno - 2011-10 - Review, rearrangement and test
+     */
+    class PointSpheric
+    {
+    public:
+
+        typedef float64 data_type;      //!< The data_type of the PointSpheric
+
+        /*!
+         * Default constructor that sets the PointSpheric to (0,0,0).
+         */
+        PointSpheric()
+        :   _radius(0),
+            _theta (0),
+            _phi   (0)
+        {}
+
+        /*!
+         * Constructor by radius, theta and phi
+         *
+         * Please, note that angles should be in radians and in the intervals
+         *
+         * \param[in] radius : radius length
+         * \param[in] theta  : theta angle
+         * \param[in] phi    : phi angle
+         */
+        PointSpheric(data_type radius, data_type theta, data_type phi)
+        {
+            set( radius, theta, phi );
+        }
+
+        /*!
+         * Constructor from a Cartesian Point3D, with implicit conversion to Spheric coordinates
+         *
+         * \param[in] xyz : the Cartesian Point3D to be copied and converted
+         */
+        PointSpheric( const Point3D& xyz )
+        {
+            *this = xyz;
+        }
+
+        /*!
+         * Assignment operator (=) from a Point3D, with implicit conversion
+         *
+         * \see convert_from().
+         *
+         * \param[in] xyz : xyz
+         *
+         * \returns this to concatenate
+         */
+        const PointSpheric & operator=(const Point3D& xyz)
+        {
+            convert_from(xyz);
+            return(*this);
+        }
+
+        /*!
+         * Set all values together
+         *
+         * \param[in] radius : radius length
+         * \param[in] theta  : theta angle
+         * \param[in] phi    : phi angle
+         */
+        void set(data_type radius, data_type theta, data_type phi )
+        {
+            ASSERT( radius >= 0.0, "Radius must be >=0 and it's:  " << radius  );
+
+            ASSERT( 0.0 <= theta && theta <= boost::math::constants::pi<data_type>(),
+                    "Theta out of range [0,PI]: " << theta  );
+            ASSERT( -boost::math::constants::pi<data_type>() < phi && phi <= boost::math::constants::pi<data_type>(),
+                    "Phi out of range (-PI,PI]: " << phi  );
+
+            _radius = radius;
+            _theta  = theta;
+            _phi    = phi;
+        }
+
+        /*!
+         * Sets the radius length
+         *
+         * \param[in] radius : the radius length
+         */
+        void radius( const data_type& radius )
+        {
+            ASSERT( radius >= 0.0, "Radius must be >=0 and it's:  " << radius  );
+            _radius = radius;
+        }
+
+        /*!
+         * Sets the theta angle
+         *
+         * \param[in] theta : the theta angle
+         */
+        void theta( const data_type& theta )
+        {
+            ASSERT( 0.0 <= theta && theta <= boost::math::constants::pi<data_type>(),
+                    "Theta out of range [0,PI]: " << theta  );
+
+            _theta = theta;
+        }
+
+        /*!
+         * Sets the phi angle
+         *
+         * \param[in] phi : the phi angle
+         */
+        void phi( const data_type& phi )
+        {
+            ASSERT( -boost::math::constants::pi<data_type>() < phi && phi <= boost::math::constants::pi<data_type>(),
+                    "Phi out of range (-PI,PI]: " << phi  );
+
+            _phi = phi;
+        }
+
+        /*!
+         * \returns the radius length
+         */
+        const data_type& radius() const
+        {
+            return _radius;
+        }
+
+        /*!
+         * \returns the theta angle
+         */
+        const data_type& theta() const
+        {
+            return _theta;
+        }
+
+        /*!
+         * \returns the theta angle
+         */
+        const data_type& phi() const
+        {
+            return _phi;
+        }
+
+        /*!
+         * This function takes the XYZ coordinates (Point3D) and converts them into
+         * spheric ones (PointSpheric)
+         *
+         * \param[in] xyz : XYZ coordinates in a Point3D object
+         */
+        void convert_from( const Point3D& xyz )
+        {
+            // Radius
+            _radius = std::sqrt( xyz.x()*xyz.x() +
+                                 xyz.y()*xyz.y() +
+                                 xyz.z()*xyz.z() ) ;
+
+            // Theta
+            if(_radius != 0.0) _theta = acos(xyz.z()/ _radius );
+            else               _theta = 0.0;
+
+            //Phi
+            _phi = std::atan2( xyz.y(), xyz.x() );
+
+            /*
+             * just in case:
+             */
+            ASSERT( 0.0 <= theta() && theta() <= boost::math::constants::pi<data_type>(),
+                    "Theta out of range [0,PI]: " << theta()  );
+            ASSERT( -boost::math::constants::pi<data_type>() < phi() && phi() <= boost::math::constants::pi<data_type>(),
+                    "Phi out of range (-PI,PI]: " << phi()  );
+        }
+
+    private:
+
+        data_type _radius; //!< the radius length of the spheric coordinate
+        data_type _theta;  //!< the theta angle of the spheric coordinate
+        data_type _phi;    //!< the phi angle of the spheric coordinate
+    };
+}
+
+#endif //IMAGEPLUS_CORE_POINT_HPP

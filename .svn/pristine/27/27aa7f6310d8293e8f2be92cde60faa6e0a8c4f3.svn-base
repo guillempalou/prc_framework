@@ -1,0 +1,116 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Tools                                            #
+#                                                                            #
+#  This build system is based on SCons (http://www.scons.org/)               #
+#                                                                            #
+# This file builds all the tools and installs them.                          #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                                                                            #
+##############################################################################
+
+Import('*')
+
+
+if env['USE_WT']:
+
+    # To get the list of files
+    import glob
+    import os
+    
+    ##
+    ## Create the tools environment
+    ##
+    websEnv = env.Clone()
+    
+    ##
+    ## Build the modules:
+    ##
+    ##   - Read the modules list from the modulesListFile
+    ##   - Read the user modules list from the userListFile (if exists)
+    ##   - Execute the build script for each module 
+    ##
+    webs = list()
+    
+    # add only the module name to the "modules" list
+    webs_with_path  = glob.glob(str(Dir(websPath))+os.sep+'*')
+    
+    for webpath in webs_with_path:
+        web = webpath.replace(str(Dir(websPath))+ os.sep,'')
+        if os.path.exists(webpath+os.sep+'src'):
+            webs.append(web)
+        else:
+            webs_with_subpaths = glob.glob(webpath+os.sep+'*')
+            for websuppath in webs_with_subpaths:
+                web = websuppath.replace(str(Dir(websPath))+ os.sep,'')
+                webs.append(web)
+    
+    # User configuration script
+    webs_to_remove = list()
+    if os.path.exists(str(userListFile)):
+        webs_to_remove.extend(SConscript(userListFile, 'env'))
+    
+    # remove undesired tools
+    removed = list()
+    if len(webs_to_remove) != 0:
+        for web in webs_to_remove:
+            if web in webs:
+                webs.remove(web)
+                removed.append(web) 
+        if len(removed) != 0:
+            print '\nThese real-time webs will not be built: \n'
+            for web in removed:
+                print web
+            print '\nPlease, remove them from your user file to be able to build them (',userListFile,').\n'
+    
+    websInstalled = []
+    
+    for web in webs:
+        webName = os.path.basename(web)
+        
+        ##
+        ## Alias
+        ##
+        Alias( webName, websPath + web )
+    
+    
+        ##
+        ## Export the module paths
+        ##
+        srcPath  = websPath + web + '/src/'
+        objPath  = websPath + web + '/obj/' + env['buildsuffix']
+        binPath  = websPath + web + '/bin/' + env['buildsuffix']
+
+        ##
+        ## Adding include path
+        ##
+        websEnv['CPPPATH'] += [srcPath]
+        
+        ##
+        ## Process all tool sources
+        ##
+        objects = list()
+        sourceFiles = glob.glob(str(Dir(srcPath)) + os.sep +'*.cpp')
+        for source in sourceFiles:
+            src = source.replace('.cpp','')
+            src = src.replace(str(Dir(srcPath))+os.sep,'')
+            objects += websEnv.Object( objPath+src, source)
+        
+        ##
+        ## Create the tool
+        ##     
+        bin = websEnv.Program ( binPath+webName, objects + library )
+        
+        ##
+        ## Install the tool to the bin directory (with a prefix) 
+        ##
+        websInstalled += InstallAs( toolsBinPath + 'iplus-web-' + webName, bin )

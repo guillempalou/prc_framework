@@ -1,0 +1,345 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+#include <boost/numeric/ublas/vector.hpp>
+#include <boost/numeric/ublas/vector_proxy.hpp>
+
+#include <boost/numeric/ublas/matrix.hpp>
+#include <boost/numeric/ublas/matrix_proxy.hpp>
+
+#include <boost/numeric/ublas/vector_expression.hpp>
+#include <boost/numeric/ublas/matrix_expression.hpp>
+
+#include <boost/numeric/ublas/storage.hpp>
+#include <boost/numeric/ublas/triangular.hpp>
+
+#include<boost/numeric/ublas/triangular.hpp>
+
+#include <numeric/ublas_adaptors.hpp>
+
+#include <imageplus/math/numeric/cholesky.hpp>
+
+using namespace boost::numeric::ublas;
+using namespace imageplus;
+using namespace imageplus::math;
+
+// Cholesky factorization
+bool imageplus::math::numeric::cholesky_factorization (MultiArray<float64,2>& ma)
+{
+    //typedef BOOST_UBLAS_TYPENAME M::size_type size_type;
+    typedef matrix<float64>::value_type value_type;
+
+    ASSERT (ma.dims(0) == ma.dims(1), "Cholesky decomposition is only valid for a square, positive definite matrix.");
+    std::size_t size = ma.dims(0);
+
+    UblasAdaptionMatrix<float64> m(const_cast<float64*>(ma.data()), ma.dims(0), ma.dims(1));
+
+    typedef boost::numeric::ublas::matrix<float64, boost::numeric::ublas::row_major, array_handle<float64> > matrix_type;
+
+    vector<value_type> d(size);
+
+    for (std::size_t i = 0; i < size; ++ i)
+    {
+        matrix_row< matrix_type > mri(m, i);
+        for (std::size_t j = i; j < size; ++ j)
+        {
+            matrix_row< matrix_type > mrj (m, j);
+
+            boost::numeric::ublas::range r(0,i);
+
+            value_type elem = m(i,j) - inner_prod(boost::numeric::ublas::project(mri, r), boost::numeric::ublas::project(mrj,r));
+
+            if (i == j)
+            {
+                if (elem <= 0.0)
+                {
+                    // matrix after rounding errors is not positive definite
+                    return false;
+                }
+                else
+                {
+                    d(i) = std::sqrt(elem);
+                }
+            }
+            else
+            {
+                m(j,i) = elem / d(i);
+            }
+        }
+    }
+    // put the diagonal back in
+    for (std::size_t i = 0; i < size; ++ i)
+    {
+        m(i,i) = d(i);
+    }
+    // decomposition succeeded
+    return true;
+}
+
+//CholeskyDecomposition::CholeskyDecomposition (MultiArray <float64, 2> & ma)
+MultiArray<float64,2> imageplus::math::numeric::cholesky_factorization (const MultiArray<float64,2>& ma, int32 & spd)
+{
+       //typedef BOOST_UBLAS_TYPENAME M::size_type size_type;
+        typedef matrix<float64>::value_type value_type;
+
+        ASSERT (ma.dims(0) == ma.dims(1), "Cholesky decomposition is only valid for a square, positive definite matrix.");
+//      if (ma.dims(0) != ma.dims(1))
+//      {
+//          throw ImagePlusError( "Cholesky decomposition is only valid for a square, positive definite matrix.");
+//      }
+
+        std::size_t size = ma.dims(0);
+
+        UblasAdaptionMatrix<float64> in(const_cast<float64*>(ma.data()), ma.dims(0), ma.dims(1));
+        //UblasAdaptionMatrix<float64> l(const_cast<float64*>(ma.data()), ma.dims(0), ma.dims(1));
+
+        boost::numeric::ublas::matrix<value_type> m(ma.dims(0), ma.dims(1));
+        m=in;
+
+        //typedef boost::numeric::ublas::matrix<float64, boost::numeric::ublas::row_major, array_handle<float64> > matrix_type;
+        typedef boost::numeric::ublas::matrix<value_type> matrix_type;
+
+        vector<value_type> d(size);
+
+        for (std::size_t i = 0; i < size; ++ i)
+        {
+            matrix_row< matrix_type > mri(m, i);
+            for (std::size_t j = i; j < size; ++ j)
+            {
+                matrix_row< matrix_type > mrj (m, j);
+
+                boost::numeric::ublas::range r(0,i);
+
+                value_type elem = m(i,j) - inner_prod(boost::numeric::ublas::project(mri, r), boost::numeric::ublas::project(mrj,r));
+                //Initially Set l=0.0
+                //l(i,j)=0.0;
+                if (i == j)
+                {
+                    if (elem <= 0.0)
+                    {
+                        // matrix after rounding errors is not positive definite
+                        spd=0;
+                        return m;
+                    }
+                    else
+                    {
+                        d(i) = std::sqrt(elem);
+                    }
+                }
+                else
+                {
+                    m(j,i) = elem / d(i);
+                }
+            }
+        }
+        // put the diagonal back in
+        for (std::size_t i = 0; i < size; ++ i)
+        {
+            m(i,i) = d(i);
+        }
+        // decomposition succeeded
+        triangular_adaptor<matrix <float64> ,lower > out(m);
+        //TODO: Direct adaptor from triangular adaptor to MultiArray
+        m=out;
+        spd=1;
+        return m;
+}
+
+ //  Cholesky matrix inversion
+//ma must be the Cholesky lower triangular matrix
+void imageplus::math::numeric::cholesky_invert (MultiArray<float64,2> & ma)
+{
+    typedef matrix<float64>::size_type size_type;
+    typedef matrix<float64>::value_type value_type;
+
+    std::size_t size = ma.dims(0);
+
+    UblasAdaptionMatrix<float64> m(const_cast<float64*>(ma.data()), ma.dims(0), ma.dims(1));
+
+    typedef boost::numeric::ublas::matrix<float64, boost::numeric::ublas::row_major, array_handle<float64> > matrix_type;
+
+    //size_type size = m.size1();
+
+    // determine the inverse of the lower traingular matrix
+    for (size_type i = 0; i < size; ++ i)
+    {
+        m(i,i) = 1 / m(i,i);
+
+        for (size_type j = i+1; j < size; ++ j)
+        {
+            value_type elem(0);
+
+            for (size_type k = i; k < j; ++ k)
+            {
+                elem -= m(j,k)*m(k,i);
+            }
+            m(j,i) = elem / m(j,j);
+        }
+    }
+
+    // multiply the upper and lower inverses together
+    m = boost::numeric::ublas::prod(trans(triangular_adaptor<UblasAdaptionMatrix<float64>,lower>(m)), triangular_adaptor<UblasAdaptionMatrix<float64>,lower>(m));
+  }
+
+ // Cholesky substitution
+void imageplus::math::numeric::cholesky_solve (const MultiArray<float64,2> & A, MultiArray<float64,1> & b)
+{
+      UblasAdaptionMatrix<float64> m(const_cast<float64*>(A.data()), A.dims(0), A.dims(1));
+      UblasAdaptionVector<float64> e(const_cast<float64*>(b.data()), b.dims(0));
+
+      inplace_solve (m, e, lower_tag ());
+      inplace_solve (trans(m), e, upper_tag ());
+
+}
+
+float64 imageplus::math::numeric::cholesky_determinant (const MultiArray<float64,2> & ma)
+{
+    ASSERT(ma.dims(0)==ma.dims(1), "Squared matrix expected." )
+
+    MultiArray<float64,2> A(ma);
+    if (!cholesky_factorization(A))
+    {
+        throw ImagePlusError ("Matrix is not positive-definite!");
+    }
+    float64 det=1.0;
+    for (std::size_t i=0; i < A.dims(0); ++i)
+    {
+        det=det*A[i][i];
+    }
+
+    return det*det;
+}
+
+int32 imageplus::math::numeric::invert_matrix_cholesky( const MultiArray<float64,2>& matrix_in, MultiArray<float64,2> & matrix_out)
+{
+    ASSERT(matrix_in.dims(0)==matrix_in.dims(1), "Squared matrix expected." )
+
+    uint64 dims = matrix_in.dims(0);
+
+    std::vector <float64> diagonal(dims , 0.0);
+
+    matrix_out = matrix_in;
+
+    for (uint64 i = 0; i < dims; i++)
+    {
+        for (uint64 j = i; j < dims; j++)
+        {
+            float64 sum_val;
+            int64 k;
+            for (sum_val = matrix_out[i][j], k = i-1; k >= 0; k--)
+            {
+                sum_val -= matrix_out[i][k] * matrix_out[j][k];
+            }
+            if (i == j)
+            {
+                if (sum_val <= 0.0)
+                {
+                    matrix_out = 0;     //in case of error, zero matrix is returned!!!!!
+                    return -1;
+                }
+                diagonal[i] = std::sqrt(sum_val);
+            }
+            else
+            {
+                matrix_out[j][i] = sum_val/diagonal[i];
+            }
+        }
+    }
+
+    for (uint64 i = 0; i < dims; i++)
+    {
+        matrix_out[i][i] = 1.0/diagonal[i];
+        for (uint64 j = i+1; j < dims; j++)
+        {
+            float64 sum_val = 0.0;
+            for (uint64 k = i; k < j; k++)
+            {
+                sum_val -= matrix_out[j][k] * matrix_out[k][i];
+            }
+            matrix_out[j][i] = sum_val/diagonal[j];
+        }
+    }
+
+    for (uint64 i = 0; i < dims; i++)
+    {
+        for (uint64 j = i+1; j < dims;j++)
+        {
+            matrix_out[i][j] = matrix_out[j][i];
+        }
+    }
+
+    return 0;
+}
+
+//    // Cholesky substitution
+//  template<class M, class E>
+//  void cholesky_substitute (const M &m, vector_expression<E> &e) {
+//    typedef const M const_matrix_type;
+//    typedef vector<typename E::value_type> vector_type;
+//
+//    inplace_solve (m, e, lower_tag ());
+//    inplace_solve (trans(m), e, upper_tag ());
+//  }
+//  template<class M, class E>
+//  void cholesky_substitute (const M &m, matrix_expression<E> &e)
+//  {
+//    typedef const M const_matrix_type;
+//    typedef matrix<typename E::value_type> matrix_type;
+//
+//    inplace_solve (m, e, lower_tag ());
+//    inplace_solve (trans(m), e, upper_tag ());
+//  }
+//
+//  template<class E, class M>
+//  void cholesky_substitute_left (vector_expression<E> &e, const M &m)
+//  {
+//    typedef const M const_matrix_type;
+//    typedef vector<typename E::value_type> vector_type;
+//
+//    inplace_solve (trans(m), e, upper_tag ());
+//    inplace_solve (m, e, lower_tag ());
+//  }
+//
+//  template<class E, class M>
+//  void cholesky_substitute_left (matrix_expression<E> &e, const M &m) {
+//    typedef const M const_matrix_type;
+//    typedef matrix<typename E::value_type> matrix_type;
+//
+//    inplace_solve (trans(m), e, upper_tag ());
+//    inplace_solve (m, e, lower_tag ());
+//  }
+//
+//  // Cholesky matrix inversion
+//  template<class M>
+//  void cholesky_invert (M &m)
+//  {
+//    typedef typename M::size_type size_type;
+//    typedef typename M::value_type value_type;
+//
+//    size_type size = m.size1();
+//
+//    // determine the inverse of the lower traingular matrix
+//    for (size_type i = 0; i < size; ++ i) {
+//      m(i,i) = 1 / m(i,i);
+//
+//      for (size_type j = i+1; j < size; ++ j) {
+//        value_type elem(0);
+//
+//        for (size_type k = i; k < j; ++ k) {
+//          elem -= m(j,k)*m(k,i);
+//        }
+//        m(j,i) = elem / m(j,j);
+//      }
+//    }
+//
+//    // multiply the upper and lower inverses together
+//    m = prod(trans(triangular_adaptor<M,lower>(m)), triangular_adaptor<M,lower>(m));
+//  }
+
+//}}}
+
+
+

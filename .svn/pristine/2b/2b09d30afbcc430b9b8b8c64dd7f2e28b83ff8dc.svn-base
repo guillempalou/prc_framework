@@ -1,0 +1,805 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file fill_regions.cpp
+//!
+//!  Methods for region-based texture coding
+//!
+
+
+#include <texture/fill_regions.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+
+#include <texture/quantization_auxiliar.hpp>
+
+
+
+using namespace imageplus;
+using namespace imageplus::coding::texture;
+
+namespace mn = imageplus::math::numeric;
+
+#define FMULT4(a,b,c,d) 	(static_cast<float64>(a)*static_cast<float64>(b)*static_cast<float64>(c)*static_cast<float64>(d));
+#define FMULT3(a,b,c) 		(static_cast<float64>(a)*static_cast<float64>(b)*static_cast<float64>(c));
+#define FMULT2(a,b) 		(static_cast<float64>(a)*static_cast<float64>(b));
+
+
+
+void LUbksb (MultiArray<float64,2>& a, uint64 n, MultiArray<int64,1>& indx, MultiArray<float64,1>& b);
+void LUDecomp (MultiArray<float64,2>& a, uint64 n, MultiArray<int64,1>& indx, float64& d);
+void InvertMatrix (MultiArray<float64,2>& m, uint64 n, MultiArray<float64,2>& m_inv);
+
+
+#if 0
+
+
+template<typename image_type, std::size_t num_channels, typename partition_type>
+Image<image_type,num_channels> FillRegionsCodec::encoding (const Image<image_type,num_channels>& ori, 
+                                                           const ImagePartition<partition_type>& label, 
+                                                           const MultiArray<uint8,1>& qmap,
+                                                           const MultiArray<int64,1>& qmap_channels,
+                                                           MultiArray<int64,3>& coeffs) const throw (ImagePlusError)
+{
+    const uint64 num_coeffs;
+
+    switch (_model)
+    {
+        case MODEL_POLY0:        // Zero order polynomial
+            num_coeffs = 1;
+            break;
+
+        case MODEL_POLY1:        // Order 1 polynomial
+            num_coeffs = 3;
+
+        case MODEL_POLY2:        // Order 2 polynomial
+            num_coeffs = 6;
+            break;
+
+        default:
+            throw ImagePlusError ("Invalid type of modeling");
+    }
+
+    uint64 dim_x = ori.size_x();
+    uint64 dim_y = ori.size_y();
+    uint64 dim   = dim_x * dim_y;
+
+    const partition_type* plabel = label(PARTITION_CHANNEL).data();
+    const partition_type* end    = plabel + dim;
+
+
+    // Compute the number of regions (given by maximum label number)
+    uint64 nreg = *(std::max_element (plabel, end));
+
+	
+
+    coeffs = MultiArray<int64,3>(num_channels, nreg+1, num_coeffs);
+    coeffs = 0;
+
+
+    image_type   temp;
+ 
+
+    Image<image_type,num_channels> out(dim_x, dim_y);
+
+
+
+    /* Process all regions that are marked in map */
+    for (partition_type numreg = minlabel; numreg <= maxlabel ;numreg++) 
+    {
+ 
+        BBox2D regbb;
+        regbb = region_bbox(label, numreg);
+
+        Image<image_type,num_channels> current_reg;        
+        ImagePartition<partition_type> current_lab;        
+
+        current_lab(0) = copy_view (label(0), regbb); 
+
+        const partition_type* pcurrent_lab = current_lab(0).data();
+        const partition_type* end = pcurrent_label + current_lab(0).num_elements();
+
+
+        for (uint64 channel=0; channel < out.num_channels(); channel++)
+        {
+            current_reg(channel) = copy_view (ori(channel), regbb); 
+            current_out(channel) = MultiArray<image_type,2>(current_reg(channel).dims(0), current_reg(channel).dims(1));
+
+
+            // Define pointers to image and partition data
+            const image_type* pcurrent_reg     = current_reg(channel).data();
+            const image_type* pcurrent_out     = current_out(channel).data();
+
+            const image_type* por = pcurrent_reg;
+            image_type* ou        = pcurrent_out;
+
+            // Modeling
+            // ========
+            switch (_model)
+            {
+                case MODEL_POLY0:         // Zero order polynomial
+                {
+                    MultiArray<float64,1> feature (2);
+                    // Initialize to zero 
+                    feature = 0.0;
+
+                    // Compute feature vector
+                    for (const partition_type* la = pcurrent_lab; la != end; la++, por++) 
+                    {
+                        if (*la == numreg)          
+                        { 
+                            feature[0] = feature[0] + 1;
+                            feature[1] = feature[1] + *por;
+                        }
+                    }
+
+                    feature[1] = feature[1] / feature[0];
+
+
+                    // Save coeffs
+                    coeffs[channel][numreg][0] = mn::mnint<image_type>(feature[1]);
+
+
+                    // Compute modeled image
+                    for (const partition_type* la = pcurrent_lab; la != end; la++, ou++)
+                    {
+                        *ou = (*la == 0) ? 0 : coeffs[channel][numreg][0];
+                    }
+
+                    // Copy current_out to out image
+
+                    // ???????
+
+                }
+                break;
+
+                case MODEL_POLY1:         // Zero order polynomial
+                {
+
+                }
+                break;
+
+
+                case MODEL_POLY2:         // Zero order polynomial
+                {
+
+                }
+                break;
+
+                default:
+                    throw ImagePlusError ("Invalid type of modeling");
+
+            }
+        }
+    }
+
+
+    return out;
+
+
+}
+
+template<typename image_type, std::size_t num_channels, typename partition_type>
+void FillRegionsCodec::decoding(const ImagePartition<partition_type>& label, 
+                              const MultiArray<int64,3>& coeffs, 
+                              const MultiArray<uint8,1>& qmap,
+                              const MultiArray<int64,1>& qmap_channels,
+                              Image<image_type,num_channels>& rec) const throw (ImagePlusError)
+{
+
+
+
+}
+
+
+#endif
+
+
+
+//! Valid only for positive images (0 .. range_max_val)
+
+template<typename image_type, std::size_t num_channels, typename partition_type>
+Image<image_type,num_channels> imageplus::coding::texture::fill_regions (const Image<image_type,num_channels>& ori, 
+                                                                 const ImagePartition<partition_type>& label, 
+                                                                 TextureModel model, image_type range_max_val) throw (ImagePlusError)
+{
+    image_type   temp;
+
+ 
+    uint64 dim_x = ori.size_x();
+    uint64 dim_y = ori.size_y();
+    uint64 dim   = dim_x * dim_y;
+
+    Image<image_type,num_channels> out(dim_x, dim_y);
+
+
+    const partition_type* plabel = label(PARTITION_CHANNEL).data();
+    const partition_type* end    = plabel + dim;
+
+    // Compute the number of regions (given by maximum label number)
+    uint64 nreg = *(std::max_element (plabel, end));
+	
+
+    for (uint64 channel=0; channel < out.num_channels(); channel++)
+    {
+        // Define pointers to image and partition data
+        const image_type* pori = ori(channel).data();
+        image_type*       pout = out(channel).data();
+
+        // Modeling
+        // ========
+        switch (model)
+        {
+            case MODEL_POLY0:         // Zero order polynomial
+            {
+                MultiArray<float64,2> feature (2,nreg+1);
+                // Initialize to zero 
+                feature = 0.0;
+
+                // Compute feature vector
+                const image_type* por = pori;
+                for (const partition_type* la = plabel; la != end; la++, por++) 
+                {
+                    if (*la != 0)          
+                    { 
+                        feature[0][*la] = feature[0][*la] + 1;
+                        feature[1][*la] = feature[1][*la] + *por;
+                    }
+                }
+
+                for (uint64 i = 1; i <= nreg; i++) 
+                {
+                    feature[1][i] = feature[1][i] / feature[0][i];
+                }
+	  
+                // Compute modeled image
+                image_type* ou = pout;
+                for (const partition_type* la = plabel; la != end; la++, ou++)
+                {
+                    *ou = (*la == 0) ? 0 : mn::mnint<image_type>(feature[1][*la]);
+                }
+            }
+            break;
+
+            case MODEL_POLY1:    // First order polynomial
+            {    
+
+                MultiArray<float64,2> feature(12,nreg+1);
+                feature = 0.0;
+
+                MultiArray<float64,2> mat(3,3);
+                MultiArray<float64,2> mati(3,3);
+
+
+                const partition_type* la = plabel; 
+                const image_type*    por = pori;
+
+                // Compute feature vector 
+                for (uint64 j = 0; j < dim_y; j++)
+                for (uint64 i = 0; i < dim_x; i++) 
+                {
+                    if (*la != 0)          
+                    {
+                        feature[0][*la] = feature[0][*la] + 1;
+                        feature[1][*la] = feature[1][*la] + *por;
+                        feature[2][*la] = feature[2][*la] + i * *por;
+                        feature[3][*la] = feature[3][*la] + j * *por;
+                        feature[4][*la] = feature[4][*la] + i;
+                        feature[5][*la] = feature[5][*la] + j;
+                        feature[6][*la] = feature[6][*la] + i*i;
+                        feature[7][*la] = feature[7][*la] + j*j;
+                        feature[8][*la] = feature[8][*la] + i*j;
+                    }
+                    la++; por++;
+                }
+
+                for (uint64 i = 1; i <= nreg; i++) 
+                {
+                    mat[0][0] = feature[6][i];	
+                    mat[0][1] = feature[8][i];
+                    mat[0][2] = feature[4][i];	
+                    mat[1][0] = feature[8][i];	
+                    mat[1][1] = feature[7][i];	
+                    mat[1][2] = feature[5][i];	
+                    mat[2][0] = feature[4][i];	
+                    mat[2][1] = feature[5][i];	
+                    mat[2][2] = feature[0][i];	
+		  
+                    float64 det = mat[0][0] * (mat[1][1]*mat[2][2]-mat[1][2]*mat[2][1]) - 
+                        mat[1][0] * (mat[0][1]*mat[2][2]-mat[0][2]*mat[2][1]) +
+                        mat[2][0] * (mat[0][1]*mat[1][2]-mat[1][1]*mat[0][2]);
+
+                    if (det == 0.0) 
+                    {
+                        feature[9][i]  = 0.0;
+                        feature[10][i] = 0.0;
+                        feature[11][i] = feature[1][i] / feature[0][i];
+                    }
+                    else
+                    {
+                        //mati = mn::invert_matrix (mat);
+                        InvertMatrix (mat, 3, mati);
+
+                        feature[9][i]  = mati[0][0] * feature[2][i] +
+                            mati[0][1] * feature[3][i] +
+                            mati[0][2] * feature[1][i];
+
+                        feature[10][i] = mati[1][0] * feature[2][i] + 
+                            mati[1][1] * feature[3][i] +
+                            mati[1][2] * feature[1][i];
+                        feature[11][i] = mati[2][0] * feature[2][i] + 
+                            mati[2][1] * feature[3][i] +
+                            mati[2][2] * feature[1][i];
+                    }
+                }
+          
+                // Compute modeled image 
+                // ===================== 
+                image_type* ou = pout; 
+                la = plabel; 
+               // float64 temp2=0;
+                for (uint64 j = 0; j < dim_y; j++)
+                for (uint64 i = 0; i < dim_x; i++) 
+                {
+                    if (*la == 0)
+                    {  
+                      *ou = 0;
+                    }
+                    else
+                    {
+                        float64 tmp_fl = feature[9][*la] * i + feature[10][*la] * j + feature[11][*la];
+                        tmp_fl = std::max (tmp_fl, 0.0);
+                        tmp_fl = std::min (tmp_fl, static_cast<float64>(range_max_val));
+
+                        temp = mn::mnint<image_type> (tmp_fl);
+                        
+                        *ou = temp;
+                    }
+                    ou++; la++; 
+                }
+            }
+            break;
+            case MODEL_POLY2:
+            {
+                // Second order polynomial 
+
+                // Compute feature vector 
+                // ====================== 
+                MultiArray<float64,2> feature(27,nreg+1);
+                feature = 0.0;
+
+                MultiArray<float64,2> mat(6,6);
+                MultiArray<float64,2> mati(6,6);
+
+                const partition_type* la = plabel; 
+                const image_type* por = pori;
+
+                for (uint64 j = 0; j < dim_y; j++)
+                for (uint64 i = 0; i < dim_x; i++) 	
+                {
+                    if (*la != 0)
+                    {
+                        feature[0][*la]  = feature[0][*la]  + 1.0;
+                        feature[1][*la]  = feature[1][*la]  + FMULT4 (i,i,i,i);
+                        feature[2][*la]  = feature[2][*la]  + FMULT4 (j,j,j,j);
+                        feature[3][*la]  = feature[3][*la]  + FMULT4 (i,i,i,j);
+                        feature[4][*la]  = feature[4][*la]  + FMULT4 (i,i,j,j);
+                        feature[5][*la]  = feature[5][*la]  + FMULT4 (i,j,j,j);
+                        feature[6][*la]  = feature[6][*la]  + FMULT3 (i,i,i);
+                        feature[7][*la]  = feature[7][*la]  + FMULT3 (i,i,j);
+                        feature[8][*la]  = feature[8][*la]  + FMULT3 (i,j,j);
+                        feature[9][*la]  = feature[9][*la]  + FMULT3 (j,j,j);
+                        feature[10][*la] = feature[10][*la] + FMULT2 (i,i);
+                        feature[11][*la] = feature[11][*la] + FMULT2 (i,j);
+                        feature[12][*la] = feature[12][*la] + FMULT2 (j,j);
+                        feature[13][*la] = feature[13][*la] + static_cast<float64>(i);
+                        feature[14][*la] = feature[14][*la] + static_cast<float64>(j);
+                        feature[15][*la] = feature[15][*la] + FMULT3 (i,i,*por);
+                        feature[16][*la] = feature[16][*la] + FMULT3 (j,j,*por);
+                        feature[17][*la] = feature[17][*la] + FMULT3 (i,j,*por);
+                        feature[18][*la] = feature[18][*la] + FMULT2 (i,*por);
+                        feature[19][*la] = feature[19][*la] + FMULT2 (j,*por);
+                        feature[20][*la] = feature[20][*la] + static_cast<float64>(*por);
+                    }
+                    la++; por++;
+                }
+
+                for (uint64 i=1; i <= nreg; i++) 
+                {
+                    mat[0][0] = feature[1 ][i] / feature[0][i];
+                    mat[0][1] = feature[4 ][i] / feature[0][i];
+                    mat[0][2] = feature[3 ][i] / feature[0][i];
+                    mat[0][3] = feature[6 ][i] / feature[0][i];
+                    mat[0][4] = feature[7 ][i] / feature[0][i];
+                    mat[0][5] = feature[10][i] / feature[0][i];
+		  
+                    mat[1][0] = feature[4 ][i] / feature[0][i];
+                    mat[1][1] = feature[2 ][i] / feature[0][i];
+                    mat[1][2] = feature[5 ][i] / feature[0][i];
+                    mat[1][3] = feature[8 ][i] / feature[0][i];
+                    mat[1][4] = feature[9 ][i] / feature[0][i];
+                    mat[1][5] = feature[12][i] / feature[0][i];
+
+                    mat[2][0] = feature[3 ][i] / feature[0][i];
+                    mat[2][1] = feature[5 ][i] / feature[0][i];
+                    mat[2][2] = feature[4 ][i] / feature[0][i];
+                    mat[2][3] = feature[7 ][i] / feature[0][i];
+                    mat[2][4] = feature[8 ][i] / feature[0][i];
+                    mat[2][5] = feature[11][i] / feature[0][i];
+
+                    mat[3][0] = feature[6 ][i] / feature[0][i];
+                    mat[3][1] = feature[8 ][i] / feature[0][i];
+                    mat[3][2] = feature[7 ][i] / feature[0][i];
+                    mat[3][3] = feature[10][i] / feature[0][i];
+                    mat[3][4] = feature[11][i] / feature[0][i];
+                    mat[3][5] = feature[13][i] / feature[0][i];
+
+                    mat[4][0] = feature[7 ][i] / feature[0][i];
+                    mat[4][1] = feature[9 ][i] / feature[0][i];
+                    mat[4][2] = feature[8 ][i] / feature[0][i];
+                    mat[4][3] = feature[11][i] / feature[0][i];
+                    mat[4][4] = feature[12][i] / feature[0][i];
+                    mat[4][5] = feature[14][i] / feature[0][i];
+
+                    mat[5][0] = feature[10][i] / feature[0][i];
+                    mat[5][1] = feature[12][i] / feature[0][i];
+                    mat[5][2] = feature[11][i] / feature[0][i];
+                    mat[5][3] = feature[13][i] / feature[0][i];
+                    mat[5][4] = feature[14][i] / feature[0][i];
+                    mat[5][5] = 1.0;
+
+                    feature[15][i] = feature[15][i] / feature[0][i];
+                    feature[16][i] = feature[16][i] / feature[0][i];
+                    feature[17][i] = feature[17][i] / feature[0][i];
+                    feature[18][i] = feature[18][i] / feature[0][i];
+                    feature[19][i] = feature[19][i] / feature[0][i];
+                    feature[20][i] = feature[20][i] / feature[0][i];
+
+		  
+                    if (feature[0][i] > 15) 
+                    {
+                        // mati = mn::invert_matrix (mat);
+                        InvertMatrix (mat, 6, mati);
+
+                        feature[21][i]  = mati[0][0] * feature[15][i] 
+					    	+ mati[0][1] * feature[16][i]
+					    	+ mati[0][2] * feature[17][i]
+					    	+ mati[0][3] * feature[18][i]
+					    	+ mati[0][4] * feature[19][i]
+					    	+ mati[0][5] * feature[20][i];
+                        feature[22][i]  = mati[1][0] * feature[15][i] 
+					    	+ mati[1][1] * feature[16][i]
+					    	+ mati[1][2] * feature[17][i]
+					    	+ mati[1][3] * feature[18][i]
+				    		+ mati[1][4] * feature[19][i]
+					    	+ mati[1][5] * feature[20][i];
+                        feature[23][i]  = mati[2][0] * feature[15][i] 
+					    	+ mati[2][1] * feature[16][i]
+					    	+ mati[2][2] * feature[17][i]
+				    		+ mati[2][3] * feature[18][i]
+					    	+ mati[2][4] * feature[19][i]
+					    	+ mati[2][5] * feature[20][i];
+                        feature[24][i]  = mati[3][0] * feature[15][i] 
+					    	+ mati[3][1] * feature[16][i]
+				    		+ mati[3][2] * feature[17][i]
+					    	+ mati[3][3] * feature[18][i]
+					    	+ mati[3][4] * feature[19][i]
+					    	+ mati[3][5] * feature[20][i];
+                        feature[25][i]  = mati[4][0] * feature[15][i] 
+					    	+ mati[4][1] * feature[16][i]
+					    	+ mati[4][2] * feature[17][i]
+					    	+ mati[4][3] * feature[18][i]
+					    	+ mati[4][4] * feature[19][i]
+					    	+ mati[4][5] * feature[20][i];
+                        feature[26][i]  = mati[5][0] * feature[15][i] 
+					    	+ mati[5][1] * feature[16][i]
+					    	+ mati[5][2] * feature[17][i]
+					    	+ mati[5][3] * feature[18][i]
+					    	+ mati[5][4] * feature[19][i]
+				            + mati[5][5] * feature[20][i];
+                    }	
+                    else
+                    {
+                        feature[21][i]  = 0.0; 
+                        feature[22][i]  = 0.0; 
+                        feature[23][i]  = 0.0; 
+                        feature[24][i]  = 0.0; 
+                        feature[25][i]  = 0.0; 
+                        feature[26][i]  = feature[20][i]; 
+                    }
+                }
+
+                // Compute modeled image
+                // ===================== 
+                la = plabel; 
+                image_type* ou = pout;
+
+                for (uint64 j = 0; j < dim_y; j++)
+                for (uint64 i = 0; i < dim_x; i++) 
+                {
+                    if (*la == 0)
+                    {
+                        *ou = 0;
+                    }
+                    else
+                    {
+
+                        float64 tmp_fl = feature[21][*la] * i*i + feature[22][*la] * j*j +
+                                         feature[23][*la] * i*j + feature[24][*la] * i   +
+                                         feature[25][*la] * j   + feature[26][*la];
+                        tmp_fl = std::max (tmp_fl, 0.0);
+                        tmp_fl = std::min (tmp_fl, static_cast<float64>(range_max_val));
+
+                        temp = mn::mnint<image_type> (tmp_fl);
+
+                        *ou = temp;
+                    }
+                    ou++; la++; 
+                }
+            }
+            break;
+
+            case MODEL_SQRT_ENERGY:  // Square root of Mean square  (sum of x*x)
+            {
+                MultiArray<float64,2> feature(2,nreg+1);
+                feature = 0.0;
+
+                // Compute feature vector
+                const image_type* por = pori;
+                for (const partition_type* la = plabel; la != end; la++, por++)
+                {
+                    feature[0][*la] = feature[0][*la] + 1.;
+                    feature[1][*la] = feature[1][*la] + *por * *por; 
+                }
+
+                for (uint64 i=1; i <= nreg; i++) 
+                {
+                    feature[1][i] = std::sqrt(feature[1][i] / feature[0][i]); 
+                }
+
+                // Compute modeled image
+                image_type* ou = pout;
+                for (const partition_type* la = plabel; la != end; la++, ou++)
+                {
+                    *ou = (*la == 0) ? 0 : mn::mnint<image_type>(feature[1][*la]);
+                }
+            }
+            break;
+
+            case MODEL_MINIMUM:             // Minimum of region pixels
+            {
+                MultiArray<float64,2> feature(1,nreg+1);
+                feature = static_cast<float64>(std::numeric_limits<image_type>::max());
+
+
+                // Compute feature vector
+                const image_type* por = pori;
+                for (const partition_type* la = plabel; la != end; la++, por++)
+                {
+                    if (*la != 0)
+                    {
+                        temp = std::min (*por, mn::mnint<image_type>(feature[0][*la]));
+                        feature[0][*la] = static_cast<float64>(temp);
+                    }
+                }
+
+                // Compute modeled image
+                image_type* ou = pout;
+                for (const partition_type* la = plabel; la != end; la++, ou++)
+                {
+                    *ou = (*la == 0) ? 0 : mn::mnint<image_type>(feature[0][*la]);
+                }
+            }
+            break;
+
+            case MODEL_MAXIMUM:             // Maximum of region pixels
+            {
+                MultiArray<float64,2> feature(1,nreg+1);
+                feature = static_cast<float64>(std::numeric_limits<image_type>::min());
+
+
+                // Compute feature vector
+                const image_type* por = pori;
+                for (const partition_type* la = plabel; la != end; la++, por++)
+                {
+                    if (*la != 0)
+                    {
+                        temp = std::max (*por, mn::mnint<image_type>(feature[0][*la]));
+                        feature[0][*la] = static_cast<float64>(temp);
+                    }
+                }
+
+                // Compute modeled image
+                image_type* ou = pout;
+                for (const partition_type* la = plabel; la != end; la++, ou++)
+                {
+                    *ou = (*la == 0) ? 0 : mn::mnint<image_type>(feature[0][*la]);
+                }
+            }
+            break;
+
+            default:
+                throw ImagePlusError ("Invalid type of modeling");
+        }
+    }
+
+    return out;
+}
+
+
+
+/* ------------------------------------------------------------ */
+/*                      Matrix inversion                        */
+/*  Original sources from Numerical Recipies                    */
+/* ------------------------------------------------------------ */
+
+void InvertMatrix (MultiArray<float64,2>& m, uint64 n, MultiArray<float64,2>& m_inv)
+{
+  float64	d=0.0;
+
+  MultiArray<int64,1> indx(n); 
+  MultiArray<float64,1> col(n); 
+
+  LUDecomp (m, n, indx, d); 
+	
+  float64 det = 1.;
+
+  for (uint64 i=0; i < n; i++) 
+      det = det * m[i][i];
+
+  for (uint64 j=0; j < n; j++) 
+	{
+	  for (uint64 i=0; i < n; i++) 
+          col[i] = 0.0;
+	  col[j] = 1.0;
+
+	  LUbksb (m, n, indx, col);
+
+	  for (uint64 i=0; i < n; i++) 
+          m_inv[i][j] = col[i];
+	}
+}
+
+/* ---------------------------------------------------------------- */
+void LUbksb (MultiArray<float64,2>& a, uint64 n, MultiArray<int64,1>& indx, MultiArray<float64,1>& b)
+{
+    int64 	  ip;
+    float64   sum;
+    int64    ii = -1;
+
+    for (uint64 i = 0; i < n; i++) 
+    {
+        ip    = indx[i];
+        sum   = b[ip];
+        b[ip] = b[i];
+        if (ii >= 0)
+        {
+            for (uint64 j=ii;j<=i-1;j++) 
+                sum -= a[i][j]*b[j];
+        }
+        else
+        { 
+            if (sum) 
+            {
+                ii=i;
+            }
+        }
+        b[i]=sum;
+    }
+
+
+    for (int64 i = n-1;i >= 0;i--) 
+    {
+        sum = b[i];
+
+        for (uint64 j = i+1; j <= n-1; j++) 
+        {
+            sum -= a[i][j]*b[j];
+        }
+        b[i] = sum/a[i][i];
+    }
+}
+
+/* --------------------------------------------------------------- */
+
+#define TINY 1.0e-20;
+
+void LUDecomp (MultiArray<float64,2>& a, uint64 n, MultiArray<int64,1>& indx, float64& d)
+{
+    uint64 		imax=0;
+    float64 	big,dum,sum,temp;
+
+    MultiArray<float64,1> vv(n);
+    d = 1.0;
+
+    for (uint64 i = 0;i < n;i++) 
+	{
+        big = 0.0;
+        for (uint64 j=0; j < n; j++)
+            if ((temp = std::abs(a[i][j])) > big) big=temp;
+        if (big == 0.0) 
+        {
+            //nrerror("Singular matrix in routine LUDCMP");
+        }
+        vv[i]=1.0/big;
+	}
+    for (uint64 j=0; j < n;j++) 
+	{
+        for (uint64 i=0; i < j;i++) 
+		{
+            sum=a[i][j];
+            for (uint64 k=0;k<i;k++) 
+            {
+                sum -= a[i][k]*a[k][j];
+            }
+            a[i][j]=sum;
+		}
+        big=0.0;
+        for (uint64 i=j; i < n; i++) 
+		{
+            sum=a[i][j];
+            for (uint64 k=0; k<j; k++)
+                sum -= a[i][k]*a[k][j];
+            a[i][j]=sum;
+            if ( (dum=vv[i]*fabs(sum)) >= big)
+			{
+                big=dum;
+                imax=i;
+			}
+		}	
+        if (j != imax)
+		{
+            for (uint64 k=0; k<n; k++)
+			{
+                dum=a[imax][k];
+                a[imax][k]=a[j][k];
+                a[j][k]=dum;
+			}
+            d = -d;
+            vv[imax]=vv[j];
+		}
+
+        indx[j]=imax;
+
+        if (a[j][j] == 0.0)
+        {
+            a[j][j]=TINY;
+        }
+        if (j != n-1)
+		{
+            dum=1.0/(a[j][j]);
+
+            for (uint64 i=j+1; i < n; i++)
+            {
+                a[i][j] *= dum;
+            }
+		}
+	}
+}
+
+#undef TINY
+
+
+
+
+namespace imageplus
+{
+    namespace coding 
+    {    
+        namespace texture 
+        {    
+#if 0
+            template Image<uint8,3> FillRegionsCodec::encoding (const Image<uint8,3>& ori, const ImagePartition<uint32>& label, const MultiArray<uint8,1>& qmap, const MultiArray<int64,1>& qmap_channels, MultiArray<int64,3>& coeffs) const throw (ImagePlusError);
+            template Image<uint8,3> FillRegionsCodec::encoding (const Image<uint8,1>& ori, const ImagePartition<uint32>& label, const MultiArray<uint8,1>& qmap, const MultiArray<int64,1>& qmap_channels, MultiArray<int64,3>& coeffs) const throw (ImagePlusError);
+#endif
+
+
+            template Image<uint8,3> fill_regions (const Image<uint8,3>&, const ImagePartition<uint32>&, TextureModel, uint8) throw (ImagePlusError);
+
+            template Image<uint8,1> fill_regions (const Image<uint8,1>& ori, const ImagePartition<uint32>& label, TextureModel model, uint8 range_max_val) throw (ImagePlusError);
+        }
+    }
+}

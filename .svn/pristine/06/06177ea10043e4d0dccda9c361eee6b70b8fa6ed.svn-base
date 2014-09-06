@@ -1,0 +1,1053 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file color_layout.hpp
+//!
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/core/mask.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+#include <imageplus/descriptors/color/color_statistics.hpp>
+#include <imageplus/math/transforms/fourier.hpp>
+#include <imageplus/math/transforms/zigzag.hpp>
+#include <imageplus/math/numeric/numeric_util.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+#include <fstream>
+
+#ifndef IMAGEPLUS_DESCRIPTORS_COLOR_COLOR_LAYOUT_HPP
+#define IMAGEPLUS_DESCRIPTORS_COLOR_COLOR_LAYOUT_HPP
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+    
+        //!
+        //! \brief Class for visual descriptor that captures the spatial layout of the representative colors on a grid superimposed on a image.
+        //!
+        //! This descriptor is obtained by applying the DCT transformation on a 2-D array of local representative colors in Y or Cb or Cr color space.
+        //! The extraction process consists of four stages - image partitioning, representative color detection, DCT transformation and nonlinear quantization of the zigzag-scanned coefficients.
+        //!
+        //! The user may use the helper functions defined in visual_descriptors.hpp because of their simplicity.
+        //!
+        //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+        //!
+        //! \date 29-6-2009     
+        template<class InputModel>
+        class ColorLayout : public DescriptorBase
+        {
+        public:
+            
+            //!
+            //! \brief Default constructor
+            //!
+            //! \param[in] ny : Number of lumma (Y) coefficients
+            //! \param[in] nc : Number of chroma (Cb or Cr) coefficients
+        	//! \param[in] adaptive_dct : Boolean that indicates if shape adaptive dct is used for region case
+            ColorLayout(uint64 ny = 6, uint64 nc = 3, bool adaptive_dct = false) : DescriptorBase("ColorLayout",false)
+            {
+                if(ny>64 || nc >64)
+                    throw ImagePlusError("The number of coefficients of each channel can't be greater than 64");
+                _ny = ny;
+                _nc = nc;
+                _y_coeff.resize(ny);
+                _cb_coeff.resize(nc);
+                _cr_coeff.resize(nc);
+                _adaptive_dct = adaptive_dct;
+            }
+            
+            //! \brief Calculates the color layout of a image given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the image
+            //! \param[in] last : Iterator to the end of the image
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            //! \return A reference of the ColorLayout object
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {        
+                ASSERT(peer_descs!=0x0, "ColorLayout calculate: peer_descs must be non null");
+
+                const BoundingBox<typename InputModel::CoordType>& bb_coord = peer_descs->calculate(new BoundingBox<typename InputModel::CoordType>(), first, last);
+                _calculate(first,last,bb_coord, peer_descs);
+            }
+            
+            //! \brief Returns the Y coefficients
+            //!
+            //! \return Y coefficients
+            const std::vector<float64>& y_coeff() const
+            {
+                return _y_coeff;
+            }
+            
+            //! \brief Returns the Cb coefficients
+            //!
+            //! \return Cb coefficients
+            //! 
+            const std::vector<float64>& cb_coeff() const
+            {
+                return _cb_coeff;
+            }
+            
+            //! \brief Returns the Cr coefficients
+            //!
+            //! \return Cr coefficients
+            //! 
+            const std::vector<float64>& cr_coeff() const
+            {
+                return _cr_coeff;
+            }
+            
+            //! Writes the value of the descriptor.
+            //! \param[in] os: TXT file we are writing to.
+            void txt_write(std::fstream &os)
+            {
+            	os << " " << _ny;
+            	for(uint64 ii=0; ii < _ny; ii++)
+            	{
+            		os << " " << _y_coeff[ii];
+            	}
+            	os << " " << _nc;
+            	for(uint64 ii=0; ii<_nc; ii++)
+            	{
+            		os << " " << _cb_coeff[ii];
+            	}
+            	for(uint64 ii=0; ii<_nc; ii++)
+            	{
+            		os << " " << _cr_coeff[ii];
+            	}
+            }
+            
+            //! Reads the value of the descriptor.
+            //! \param[in] is: TXT file we are reading from.
+            void txt_read(std::fstream& is)
+            {
+            	is >> _ny;
+            	_y_coeff.resize(_ny);
+            	for(uint64 ii=0; ii<_ny; ii++)
+            	{
+            		is >> _y_coeff[ii];
+            	}
+            	is >> _nc;
+            	_cb_coeff.resize(_nc);
+            	_cr_coeff.resize(_nc);
+            	for(uint64 ii=0; ii<_nc; ii++)
+            	{
+            		is >> _cb_coeff[ii];
+            	}
+            	for(uint64 ii=0; ii<_nc; ii++)
+            	{
+            		is >> _cr_coeff[ii];
+            	}
+            }
+            
+            
+        #ifdef USE_XML   
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "ColorLayoutType";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem, *dataElem2;
+                XERCES_CPP_NAMESPACE::DOMText* textElem;
+                std::string append;
+                std::string space(" ");
+               
+                append = boost::lexical_cast<std::string>(_ny);
+                vdElem->setAttribute(io::fromNative("numOfYCoeff").c_str(), io::fromNative(append.c_str()).c_str());
+                
+                append = boost::lexical_cast<std::string>(_nc);
+                vdElem->setAttribute(io::fromNative("numOfCCoeff").c_str(), io::fromNative(append.c_str()).c_str());
+        
+                
+                dataElem = doc->createElement(io::fromNative("YCoeff").c_str());
+                vdElem->appendChild(dataElem);
+                
+                dataElem2 = doc->createElement(io::fromNative("YDCCoeff").c_str());
+                dataElem->appendChild(dataElem2);
+                
+                append = boost::lexical_cast<std::string>(_y_coeff[0]);
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem2->appendChild(textElem);
+                
+                dataElem2 = doc->createElement(io::fromNative("YACCoeff").c_str());
+                dataElem->appendChild(dataElem2);
+                
+                append = "";
+                for(uint64 i=1; i<_ny; i++ )
+                {
+                    append = append + boost::lexical_cast<std::string>(_y_coeff[i]) + space;
+                }
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem2->appendChild(textElem);
+                
+                
+                dataElem = doc->createElement(io::fromNative("CbCoeff").c_str());
+                vdElem->appendChild(dataElem);
+                
+                dataElem2 = doc->createElement(io::fromNative("CbDCCoeff").c_str());
+                dataElem->appendChild(dataElem2);
+                
+                append = boost::lexical_cast<std::string>(_cb_coeff[0]);
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem2->appendChild(textElem);
+                
+                dataElem2 = doc->createElement(io::fromNative("CbACCoeff").c_str());
+                dataElem->appendChild(dataElem2);
+                
+                append = "";
+                for(uint64 i=1; i<_nc; i++ )
+                {
+                    append = append + boost::lexical_cast<std::string>(_cb_coeff[i]) + space;
+                }
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem2->appendChild(textElem);
+                
+                dataElem = doc->createElement(io::fromNative("CrCoeff").c_str());
+                vdElem->appendChild(dataElem);
+                
+                dataElem2 = doc->createElement(io::fromNative("CrDCCoeff").c_str());
+                dataElem->appendChild(dataElem2);
+                
+                append = boost::lexical_cast<std::string>(_cr_coeff[0]);
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem2->appendChild(textElem);
+                
+                dataElem2 = doc->createElement(io::fromNative("CrACCoeff").c_str());
+                dataElem->appendChild(dataElem2);
+                
+                append = "";
+                for(uint64 i=1; i<_nc; i++ )
+                {
+                    append = append + boost::lexical_cast<std::string>(_cr_coeff[i]) + space;
+                }
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem2->appendChild(textElem);
+            }
+
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \returns true if the descriptor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "ColorLayoutType");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("ColorLayoutType not found");
+                }
+                else
+                {
+                    XERCES_CPP_NAMESPACE::DOMNamedNodeMap *node_attr = curr_node->getAttributes();
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = node_attr->getNamedItem(io::fromNative("numOfYCoeff").c_str());
+                    sscanf(io::toNative(curr_node2->getNodeValue()).c_str(), "%llu", &_ny);
+                    curr_node2 = node_attr->getNamedItem(io::fromNative("numOfCCoeff").c_str());
+                    sscanf(io::toNative(curr_node2->getNodeValue()).c_str(), "%llu", &_nc);
+                    
+                    _y_coeff.resize(_ny);
+                    _cb_coeff.resize(_nc);
+                    _cr_coeff.resize(_nc);
+                    
+                    curr_node2 = io::xml_get_check_son(curr_node, "YCoeff");
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node3 = io::xml_get_check_son(curr_node2, "YDCCoeff");
+                    std::string text = io::xml_get_text_son(curr_node3, curr_node3);
+                    sscanf(text.c_str(), "%lf", &_y_coeff[0]);
+                    
+                    curr_node3 = io::xml_get_check_son(curr_node2, "YACCoeff");
+                    text = io::xml_get_text_son(curr_node3, curr_node3);
+                    uint32 j = 0;
+                    int pos = 0;
+                    for( j = 1; j < _ny; j++)
+                    {
+                        std::string value;
+                        value.push_back(text[pos]);
+                        pos++;
+                        while(text[pos]!=' ')
+                        {
+                            value.push_back(text[pos]);
+                            pos++;
+                        }
+                        pos++;
+                        sscanf(value.c_str(), "%lf", &_y_coeff[j]);
+                        
+                    }
+                    
+                    curr_node2 = io::xml_get_check_son(curr_node, "CbCoeff");
+                    curr_node3 = io::xml_get_check_son(curr_node2, "CbDCCoeff");
+                    text = io::xml_get_text_son(curr_node3, curr_node3);
+                    sscanf(text.c_str(), "%lf", &_cb_coeff[0]);
+                    
+                    curr_node3 = io::xml_get_check_son(curr_node2, "CbACCoeff");
+                    text = io::xml_get_text_son(curr_node3, curr_node3);
+                    pos = 0;
+                    for( j = 1; j < _nc; j++)
+                    {
+                        std::string value;
+                        value.push_back(text[pos]);
+                        pos++;
+                        while(text[pos]!=' ')
+                        {
+                            value.push_back(text[pos]);
+                            pos++;
+                        }
+                        pos++;
+                        sscanf(value.c_str(), "%lf", &_cb_coeff[j]);
+                        
+                    }
+                    
+                    curr_node2 = io::xml_get_check_son(curr_node, "CrCoeff");
+                    curr_node3 = io::xml_get_check_son(curr_node2, "CrDCCoeff");
+                    text = io::xml_get_text_son(curr_node3, curr_node3);
+                    sscanf(text.c_str(), "%lf", &_cr_coeff[0]);
+                    
+                    curr_node3 = io::xml_get_check_son(curr_node2, "CrACCoeff");
+                    text = io::xml_get_text_son(curr_node3, curr_node3);
+                    pos = 0;
+                    for( j = 1; j < _nc; j++)
+                    {
+                        std::string value;
+                        value.push_back(text[pos]);
+                        pos++;
+                        while(text[pos]!=' ')
+                        {
+                            value.push_back(text[pos]);
+                            pos++;
+                        }
+                        pos++;
+                        sscanf(value.c_str(), "%lf", &_cr_coeff[j]);
+                        
+                    }
+                    read = true;
+                }
+                return read;
+            }
+        #endif
+                      
+        private:
+            
+            //! Vector with Y coefficients
+            std::vector<float64> _y_coeff;
+            
+            //! Vector with Cb coefficients
+            std::vector<float64> _cb_coeff;
+            
+            //! Vector with Cr coefficients
+            std::vector<float64> _cr_coeff;
+            
+            //! Number of Y coefficients
+            uint64 _ny;
+            
+            //!Number of Cb or Cr coefficients
+            uint64 _nc;
+            
+            //! Boolen that indicates if shape adaptive dct is used
+            bool _adaptive_dct;
+
+            //! \brief Private method that computes the color layout of a image given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the image
+            //! \param[in] last : Iterator to the end of the image
+            //! \param[in] bb_coord: Top-Left and Bottom-Right coordinates of the bounding box
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void _calculate(IteratorModel first, IteratorModel last, const BoundingBox<typename InputModel::CoordType>& bb_coord, CollaborativeDescriptors* peer_descs)
+            {
+                uint64 size_x = bb_coord.side(0);
+                uint64 size_y = bb_coord.side(1);
+                
+                if(size_x > 8 && size_y > 8)
+                {
+                    ImaVolMask<InputModel::dimensions> mask_aux(size_x,size_y);
+                    ImaVolMask<InputModel::dimensions> empty_block(8,8);
+                    
+                    boost::array<uint64, 8> size_x_block;
+                    for(uint64 i = 0; i<8 ; i++)
+                    {
+                        size_x_block[i]=size_x/8;
+                    }
+                    for(uint64 i = 0, m = size_x%8; m>0; m--, i++)
+                    {
+                        size_x_block[i]++;
+                    }
+                    
+                    boost::array<uint64, 8> size_y_block;
+                    for(uint64 i = 0; i<8 ; i++)
+                    {
+                        size_y_block[i]=size_y/8;
+                    }
+                    for(uint64 i = 0, m = size_y%8; m>0; m--, i++)
+                    {
+                        size_y_block[i]++;
+                    }
+                    
+                    boost::array<uint64, 8> acum_size_x;
+                    boost::array<uint64, 8> acum_size_y;
+                    acum_size_x[0]=0;
+                    acum_size_y[0]=0;
+                    
+                    for(uint64 i = 1; i< 8 ; i++)
+                    {
+                        acum_size_x[i] = acum_size_x[i-1]+size_x_block[i-1];
+                        acum_size_y[i] = acum_size_y[i-1]+size_y_block[i-1];
+                    }
+                    
+                    std::vector<ImageYUV<typename InputModel::data_type> > blocks;
+                    blocks.resize(64);
+                    for(uint64 k = 0; k<64; k++)
+                    {
+                        blocks[k].resize(size_x_block[k%8], size_y_block[k/8]);
+                    }
+                    MultiArray<float64, 2> im_y(8,8);
+                    MultiArray<float64, 2> im_u(8,8);
+                    MultiArray<float64, 2> im_v(8,8);
+                    
+                    if(peer_descs!=0x0)
+                    {
+                        const ImageYUV<typename InputModel::data_type>& imyuv = peer_descs->calculate(new VDImageYUV<InputModel>(),first,last);
+                        const ImaVolMask<InputModel::dimensions>& mask = peer_descs->calculate(new Mask<typename InputModel::CoordType>(), first, last);
+                        mask_aux = mask;
+                        
+                        std::size_t index=0;
+                        //We divide the input picture into 64 (8x8) blocks
+                        for(std::size_t j = 0; j<8; j++ )
+                        {
+                            for(std::size_t i = 0; i<8; i++, index++)
+                            {
+                                std::size_t index3 = acum_size_y[j];
+                                for(std::size_t jj = 0; jj < size_y_block[j]; jj++, index3++)
+                                {
+                                    std::size_t index2 = acum_size_x[i];
+                                    for(std::size_t ii = 0; ii < size_x_block[i]; ii++, index2++)
+                                    {
+                                        blocks[index](Y_CHANNEL)[ii][jj] = imyuv(Y_CHANNEL)[index2][index3];
+                                        blocks[index](U_CHANNEL)[ii][jj] = imyuv(U_CHANNEL)[index2][index3];
+                                        blocks[index](V_CHANNEL)[ii][jj] = imyuv(V_CHANNEL)[index2][index3];
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if(_adaptive_dct)
+                        {
+                            empty_block = true;
+                            //Horizontal padding of boundary blocks
+                            for(std::size_t k = 0; k < 64; k++)
+                            {
+                                for(std::size_t j = 0; j < size_y_block[k/8]; j++)
+                                {
+                                    std::size_t begin = 0;
+                                    std::size_t end = 0;
+                                    while(!(mask[acum_size_x[k%8]+end][acum_size_y[k/8]+j])&&end<size_x_block[k%8])
+                                    {
+                                        end++;
+                                    }
+                                    if(end<size_x_block[k%8])
+                                    {
+                                        
+                                    	empty_block[k%8][k/8]=false;
+                                    	for(;begin<end;begin++)
+                                        {
+                                            blocks[k][begin][j]=blocks[k][end][j];
+                                            mask_aux[acum_size_x[k%8]+begin][acum_size_y[k/8]+j]=true;
+                                        }
+                                        end++;
+                                    }
+                                    while(end<size_x_block[k%8])
+                                    {
+                                        while(!(mask[acum_size_x[k%8]+end][acum_size_y[k/8]+j])&&end<size_x_block[k%8])
+                                        {
+                                            end++;
+                                        }
+                                        if(end<size_x_block[k%8])
+                                        {
+                                            for(std::size_t i=begin+1; i<end;i++)
+                                            {
+                                                blocks[k][i][j]= (blocks[k][begin][j]+blocks[k][end][j])/2;
+                                                mask_aux[acum_size_x[k%8]+i][acum_size_y[k/8]+j]=true;
+                                            }
+                                            begin = end;
+                                            end++;
+                                        }
+                                        else
+                                        {
+                                            for(std::size_t i=begin+1; i<end;i++)
+                                            {
+                                                blocks[k][i][j]= blocks[k][begin][j];
+                                                mask_aux[acum_size_x[k%8]+i][acum_size_y[k/8]+j]=true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                    }
+                    else
+                    {
+                        const ImageYUV<typename InputModel::data_type>& imyuv = peer_descs->calculate(new VDImageYUV<InputModel>(), first, last);
+                        
+                        const Mask<typename InputModel::CoordType>& desc_mask = peer_descs->calculate(new Mask<typename InputModel::CoordType>(), first, last);
+                        const ImaVolMask<InputModel::dimensions>& mask = desc_mask;
+                        mask_aux = mask;
+                     
+                        std::size_t index=0;
+                        //We divide the input picture into 64 (8x8) blocks
+                        for(std::size_t j = 0; j<8; j++ )
+                        {
+                            for(std::size_t i = 0; i<8; i++, index++)
+                            {
+                                std::size_t index3 = acum_size_y[j];
+                                for(std::size_t jj = 0; jj < size_y_block[j]; jj++, index3++)
+                                {
+                                    std::size_t index2 = acum_size_x[i];
+                                    for(std::size_t ii = 0; ii < size_x_block[i]; ii++, index2++)
+                                    {
+                                        blocks[index](Y_CHANNEL)[ii][jj] = imyuv(Y_CHANNEL)[index2][index3];
+                                        blocks[index](U_CHANNEL)[ii][jj] = imyuv(U_CHANNEL)[index2][index3];
+                                        blocks[index](V_CHANNEL)[ii][jj] = imyuv(V_CHANNEL)[index2][index3];
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if(_adaptive_dct)
+                        {
+                            empty_block = true;
+                            //Horizontal padding of boundary blocks
+                            for(std::size_t k = 0; k < 64; k++)
+                            {
+                                for(std::size_t j = 0; j < size_y_block[k/8]; j++)
+                                {
+                                    std::size_t begin = 0;
+                                    std::size_t end = 0;
+                                    while(!(mask[acum_size_x[k%8]+end][acum_size_y[k/8]+j])&&end<size_x_block[k%8])
+                                    {
+                                        end++;
+                                    }
+                                    if(end<size_x_block[k%8])
+                                    {
+                                    	empty_block[k%8][k/8]=false;
+                                    	for(;begin<end;begin++)
+                                        {
+                                            blocks[k][begin][j]=blocks[k][end][j];
+                                            mask_aux[acum_size_x[k%8]+begin][acum_size_y[k/8]+j]=true;
+                                        }
+                                        end++;
+                                    }
+                                    while(end<size_x_block[k%8])
+                                    {
+                                        while(!(mask[acum_size_x[k%8]+end][acum_size_y[k/8]+j])&&end<size_x_block[k%8])
+                                        {
+                                            end++;
+                                        }
+                                        if(end<size_x_block[k%8])
+                                        {
+                                            for(std::size_t i=begin+1; i<end;i++)
+                                            {
+                                                blocks[k][i][j]= (blocks[k][begin][j]+blocks[k][end][j])/2;
+                                                mask_aux[acum_size_x[k%8]+i][acum_size_y[k/8]+j]=true;
+                                            }
+                                            begin = end;
+                                            end++;
+                                        }
+                                        else
+                                        {
+                                            for(std::size_t i=begin+1; i<end;i++)
+                                            {
+                                                blocks[k][i][j]= blocks[k][begin][j];
+                                                mask_aux[acum_size_x[k%8]+i][acum_size_y[k/8]+j]=true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+
+                    if(_adaptive_dct)
+                    {
+                        //Vertical padding of boundary blocks
+                        for(std::size_t k = 0; k < 64; k++)
+                        {
+                            if(!(empty_block[k%8][k/8]))
+                            {
+                                for(std::size_t j = 0; j < size_x_block[k%8]; j++)
+                                {
+                                    std::size_t begin = 0;
+                                    std::size_t end = 0;
+                                    while(!(mask_aux[acum_size_x[k%8]+j][acum_size_y[k/8]+end])&&end<size_y_block[k/8])
+                                    {
+                                        end++;
+                                    }
+                                    if(end<size_y_block[k/8])
+                                    {
+                                        for(;begin<end;begin++)
+                                        {
+                                            blocks[k][j][begin]=blocks[k][j][end];
+                                            mask_aux[acum_size_x[k%8]+j][acum_size_y[k/8]+begin]=true;
+                                        }
+                                        end++;
+                                    }
+                                    while(end<size_y_block[k/8])
+                                    {
+                                        while(!(mask_aux[acum_size_x[k%8]+j][acum_size_y[k/8]+end])&&end<size_y_block[k/8])
+                                        {
+                                            end++;
+                                        }
+                                        if(end<size_y_block[k/8])
+                                        {
+                                            for(std::size_t i=begin+1; i<end;i++)
+                                            {
+                                                blocks[k][j][i]= (blocks[k][j][begin]+blocks[k][j][end])/2;
+                                                mask_aux[acum_size_x[k%8]+j][acum_size_y[k/8]+i]=true;
+                                            }
+                                            begin = end;
+                                            end++;
+                                        }
+                                        else
+                                        {
+                                            for(std::size_t i=begin+1; i<end;i++)
+                                            {
+                                                blocks[k][j][i]= blocks[k][j][begin];
+                                                mask_aux[acum_size_x[k%8]+j][acum_size_y[k/8]+i]=true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        bool shape_adaptive_dct = false;
+                        
+                        //We obtain a representative color of each non-empty block using the average of the pixel colors in a block
+                        std::size_t index = 0;
+                        for(std::size_t j = 0; j < 8; j++)
+                        {
+                            for(std::size_t i = 0; i < 8; i++, index++)
+                            {
+                                if(!empty_block[i][j])
+                                {
+                                    float64 divisor = (float64)(size_x_block[i]*size_y_block[j]);
+                                    for(std::size_t jj = 0; jj < size_y_block[j]; jj++)
+                                    {
+                                        for(std::size_t ii = 0; ii < size_x_block[i]; ii++)
+                                        {
+                                            im_y[i][j] = im_y[i][j] + (float64)(blocks[index](Y_CHANNEL)[ii][jj])/divisor;
+                                            im_u[i][j] = im_u[i][j] + (float64)(blocks[index](U_CHANNEL)[ii][jj])/divisor;
+                                            im_v[i][j] = im_v[i][j] + (float64)(blocks[index](V_CHANNEL)[ii][jj])/divisor;
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    shape_adaptive_dct = true;
+                                }
+                            }
+                        }
+                             
+                        //Each of the three color components is transformed by 8x8 DCT, so three sets of 64 DCT coefficients are obtained.
+                        if(!shape_adaptive_dct) //Shape-Adaptative DCT is not necessary.
+                        {
+                            im_y = math::transforms::dct2d(im_y);
+                            im_u = math::transforms::dct2d(im_u);
+                            im_v = math::transforms::dct2d(im_v);
+                        }
+                        else //Shape-Adaptative DCT is required.
+                        {
+                            //Vertical Shift
+                            std::vector<uint16> source;
+                            source.resize(8);
+                            uint16 target;
+                            for(uint8 i = 0; i < 8; i++)
+                            {
+                                target = 0;
+                                while(target < 8)
+                                {
+                                    if(!empty_block[i][target])
+                                    {
+                                        if(source[i]!=target)
+                                        {
+                                            im_y[i][source[i]]=im_y[i][target];
+                                            im_u[i][source[i]]=im_u[i][target];
+                                            im_v[i][source[i]]=im_v[i][target];
+                                            empty_block[i][source[i]]=false;
+                                            empty_block[i][target]=true;
+                                        }
+                                        source[i]++;
+                                        target++;
+                                    }
+                                    else
+                                    {
+                                        target++;
+                                    }
+                                }
+                            }
+                            uint16 max_source = source[0];
+                            for(uint8 i = 1; i<8; i++)
+                            {
+                                if(source[i]>max_source)
+                                {
+                                    max_source = source[i];
+                                }
+                            }
+                            
+                            //Vertical 1D DCT
+                            std::vector<MultiArray<float64,1> > tmp_y;
+                            tmp_y.resize(8);
+                            std::vector<MultiArray<float64,1> > tmp_u;
+                            tmp_u.resize(8);
+                            std::vector<MultiArray<float64,1> > tmp_v;
+                            tmp_v.resize(8);
+                            MultiArray<float64,1>::extent_gen extents;
+                            for(uint64 k=0; k<8; k++)
+                            {
+                                tmp_y[k].resize(extents[source[k]]);
+                                tmp_u[k].resize(extents[source[k]]);
+                                tmp_v[k].resize(extents[source[k]]);
+                                for(std::size_t i=0; i<source[k]; i++)
+                                {
+                                    tmp_y[k][i]=im_y[k][i];
+                                    tmp_u[k][i]=im_u[k][i];
+                                    tmp_v[k][i]=im_v[k][i];
+                                }
+                                tmp_y[k] = math::transforms::dct1d(tmp_y[k]);
+                                tmp_u[k] = math::transforms::dct1d(tmp_u[k]);
+                                tmp_v[k] = math::transforms::dct1d(tmp_v[k]);
+                                for(std::size_t j = 0; j < source[k]; j++)
+                                {
+                                    im_y[k][j]=tmp_y[k][j];
+                                    im_u[k][j]=tmp_u[k][j];
+                                    im_v[k][j]=tmp_v[k][j];
+                                }
+                            }
+                            
+                            //Horizontal Shift
+                            source.assign(8, 0);
+                            for(uint8 i = 0; i < 8; i++)
+                            {
+                                target = 0;
+                                while(target < 8)
+                                {
+                                    if(!empty_block[target][i])
+                                    {
+                                        if(source[i]!=target)
+                                        {
+                                            im_y[source[i]][i]=im_y[target][i];
+                                            im_u[source[i]][i]=im_u[target][i];
+                                            im_v[source[i]][i]=im_v[target][i];
+                                            empty_block[source[i]][i]=false;
+                                            empty_block[target][i]=true;
+                                        }
+                                        source[i]++;
+                                        target++;
+                                    }
+                                    else
+                                    {
+                                        target++;
+                                    }
+                                }
+                            }
+                            //Horizontal 1D DCT
+                            for(std::size_t k=0; k<max_source; k++)
+                            {
+                                tmp_y[k].resize(extents[source[k]]);
+                                tmp_u[k].resize(extents[source[k]]);
+                                tmp_v[k].resize(extents[source[k]]);
+                                for(std::size_t i=0; i<source[k]; i++)
+                                {
+                                    tmp_y[k][i]=im_y[i][k];
+                                    tmp_u[k][i]=im_u[i][k];
+                                    tmp_v[k][i]=im_v[i][k];
+                                }            
+        
+                                tmp_y[k] = math::transforms::dct1d(tmp_y[k]);
+                                tmp_u[k] = math::transforms::dct1d(tmp_u[k]);
+                                tmp_v[k] = math::transforms::dct1d(tmp_v[k]);
+                                
+                                for(std::size_t j = 0; j < source[k]; j++)
+                                {
+                                    im_y[j][k]=tmp_y[k][j];
+                                    im_u[j][k]=tmp_u[k][j];
+                                    im_v[j][k]=tmp_v[k][j];
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                    	boost::array<uint64,64> valid_pixels;
+                    	for(uint8 kk=0; kk<64; kk++)
+                    	{
+                    		valid_pixels[kk]=0;
+                    	}
+                    	uint64 valid_pixels_total=0;
+                    	for(uint64 jj=0; jj<mask_aux.size_y(); jj++)
+                    	{
+                    		for(uint64 ii=0; ii<mask_aux.size_x(); ii++)
+                    		{
+                    			if(mask_aux[ii][jj])
+                    			{
+                    				uint8 index_i = 7;
+                    				uint8 index_j = 7;
+                    				while(ii<acum_size_x[index_i])
+                    					index_i--;
+                    				while(jj<acum_size_y[index_j])
+                    					index_j--;
+                    				valid_pixels[8*index_j+index_i]++;
+                    				valid_pixels_total++;
+                    			}
+                    		}
+                    	}
+                    	uint64 sum_y = 0;
+                    	uint64 sum_u = 0;
+                    	uint64 sum_v = 0;
+                    	for(uint8 kk=0; kk<64; kk++)
+                    	{
+                    		typename ImageYUV<typename InputModel::data_type>::template iterator<> it = blocks[kk].colors_begin();
+                    		for(;it!=blocks[kk].colors_end();++it)
+                    		{
+                    			im_y[kk%8][kk/8] += (*it).value(0);
+                    			im_u[kk%8][kk/8] += (*it).value(1);
+                    			im_v[kk%8][kk/8] += (*it).value(2);
+                    			sum_y += (*it).value(0);
+                    			sum_u += (*it).value(1);
+                    			sum_v += (*it).value(2);
+                    		}
+                    		if(valid_pixels[kk]>0) //We compute the average of non-empty blocks
+                    		{
+                    			im_y[kk%8][kk/8] = im_y[kk%8][kk/8]/(float64)valid_pixels[kk];
+                    			im_u[kk%8][kk/8] = im_u[kk%8][kk/8]/(float64)valid_pixels[kk];
+                    			im_v[kk%8][kk/8] = im_v[kk%8][kk/8]/(float64)valid_pixels[kk];
+                    		}
+                    	}
+                    	for(uint8 kk=0; kk<64; kk++) //The average value of all pixels of the region is assigned to empty blocks
+                    	{
+                    		if(valid_pixels[kk]==0)
+                    		{
+                    			im_y[kk%8][kk/8] = sum_y/(float64)valid_pixels_total;
+                    			im_u[kk%8][kk/8] = sum_u/(float64)valid_pixels_total;
+                    			im_v[kk%8][kk/8] = sum_v/(float64)valid_pixels_total;
+                    		}
+                    	}
+                        im_y = math::transforms::dct2d(im_y);
+                        im_u = math::transforms::dct2d(im_u);
+                        im_v = math::transforms::dct2d(im_v);
+                    }
+
+                    
+                    //DCT coefficients are zigzag-scanned
+                    math::transforms::ZigZagScan zz(8);
+                    MultiArray<float64,1> y_coeff(64);
+                    y_coeff= zz.coefs(im_y); 
+                    MultiArray<float64,1> cb_coeff(64);
+                    cb_coeff = zz.coefs(im_u);
+                    MultiArray<float64,1> cr_coeff(64);
+                    cr_coeff = zz.coefs(im_v);
+                    
+                    //It is recommended to use a total of 12 coefficients, 6 for luminance and 3 for each chrominance.
+                    for(uint64 i = 0; i < _ny; i++)
+                    {
+                        _y_coeff[i] = y_coeff[i];
+                    }
+                    for(uint64 i = 0; i < _nc; i++)
+                    {
+                        _cb_coeff[i] = cb_coeff[i];
+                        _cr_coeff[i] = cr_coeff[i];
+                    }
+                    
+                    //Quantization YDCCoeff
+                    int jj;
+                    _y_coeff[0] = _y_coeff[0]/8;
+                    if(_y_coeff[0]>192) jj=112+(int)(_y_coeff[0]-192)/4;
+                    else if(_y_coeff[0]>160) jj=96+(int)(_y_coeff[0]-160)/2;
+                    else if(_y_coeff[0]>96) jj=32+(int)(_y_coeff[0]-96);
+                    else if(_y_coeff[0]>64) jj=16+(int)(_y_coeff[0]-64)/2;
+                    else jj=(int)_y_coeff[0]/4;
+                    jj = jj>>1;
+                    _y_coeff[0] = jj;
+                    
+                    //Quantization CDCCoeff
+                    _cb_coeff[0] = _cb_coeff[0]/8;
+                    if(_cb_coeff[0]>191) jj=63;
+                    else if(_cb_coeff[0]>160) jj=56+(int)(_cb_coeff[0]-160)/4;
+                    else if(_cb_coeff[0]>144) jj=48+(int)(_cb_coeff[0]-144)/2;
+                    else if(_cb_coeff[0]>112) jj=16+(int)(_cb_coeff[0]-112);
+                    else if(_cb_coeff[0]>96) jj=8+(int)(_cb_coeff[0]-96)/2;
+                    else if(_cb_coeff[0]>64) jj=(int)(_cb_coeff[0]-64)/4;
+                    else jj=0;
+                    _cb_coeff[0] = jj;
+                    
+                    _cr_coeff[0] = _cr_coeff[0]/8;
+                    if(_cr_coeff[0]>191) jj=63;
+                    else if(_cr_coeff[0]>160) jj=56+(int)(_cr_coeff[0]-160)/4;
+                    else if(_cr_coeff[0]>144) jj=48+(int)(_cr_coeff[0]-144)/2;
+                    else if(_cr_coeff[0]>112) jj=16+(int)(_cr_coeff[0]-112);
+                    else if(_cr_coeff[0]>96) jj=8+(int)(_cr_coeff[0]-96)/2;
+                    else if(_cr_coeff[0]>64) jj=(int)(_cr_coeff[0]-64)/4;
+                    else jj=0;
+                    _cr_coeff[0] = jj;
+                    
+                    //Quantization YACCoeff
+                    for(std::size_t i = 1; i<_ny; i++)
+                    {
+                        int j;
+                        _y_coeff[i] = _y_coeff[i]/2;
+                        if(_y_coeff[i]>255) _y_coeff[i]= 255;
+                        if(_y_coeff[i]<-256) _y_coeff[i]= -256;
+                        if ((std::abs((int)_y_coeff[i])) > 127) j= 64 + (int)(std::abs((int)_y_coeff[i]))/4;
+                        else if ((std::abs((int)_y_coeff[i])) > 63) j=32+(int)(std::abs((int)_y_coeff[i]))/2;
+                        else j=std::abs((int)_y_coeff[i]);
+                        if(_y_coeff[i]<0) j=-1*j;
+                        j = (int)((j+128.0)/8.0+0.5);
+                        _y_coeff[i] = j;
+                    }
+                    
+                    //Quantization CACCoeff
+                    for(std::size_t i = 1; i<_nc; i++)
+                    {
+                        int j;
+                        if(_cb_coeff[i]>255) _cb_coeff[i]= 255;
+                        if(_cb_coeff[i]<-256) _cb_coeff[i]= -256;
+                        if ((std::abs((int)_cb_coeff[i])) > 127) j= 64 + ((int)std::abs((int)_cb_coeff[i]))/4;
+                        else if ((std::abs((int)_cb_coeff[i])) > 63) j=32+((int)std::abs((int)_cb_coeff[i]))/2;
+                        else j=std::abs((int)_cb_coeff[i]);
+                        if(_cb_coeff[i]<0) j=-1*j;
+                        j = (int)((j+128.0)/8.0+0.5);
+                        _cb_coeff[i] = j;
+                    }
+                    
+                    for(std::size_t i = 1; i<_nc; i++)
+                    {
+                        int j;
+                        if(_cr_coeff[i]>255) _cr_coeff[i]= 255;
+                        if(_cr_coeff[i]<-256) _cr_coeff[i]= -256;
+                        if ((std::abs((int)_cr_coeff[i])) > 127) j= 64 + ((int)std::abs((int)_cr_coeff[i]))/4;
+                        else if ((std::abs(_cr_coeff[i])) > 63) j=32+((int)std::abs((int)_cr_coeff[i]))/2;
+                        else j=std::abs((int)_cr_coeff[i]);
+                        if(_cr_coeff[i]<0) j=-1*j;
+                        j = (int)((j+128.0)/8.0+0.5);
+                        _cr_coeff[i] = j;
+                    }
+                }
+            }
+        };
+        
+        
+        //! \brief Calculates the result of the dissimilarity measure between two color layout descriptors proposed in MPEG-7 standard
+        //!
+        //! \param[in] y_coeff1 : Coefficients for channel Y of color layout descriptor 1
+        //! \param[in] y_coeff2 : Coefficients for channel Y of color layout descriptor 2
+        //! \param[in] cb_coeff1 : Coefficients for channel U of color layout descriptor 1
+        //! \param[in] cb_coeff2 : Coefficients for channel U of color layout descriptor 2        
+        //! \param[in] cr_coeff1 : Coefficients for channel V of color layout descriptor 1
+        //! \param[in] cr_coeff2 : Coefficients for channel V of color layout descriptor 2
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_color_layout( const std::vector<float64>& y_coeff1, const std::vector<float64>& y_coeff2, const std::vector<float64>& cb_coeff1, const std::vector<float64>& cb_coeff2, const std::vector<float64>& cr_coeff1, const std::vector<float64>& cr_coeff2)
+        {
+            
+            float64 dist = 0.0;
+            uint8 ny = std::min(y_coeff1.size(),y_coeff2.size());
+            uint8 nc = std::min(cb_coeff1.size(),cb_coeff2.size());
+            
+            float64 dist_y = 0.0;
+            for(uint8 ii=0; ii<ny; ii++)
+            {
+                uint64 aux_y = (uint64)((y_coeff1[ii]-y_coeff2[ii])*(y_coeff1[ii]-y_coeff2[ii]));
+                if(ii<3) //Larger weights given to the lower frequency components
+                {
+                    aux_y = aux_y << 1;
+                }
+                dist_y = dist_y + aux_y;
+            }
+            float64 dist_cb = 0.0;
+            float64 dist_cr = 0.0;
+            for(uint8 ii=0; ii<nc; ii++)
+            {
+                uint64 aux_cb = (uint64)((cb_coeff1[ii]-cb_coeff2[ii])*(cb_coeff1[ii]-cb_coeff2[ii]));
+                uint64 aux_cr = (uint64)((cr_coeff1[ii]-cr_coeff2[ii])*(cr_coeff1[ii]-cr_coeff2[ii]));
+                if(ii==0) //Larger weights given to the lower frequency components
+                {
+                    aux_cb = aux_cb << 1;
+                    aux_cr = aux_cr << 2;
+                }
+                else if(ii<3) //Larger weights given to the lower frequency components
+                {
+                    aux_cr = aux_cr << 1;
+                }
+                dist_cb = dist_cb + aux_cb;
+                dist_cr = dist_cr + aux_cr;
+            }
+            dist = std::sqrt(dist_y)+std::sqrt(dist_cb)+std::sqrt(dist_cr);
+            
+            return dist;
+        }
+        
+        //! \brief Calculates the result of the dissimilarity measure between two color layout descriptors extracted from an XML file proposed in MPEG-7 standard
+        //!
+        //! \param[in] y_coeff1 : Coefficients for channel Y of color layout descriptor 1 extracted from an XML file
+        //! \param[in] y_coeff2 : Coefficients for channel Y of color layout descriptor 2 extracted from an XML file
+        //! \param[in] cb_coeff1 : Coefficients for channel U of color layout descriptor 1 extracted from an XML file
+        //! \param[in] cb_coeff2 : Coefficients for channel U of color layout descriptor 2 extracted from an XML file        
+        //! \param[in] cr_coeff1 : Coefficients for channel V of color layout descriptor 1 extracted from an XML file
+        //! \param[in] cr_coeff2 : Coefficients for channel V of color layout descriptor 2 extracted from an XML file
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_color_layout( const std::vector<uint32>& y_coeff1, const std::vector<uint32>& y_coeff2, const std::vector<uint32>& cb_coeff1, const std::vector<uint32>& cb_coeff2, const std::vector<uint32>& cr_coeff1, const std::vector<uint32>& cr_coeff2)
+        {
+            
+            float64 dist = 0.0;
+            uint8 ny = std::min(y_coeff1.size(),y_coeff2.size());
+            uint8 nc = std::min(cb_coeff1.size(),cb_coeff2.size());
+            
+            float64 dist_y = 0.0;
+            for(uint8 ii=0; ii<ny; ii++)
+            {
+                uint64 aux_y = (uint64)((y_coeff1[ii]-y_coeff2[ii])*(y_coeff1[ii]-y_coeff2[ii]));
+                if(ii<3) //Larger weights given to the lower frequency components
+                {
+                    aux_y = aux_y << 1;
+                }
+                dist_y = dist_y + aux_y;
+            }
+            float64 dist_cb = 0.0;
+            float64 dist_cr = 0.0;
+            for(uint8 ii=0; ii<nc; ii++)
+            {
+                uint64 aux_cb = (uint64)((cb_coeff1[ii]-cb_coeff2[ii])*(cb_coeff1[ii]-cb_coeff2[ii]));
+                uint64 aux_cr = (uint64)((cr_coeff1[ii]-cr_coeff2[ii])*(cr_coeff1[ii]-cr_coeff2[ii]));
+                if(ii==0) //Larger weights given to the lower frequency components
+                {
+                    aux_cb = aux_cb << 1;
+                    aux_cr = aux_cr << 2;
+                }
+                else if(ii<3) //Larger weights given to the lower frequency components
+                {
+                    aux_cr = aux_cr << 1;
+                }
+                dist_cb = dist_cb + aux_cb;
+                dist_cr = dist_cr + aux_cr;
+            }
+            dist = std::sqrt(dist_y)+std::sqrt(dist_cb)+std::sqrt(dist_cr);
+            
+            return dist;
+        }
+        
+    } // Namespace descriptors
+}// Namespace imageplus
+
+#endif

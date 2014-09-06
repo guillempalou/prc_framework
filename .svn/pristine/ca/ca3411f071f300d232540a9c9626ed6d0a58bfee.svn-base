@@ -1,0 +1,103 @@
+/*
+ * mumford_shah.hpp
+ *
+ *  Created on: Mar 7, 2013
+ *      Author: gpalou
+ */
+
+#ifndef MUMFORD_SHAH_HPP_
+#define MUMFORD_SHAH_HPP_
+
+#include <imageplus/bpt/energy_minimization/binary_pruner.hpp>
+#include <imageplus/descriptors/color/color_mean.hpp>
+#include <imageplus/bpt/energy_minimization/optimal_pruner.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+	template <class BPT, class Signal>
+	class MumfordShahCost : public RegionCostFunction<BPT,Signal> {
+
+		typedef RegionCostFunction<BPT,Signal> 				BaseClassType;
+		typedef descriptors::ColorMean<Signal>				ColorMeanDescriptor;
+		typedef descriptors::Area							Area;
+
+	public:
+
+		MumfordShahCost(descriptors::DescriptorManager& manager, uint64 max_label, float64 lambda = 0.001) : BaseClassType(manager,max_label,lambda) {
+		}
+
+		float64 region_cost(BPT& bpt, Signal& image, uint64 region_id) {
+
+			if (region_id == bpt.max_label())
+				return 1e200;
+
+			typedef typename BPT::RegionType	RegionType;
+			RegionType& reg = bpt(region_id);
+
+			float64 e = 0;
+			float64 perimeter = 0;
+
+			typename Signal::value_type mean = Signal::value_type::Zero();
+
+			typename Signal::template region_iterator<RegionType>::type	first 	= image.begin(reg);
+			typename Signal::template region_iterator<RegionType>::type	last 	= image.end(reg);
+			typedef typename Signal::coord_type	coord_type;
+
+			int64 dir[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+
+			//int64 sx = image.size_x();
+			//int64 sy = image.size_y();
+
+			ImageSignal<bool,1> mask(image.sizes());
+			uint64 N = 0, area = 0;
+			for(; first!=last; ++first, area++) {
+				mask(first.pos())(0) = true;
+				mean+=*first;
+			}
+			mean/=area;
+
+			N = 0;
+			first = image.begin(reg);
+			for(; first!=last; ++first) {
+				coord_type pos = first.pos();
+
+				uint64 i = 0;
+				for (i = 0; i < 4; i++) {
+					coord_type n(pos(0)+dir[i][0], pos(1)+dir[i][1]);
+
+					if (image.inside(n)) {
+						if (mask(n)(0) != mask(pos)(0)) {
+							perimeter++;
+						} else {
+							e+=(mean-*first).squaredNorm();
+						}
+					} else {
+						perimeter++;
+						// color error
+					}
+				}
+			}
+			//std::cout << "mean " << region_id << " " << max_pb/perimeter << " per " << perimeter << " " << N << std::endl;
+
+			return e + _regularizer*perimeter;
+		}
+
+		void set_regularizer(float64 r) {
+			_regularizer = r;
+		}
+
+	protected:
+
+
+	private:
+
+		ImageSignal<float64,1> _pb;
+
+		float64 _regularizer;
+	};
+
+	}
+}
+
+#endif /* MUMFORD_SHAH_HPP_ */

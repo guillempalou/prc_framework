@@ -1,0 +1,125 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Library                                          #
+#                                                                            #
+#  This build system is based on SCons (http://www.scons.org/)               #
+#                                                                            #
+# This file builds all the modules and then creates the library from them    #
+# Also, for each module, it creates its tests and installs them.             #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                                                                            #
+##############################################################################
+
+Import('*')
+import os
+import glob
+
+##
+## Build the modules:
+##
+##   - Create a glob for all existing modules
+##   - Read the user list from the userListFile (if exists)
+##   - Remove modules in user.list
+##   - Execute the build script for each remaining module 
+##
+
+modules = list()
+
+# add only the module name to the "modules" list
+modules_with_path =  glob.glob(str(Dir(modulesPath))+os.sep+'*')
+for module in modules_with_path:
+    module = module.replace(str(Dir(modulesPath))+ os.sep,'')
+    modules.append(module)
+
+# User configuration script
+modules_to_remove = list()
+if os.path.exists(str(userListFile)):
+    modules_to_remove.extend(SConscript(userListFile, 'env'))
+
+# remove undesired modules
+removed = list()
+if len(modules_to_remove) != 0:
+    for module in modules_to_remove:
+        if module in modules:
+            modules.remove(module) 
+            removed.append(module)
+    if len(removed) != 0:
+        print '\nThese modules will not be built: \n'
+        for module in removed:
+            print module
+        print '\nPlease, remove them from your user file to be able to build them (',userListFile,').\n'
+
+
+# build each module
+staticLibraryObjs = list()
+sharedLibraryObjs = list()
+installedTests = list()
+
+for module in modules:
+    
+    ##
+    ## Module environment
+    ##
+    moduleEnv = env.Clone()
+
+    ##
+    ## Export the module paths
+    ##
+    srcPath  = modulesPath + module + '/src/'
+    incPath  = modulesPath + module + '/inc/'
+    devPath  = modulesPath + module + '/dev/'
+    testPath = modulesPath + module + '/test/'
+    
+    objPath  = modulesPath + module + '/obj/' + env['buildsuffix']
+    libPath  = modulesPath + module + '/lib/' + env['buildsuffix']
+    binPath  = modulesPath + module + '/bin/' + env['buildsuffix']
+    
+    Export('moduleEnv', 'module', 'srcPath', 'incPath', 'devPath', 'testPath', 'objPath', 'libPath', 'binPath')
+    
+    ##
+    ## Create the module objects
+    ##
+    SConscript( modulesBuildFile )    
+    Import('staticObjs', 'sharedObjs')
+    staticLibraryObjs += staticObjs
+    sharedLibraryObjs += sharedObjs
+    
+    # Create the module static library from objects
+    moduleLibrary = env.StaticLibrary ( libPath+module, staticObjs )
+    
+    ##
+    ## Build the module dev and tests (these tests link with module libraries)
+    ##
+    if env['buildtests']:
+        SConscript( dependencedBuildFile )
+        SConscript( devBuildFile )
+        installedTests += SConscript( testBuildFile )
+        
+    ##
+    ## Add private include path for validation tests
+    ##
+    validationEnv['CPPPATH'] += [incPath]
+    
+##
+## Create the main library
+## TODO: add shared library option
+##
+library = env.StaticLibrary ( mainlibPath + env['buildsuffix'] + libName, staticLibraryObjs )
+#if env['static']:
+#    library = env.StaticLibrary ( mainlibPath + env['buildsuffix'] + libName, staticObjs )
+#else:
+#    library = env.SharedLibrary ( mainlibPath + env['buildsuffix'] + libName, sharedObjs )
+    
+
+
+Export('library', 'installedTests', 'modules')
+

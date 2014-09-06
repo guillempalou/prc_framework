@@ -1,0 +1,67 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file area.test
+//!
+//! Tests for area descriptor 
+//!
+#include <imageplus/descriptors/geometry/area.hpp>
+
+#include <imageplus/core/imagepartition.hpp>
+#include <imageplus/core/imagergb.hpp>
+#include <imageplus/core/coord2d.hpp>
+#include <imageplus/core/partition.hpp>
+#include <imageplus/core/region_contour.hpp>
+#include <imageplus/core/partition_functions.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( Descriptors_Area_Suite );
+
+using namespace imageplus;
+using namespace descriptors;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE( Area_test )
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;
+    my_im_part[0][1] = 25;
+    my_im_part[0][2] = 25;
+    my_im_part[1][0] = 12;
+    my_im_part[1][1] = 10;
+    my_im_part[1][2] = 10;
+    my_im_part[2][0] = 3;
+    my_im_part[2][1] = 3;
+    my_im_part[2][2] = 2;
+    
+    ImageRGB<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(1) = 2;
+    my_image(2) = 3;
+    my_image(0)[0][0] = 25;
+    
+    typedef ImageRGB<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(2, 3, 26, my_part);
+    merge_regions(10, 26, 27, my_part);
+    merge_regions(25, 12, 30, my_part);
+    
+    CollaborativeDescriptors desc_son1, desc_son2;
+    desc_son1.calculate(new Area(), my_image.colors_begin(my_part[2]), my_image.colors_end(my_part[2]));
+    desc_son2.calculate(new Area(), my_image.colors_begin(my_part[3]), my_image.colors_end(my_part[3]));
+    
+    Area desc;
+    desc.recursive_calculate(desc_son1, desc_son2, &(my_image.coll_vd()));
+    BOOST_CHECK( desc == 3);
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+

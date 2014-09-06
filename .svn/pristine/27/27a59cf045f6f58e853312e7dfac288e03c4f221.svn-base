@@ -1,0 +1,140 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file random_generators.cpp
+//!
+//!  Methods to generate random samples from different distributions
+//!
+
+#include <imageplus/cmath.hpp>
+#include <imageplus/math/statistics/random_generators.hpp>
+
+#include <ctime>
+
+using namespace boost;
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::statistics;
+
+float64 imageplus::math::statistics::rand_uniform()
+{
+	static boost::mt19937 rng(static_cast<unsigned> (std::time(0)));
+	boost::variate_generator< boost::mt19937&, boost::uniform_real<> > rnd_gen(rng, boost::uniform_real<>(0, 1));
+	return rnd_gen();
+}
+
+float64 imageplus::math::statistics::rand_uniform(boost::mt19937 & rng)
+{
+	boost::variate_generator< boost::mt19937&, boost::uniform_real<> > rnd_gen(rng, boost::uniform_real<>(0, 1));
+	return rnd_gen();
+}
+template<typename T>
+T imageplus::math::statistics::rand_uniform_int(const T min, const T max)
+{
+    static boost::mt19937 rng(static_cast<unsigned int>(time(0)));
+        
+    boost::variate_generator< boost::mt19937&, boost::uniform_int<T> > rnd_gen(rng, boost::uniform_int<T>(min,max));
+    return rnd_gen();
+}
+
+template<typename T>
+T imageplus::math::statistics::rand_uniform_int(const T min, const T max, boost::mt19937 & rng )
+{
+        
+    boost::variate_generator< boost::mt19937&, boost::uniform_int<T> > rnd_gen(rng, boost::uniform_int<T>(min,max));
+    return rnd_gen();
+}
+
+float64 imageplus::math::statistics::rand_uniform(const float64 min, const float64 max)
+{
+	static boost::mt19937 rng(static_cast<unsigned> (std::time(0)));
+	boost::variate_generator< boost::mt19937&, boost::uniform_real<> > rnd_gen(rng, boost::uniform_real<>(min, max));
+	return rnd_gen();
+}
+
+float64 imageplus::math::statistics::rand_uniform(const float64 min, const float64 max, boost::mt19937 & rng)
+{
+	boost::variate_generator< boost::mt19937&, boost::uniform_real<> > rnd_gen(rng, boost::uniform_real<>(min, max));
+	return rnd_gen();
+}
+
+float64 imageplus::math::statistics::rand_normal (const float64 mean, const float64 sigma)
+{
+    // Create a Mersenne twister random number generator
+    // that is seeded once with #seconds since 1970
+
+	static mt19937 rng(static_cast<unsigned> (std::time(0)));
+ 
+    // select Gaussian probability distribution
+    normal_distribution<float64> norm_dist(mean, sigma);
+ 
+    // bind random number generator to distribution, forming a function
+    variate_generator<mt19937&, normal_distribution<float64> >  normal_sampler(rng, norm_dist);
+ 
+    // sample from the distribution
+    return normal_sampler();
+}
+
+float64 imageplus::math::statistics::rand_normal (const float64 mean, const float64 sigma, boost::mt19937 & rng)
+{
+
+	//Normal sampling with externally seeded random number generator
+    // select Gaussian probability distribution
+    normal_distribution<float64> norm_dist(mean, sigma);
+ 
+    // bind random number generator to distribution, forming a function
+    variate_generator<mt19937&, normal_distribution<float64> >  normal_sampler(rng, norm_dist);
+ 
+    // sample from the distribution
+    return normal_sampler();
+}
+
+uint64 imageplus::math::statistics::rand_binomial (const uint64 t, const float64 p)
+{
+    // Create a Mersenne twister random number generator
+    // that is seeded once with #seconds since 1970
+
+	static mt19937 rng(static_cast<unsigned> (std::time(0)));
+ 
+    // select Gaussian probability distribution
+    binomial_distribution<uint64,float64> bin_dist(t, p);
+ 
+    // bind random number generator to distribution, forming a function
+    variate_generator<mt19937&, binomial_distribution<uint64,float64> >  binomial_sampler(rng, bin_dist);
+ 
+    // sample from the distribution
+    return binomial_sampler();
+}
+
+uint64 imageplus::math::statistics::rand_binomial (const uint64 t, const float64 p, boost::mt19937 & rng)
+{
+
+    binomial_distribution<uint64,float64> bin_dist(t, p);
+ 
+    // bind random number generator to distribution, forming a function
+    variate_generator<mt19937&, binomial_distribution<uint64,float64> >  binomial_sampler(rng, bin_dist);
+ 
+    // sample from the distribution
+    return binomial_sampler();
+}
+
+namespace imageplus
+{
+	namespace math
+	{
+		namespace statistics
+		{
+			template uint8 rand_uniform_int<uint8>(const uint8, const uint8);
+			template int32 rand_uniform_int<int32>(const int32, const int32);
+			template int64 rand_uniform_int<int64>(const int64, const int64);
+			
+			template uint8 rand_uniform_int<uint8>(const uint8, const uint8, boost::mt19937 &);
+			template int32 rand_uniform_int<int32>(const int32, const int32, boost::mt19937 &);
+			template int64 rand_uniform_int<int64>(const int64, const int64, boost::mt19937 &);
+			
+		}
+	}
+}

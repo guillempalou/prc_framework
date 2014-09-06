@@ -1,0 +1,3626 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file dominant_color.hpp
+//!
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/core/mask.hpp>
+#include <imageplus/descriptors/color/color_statistics.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+#include <imageplus/math.hpp>
+
+#include <imageplus/math/statistics/histogram.hpp>
+#include <imageplus/math/statistics/random_generators.hpp>
+#include <imageplus/math/numeric/svd.hpp>
+#include <imageplus/math/graphs/hungarian.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+#include <fstream>
+
+
+#ifndef IMAGEPLUS_DESCRIPTORS_COLOR_DOMINANT_COLOR_HPP
+#define IMAGEPLUS_DESCRIPTORS_COLOR_DOMINANT_COLOR_HPP
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+
+        //!
+        //! Class for visual descriptor that allows specification of a small number of 
+        //! dominant color values as well as their statistical properties such as distribution and variance.
+        //! In this case, the YUV Color space is uniformly divided in 8 centroids and Generalized Lloyd Algorithm is computed. Therefore, this descriptor
+        //! always computes 8 dominant colors. It is possible that some dominant color has a null percentage because if the distance between two dominant
+        //! colors is smaller than a threshold Td then they are merged in one dominant color.
+        //! The dominant color values are sorted in decreasing order of percentage (the first one is therefore the most representative).
+        //! The dominant color values are computed in YUV color space because of its perceptual uniformity but the results are in RGB color space too.
+        //!
+        //! The user may use the helper functions defined in visual_descriptors.hpp because of their simplicity.
+        //!
+        //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+        //!
+        //! \date 09-10-2009     
+        template<class InputModel>
+        class DominantColor8 : public DescriptorBase
+        {
+        public:
+            
+            //!
+            //! \brief Constructor with intial centroids uniformly distributed in color space
+            //!
+            //! \param[in] num_bins : Each dimension of the color space will be quantized in num_bins. Its default value is 64.
+            DominantColor8(uint8 num_bins = 64) 
+                    : DescriptorBase("DominantColor8",true), _centroids(), _percentage(), _color_variance(), _sc_computed(), _spatial_coherency()
+            {
+                _centroids_yuv[0][0] = 64;
+                _centroids_yuv[0][1] = 64;
+                _centroids_yuv[0][2] = 64;
+                _centroids_yuv[1][0] = 64;
+                _centroids_yuv[1][1] = 64;
+                _centroids_yuv[1][2] = 192;
+                _centroids_yuv[2][0] = 64;
+                _centroids_yuv[2][1] = 192;
+                _centroids_yuv[2][2] = 64;
+                _centroids_yuv[3][0] = 64;
+                _centroids_yuv[3][1] = 192;
+                _centroids_yuv[3][2] = 192;
+                _centroids_yuv[4][0] = 192;
+                _centroids_yuv[4][1] = 64;
+                _centroids_yuv[4][2] = 64;
+                _centroids_yuv[5][0] = 192;
+                _centroids_yuv[5][1] = 64;
+                _centroids_yuv[5][2] = 192;
+                _centroids_yuv[6][0] = 192;
+                _centroids_yuv[6][1] = 192;
+                _centroids_yuv[6][2] = 64;
+                _centroids_yuv[7][0] = 192;
+                _centroids_yuv[7][1] = 192;
+                _centroids_yuv[7][2] = 192;
+                _num_bins = num_bins;
+            }        
+            
+            //! \brief Calculates the representative colors in an image or image region given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the image or image region
+            //! \param[in] last : Iterator to the end of the image or image region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {        
+                ASSERT(peer_descs!=0x0, "DominantColor8 calculate: peer_descs must be non null");
+
+                peer_descs->calculate(new Area(), first, last);
+
+                //We convert the image to YUV color space because this one is perceptually more uniform.
+                const ImageYUV<typename InputModel::data_type>& im_yuv = peer_descs->calculate(new VDImageYUV<InputModel>(), first, last);
+
+                const ImaVolMask<InputModel::dimensions>& mask = peer_descs->calculate(new Mask<typename InputModel::CoordType>(), first, last);
+
+                //We compute the histogram in YUV color space tp know the color statistics
+                //We decided 64 bins for channel in order to reduce computational cost
+                const math::statistics::Histogram<InputModel>& histo = peer_descs->calculate(new math::statistics::Histogram<InputModel>(0,255,_num_bins), im_yuv.colors_begin(mask), im_yuv.colors_end(mask));
+
+                //We call a private method that computes the 8 dominant colors
+                _compute_centroids(first, last, histo, peer_descs);
+
+                _sort();
+            }
+            
+            
+            //! \brief Calculates recursively dominant colors of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            {
+                //We compute the areas of each son. They will be used to decide with which centroids the algorithm starts.
+                uint64 area1 = son1_descs.get_id<Area>("Area");
+                uint64 area2 = son2_descs.get_id<Area>("Area");
+
+                peer_descs->recursive_calculate(new Area(), son1_descs, son2_descs);
+
+                //We get the dominant color descriptor of each son
+                DominantColor8<InputModel>& desc1 = son1_descs.get(*this);
+                 const boost::array< boost::array<uint8,3>, 8 >& centroids1 = desc1.value_yuv();
+                 const boost::array<float64,8>& percentage1 = desc1.percentages();
+                DominantColor8<InputModel>& desc2 = son2_descs.get(*this);
+                 const boost::array< boost::array<uint8,3>, 8 >& centroids2 = desc2.value_yuv();
+                 const boost::array<float64,8>& percentage2 = desc2.percentages();
+
+
+                 boost::array<float64,16> num_pixels;
+
+                //We compute the eight most representative centroids considering both percentages and area.
+                for(uint8 i=0; i<8; i++)
+                {
+                    num_pixels[i]=percentage1[i]*area1;
+                }
+                for(uint8 i=8; i<16; i++)
+                {
+                    num_pixels[i]=percentage2[i-8]*area2;
+                }
+                boost::array<uint8,16> id;
+                for(uint8 i=0; i<16; i++)
+                {
+                    id[i]=i;
+                }
+                for(uint8 j = 15; j>7; j--)
+                {
+                    for(uint8 i = 0; i < j; i++)
+                    {
+                        if(num_pixels[i]<num_pixels[i+1])
+                        {
+                            float64 tmp = num_pixels[i+1];
+                            num_pixels[i+1] = num_pixels[i];
+                            num_pixels[i] = tmp;
+                            uint8 tmp2 = id[i+1];
+                            id[i+1]=id[i];
+                            id[i]=tmp2;
+                        }
+                    }
+                }
+                for(uint8 i = 0; i<8; i++)
+                {
+                    if(id[i]<8)
+                    {
+                        _centroids_yuv[i]=centroids1[id[i]];
+                    }
+                    else
+                    {
+                        _centroids_yuv[i]=centroids2[id[i]-8];
+                    }
+                }
+
+                //We compute the histogram resulting of the two sons
+                //We decided 64 bins for channel in order to reduce computational cost
+                const math::statistics::Histogram<InputModel>& histo = peer_descs->recursive_calculate(new math::statistics::Histogram<InputModel>(0,255,64), son1_descs, son2_descs);
+
+                //We call a private method that computes the 8 dominant colors
+                _compute_centroids(histo);
+            }
+            
+            //! \brief Returns the values of the 8 dominant colors in RGB color space
+            //!
+            //! \return 8 dominant colors in RGB color space
+            const boost::array< boost::array<uint8,3>, 8 >& value() const
+            {
+                return _centroids;
+            }
+            
+            //! \brief Returns the values of the 8 dominant colors in YUV color space
+            //!
+            //! \return 8 dominant colors in YUV color space
+            const boost::array< boost::array<uint8,3>, 8 >& value_yuv() const
+            {
+                return _centroids_yuv;
+            }
+            
+            //! \brief Returns the percentages of each dominant color
+            //!
+            //! \return The percentages of each dominant color
+            const boost::array<float64,8>& percentages() const
+            {
+                return _percentage;
+            }
+            
+            //! \brief Returns the color variance of each dominant color
+            //!
+            //! \return The color variance of each dominant color
+            const boost::array<boost::array<uint64,3>, 8>& color_variance() const
+            {
+                return _color_variance;
+            }
+            
+            //! \brief Returns the spatial coherency
+            //!
+            //! \return The spatial coherency
+            const float64& spatial_coherency() const
+            {
+                return _spatial_coherency;
+            }
+            
+            //! \brief Returns an image that represents the percentatges of each dominant color
+            //!
+            //! \return An image that represents the percentatges of each dominant color
+            ImageRGB<uint8> image_results() const
+            {
+                std::size_t curr_percent=0;
+                std::size_t width=100;
+                std::size_t height=20;
+                ImageRGB<uint8> my_output(width,height);
+                std::size_t size=0;
+                while(_percentage[size]>0)
+                {
+                    size++;
+                }
+                for(std::size_t ii=0; ii<size; ii++)
+                {
+                    std::size_t new_percent;
+                    if (ii==(size-1))
+                    {
+                        new_percent=width;
+                    }
+                    else
+                    {
+                        new_percent=curr_percent+(std::size_t)round(_percentage[ii]*width);
+                    }
+                    for(std::size_t jj=curr_percent; jj<new_percent; jj++)
+                    {
+                        for(std::size_t kk=0; kk<height; kk++)
+                        {
+                            my_output(0)[jj][kk] = _centroids[ii][0];
+                            my_output(1)[jj][kk] = _centroids[ii][1];
+                            my_output(2)[jj][kk] = _centroids[ii][2];
+                        }
+                    }
+                    curr_percent = new_percent;
+                }
+                return my_output;
+            }
+            
+            
+        #ifdef USE_XML   
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "DominantColorType8";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem, *dataElem2;
+                XERCES_CPP_NAMESPACE::DOMText* textElem;
+                std::string append, append2;
+                std::string space(" ");
+                Quantizer<float64> q(0,1,32);
+                Quantizer<float64> q2(0.7,1.0,30);
+                
+                //The weighted sum of per-dominant-color spatial coherencies is normalized from 0 to 1, then non-uniformly quantized to the range from 1 to 31 as follows. 
+                //Normalized values less than 0.7 are set to 1, while values between 0.7 to 1 are uniformly quantized to the range 2 to 31. 
+                //0 is used to signal that this element is not computed (note that if it is not computed it does not mean that the spatial coherency is low).
+                dataElem = doc->createElement(io::fromNative("SpatialCoherency").c_str());
+                vdElem->appendChild(dataElem);
+                if(_sc_computed)
+                {
+                    if(_spatial_coherency < 0.7)
+                    {
+                        append = boost::lexical_cast<std::string>(1);
+                        textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    }
+                    else
+                    {
+                        append = boost::lexical_cast<std::string>(q2.bin(_spatial_coherency)+2);
+                        textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    }
+                }
+                else
+                {
+                    append = boost::lexical_cast<std::string>(0);
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                }
+
+                dataElem->appendChild(textElem);
+                
+                for(uint8 i=0; i<8; i++)
+                {
+                    dataElem = doc->createElement(io::fromNative("Value").c_str());
+                    vdElem->appendChild(dataElem);
+                    
+                    //The percentage value is uniformly quantized to 5 bits with 0 corresponding to 0 percentage and 31 corresponding to 100%
+                    dataElem2 = doc->createElement(io::fromNative("Percentage").c_str());
+                    dataElem->appendChild(dataElem2);
+                    append = boost::lexical_cast<std::string>(q.bin(_percentage[i]));
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    dataElem2->appendChild(textElem);
+                    
+                    dataElem2 = doc->createElement(io::fromNative("Index").c_str());
+                    dataElem->appendChild(dataElem2);
+                    append = boost::lexical_cast<std::string>((uint16)_centroids[i][0]);
+                    append2 = boost::lexical_cast<std::string>((uint16)_centroids[i][1]);
+                    append = append + space + append2;
+                    append2 = boost::lexical_cast<std::string>((uint16)_centroids[i][2]);
+                    append = append + space + append2;
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    dataElem2->appendChild(textElem);
+                    
+                    //Each component is quantized to 1 bit, with "0" corresponding to low variance and "1" corresponding to high variance. 
+                    //The quantization threshold is equal to 0.005 of the squared color component value range.
+                    dataElem2 = doc->createElement(io::fromNative("ColorVariance").c_str());
+                    dataElem->appendChild(dataElem2);
+                    if(_color_variance[i][0] > 325)
+                    {
+                        append = boost::lexical_cast<std::string>(1);
+                    }
+                    else
+                    {
+                        append = boost::lexical_cast<std::string>(0);
+                    }
+                    if(_color_variance[i][1] > 325)
+                    {
+                        append2 = boost::lexical_cast<std::string>(1);
+                    }
+                    else
+                    {
+                        append2 = boost::lexical_cast<std::string>(0);
+                    }
+                    append = append + space + append2;
+                    if(_color_variance[i][2] > 325)
+                    {
+                        append2 = boost::lexical_cast<std::string>(1);
+                    }
+                    else
+                    {
+                        append2 = boost::lexical_cast<std::string>(0);
+                    }
+                    append = append + space + append2;
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    dataElem2->appendChild(textElem);
+                }
+            }
+        #endif
+                      
+        private:
+            
+            //! Values of the 8 dominant colors in RGB color space
+            boost::array< boost::array<uint8,3>, 8 > _centroids;
+            
+            //! Values of the 8 dominant colors in YUV color space
+            boost::array< boost::array<uint8,3>, 8 > _centroids_yuv;
+            
+            //! Number of bins of each channel of the histogram
+            uint8 _num_bins;
+            
+            //! Percentages of each dominant color
+            boost::array<float64,8> _percentage;
+            
+            //! Color variance of each dominant color
+            boost::array< boost::array<uint64,3>, 8> _color_variance;
+            
+            //! Boolean that indicates if spatial coherency have been computed (true-> computed, false-> not computed)
+            bool _sc_computed;
+            
+            //! Spatial coherency ( average of cluster's spatial variance )
+            float64 _spatial_coherency;
+
+            //! \brief It sorts dominant colors in decreasing order of percentage (the first one is therefore the most representative)
+            void _sort()
+            {
+                boost::array<uint8,8> id;
+                for(uint8 ii=0; ii<8; ii++)
+                {
+                    id[ii]=ii;
+                }
+                for(uint8 jj = 7; jj>0; jj--)
+                {
+                    for(uint8 ii = 0; ii < jj; ii++)
+                    {
+                        if(_percentage[ii]<_percentage[ii+1])
+                        {
+                            float64 tmp = _percentage[ii+1];
+                            _percentage[ii+1] = _percentage[ii];
+                            _percentage[ii] = tmp;
+                            uint8 tmp2 = id[ii+1];
+                            id[ii+1]=id[ii];
+                            id[ii]=tmp2;
+                        }
+                    }
+                }
+                boost::array< boost::array<uint8,3>, 8> centr(_centroids);
+                boost::array< boost::array<uint8,3>, 8> centr_yuv(_centroids_yuv);
+                boost::array< boost::array<uint64,3>, 8> col_variance(_color_variance);
+                for(uint8 ii = 0; ii < 8; ii++)
+                {
+                    _centroids[ii] = centr[id[ii]];
+                    _centroids_yuv[ii] = centr_yuv[id[ii]];
+                    _color_variance[ii] = col_variance[id[ii]];
+                     
+                }
+            }
+            
+            
+            //! \brief Computes the distance between the point given by the user and the centroid indicated by index in the color space
+            //!
+            //! \param[in]  point : color which we want to compute its distance to given centroid
+            //! \param[in]  centroid : indicates to which centroid we want to compute the previous distance
+            //!
+            //! \return Distance value
+            float64 _distance_to_centroid(boost::array<float64,3>& point, boost::array<float64,3>& centroid)
+            {
+                float64 dist = (point[0]-centroid[0])*(point[0]-centroid[0]) + (point[1]-centroid[1])*(point[1]-centroid[1]) + (point[2]-centroid[2])*(point[2]-centroid[2]);
+                return dist;
+            }
+            
+            
+            
+            //! \brief Computes the 8 dominant colors for non-recursive case
+            //!
+            //! \param[in]  first : Iterator to the beginning of the image or image region
+            //! \param[in]  last  : Iterator to the end of the image or image region
+            //! \param[in]  histo : Color histogram
+            //! \param[in]  peer_descs: Pointer to CollaborativeDescriptors
+            template< class IteratorModel >
+            void _compute_centroids(IteratorModel first, IteratorModel last, const math::statistics::Histogram<InputModel>& histo, CollaborativeDescriptors* peer_descs)
+            {
+                //Distortion in the actual iteration
+                float64 distort = 0;
+                
+                //Distortion in the previous iteration
+                float64 previous_distort = 0;
+                
+                //Improvement achieved
+                float64 improve = 1.0;
+                
+                //Number of iterations
+                uint64 counter = 0;
+                
+                //Distances
+                float64 d1, d2;
+                
+                //Actual color
+                boost::array<float64,3> pos;
+                
+                //Sum of all points assigned to each centroids in order to compute your mean and update the centroids.
+                boost::array< boost::array<float64,3>, 8 > mean;
+                
+                //Number of points assigned to each centroid
+                boost::array<uint64,8> count;
+                
+                //MultiArray with the index of nearest centroid of each color.
+                MultiArray<uint64, 3> nearest_centroid(histo.num_bins()[0], histo.num_bins()[1], histo.num_bins()[2]);
+                
+                boost::array< boost::array<float64,3>, 8 > centroids_yuv;
+                centroids_yuv[0][0] = 64;
+                centroids_yuv[0][1] = 64;
+                centroids_yuv[0][2] = 64;
+                centroids_yuv[1][0] = 64;
+                centroids_yuv[1][1] = 64;
+                centroids_yuv[1][2] = 192;
+                centroids_yuv[2][0] = 64;
+                centroids_yuv[2][1] = 192;
+                centroids_yuv[2][2] = 64;
+                centroids_yuv[3][0] = 64;
+                centroids_yuv[3][1] = 192;
+                centroids_yuv[3][2] = 192;
+                centroids_yuv[4][0] = 192;
+                centroids_yuv[4][1] = 64;
+                centroids_yuv[4][2] = 64;
+                centroids_yuv[5][0] = 192;
+                centroids_yuv[5][1] = 64;
+                centroids_yuv[5][2] = 192;
+                centroids_yuv[6][0] = 192;
+                centroids_yuv[6][1] = 192;
+                centroids_yuv[6][2] = 64;
+                centroids_yuv[7][0] = 192;
+                centroids_yuv[7][1] = 192;
+                centroids_yuv[7][2] = 192;
+                
+                //We set mean and count to zero
+                for(uint8 i = 0; i < 8; i++)
+                {
+                    mean[i].assign(0);
+                }
+                count.assign(0);
+                //We compute k-means algorithm until the improvement achieved is smaller than 5% or the number of iterations is greater than 100
+                while(((improve > 0.05)||(improve<0.0))&&(counter < 100))
+                {
+                    //We compute the nearest centroid of each color point, the number of points assigned to each centroid, their means and the distortion
+                    for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                    {
+                        for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                        {
+                            for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                            {
+                                if(histo[k][j][i]!=0)
+                                {
+                                    pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                    pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                    pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                    d1 = _distance_to_centroid(pos,centroids_yuv[0]);
+                                    nearest_centroid[k][j][i] = 0;
+                                    for(uint64 m = 1; m<8; m++)
+                                    {
+                                        d2 = _distance_to_centroid(pos,centroids_yuv[m]);
+                                        if(d2<d1)
+                                        {
+                                            d1 = d2;
+                                            nearest_centroid[k][j][i] = m;
+                                        }
+                                    }
+                                    mean[nearest_centroid[k][j][i]][0] = mean[nearest_centroid[k][j][i]][0] + histo[k][j][i]*pos[0];
+                                    mean[nearest_centroid[k][j][i]][1] = mean[nearest_centroid[k][j][i]][1] + histo[k][j][i]*pos[1];
+                                    mean[nearest_centroid[k][j][i]][2] = mean[nearest_centroid[k][j][i]][2] + histo[k][j][i]*pos[2];
+                                    count[nearest_centroid[k][j][i]] = count[nearest_centroid[k][j][i]] + histo[k][j][i];
+                                    distort = distort + histo[k][j][i]*d1;
+                                }
+                            }
+                        }
+                    }
+                    
+                    //We update the centroids
+                    for(std::size_t i = 0; i < 8; i++)
+                    {
+                        //The centroids are computed by the mean of the points assigned to each centroid
+                        if(count[i]!=0)
+                        {
+                            centroids_yuv[i] = mean[i]/(float64)(count[i]);
+                        }
+                        else //If there is an empty cluster, we assigne it one color presents in the image
+                        {
+                            int64 aux = histo.num_points()-1;
+                            int64 random = imageplus::math::statistics::rand_uniform_int((int64)0,aux);
+                            IteratorModel it = first;
+                            for(; random > 0; random--, ++it);
+                            
+                            InputModel centroids_rgb(1,1);
+                            centroids_rgb(0)[0][0] = (*it).value(0);
+                            centroids_rgb(1)[0][0] = (*it).value(1);
+                            centroids_rgb(2)[0][0] = (*it).value(2);
+                            ImageYUV<uint8> centroids_yuv2 = to_yuv(centroids_rgb);
+                            
+                            centroids_yuv[i][0]=centroids_yuv2(0)[0][0];
+                            centroids_yuv[i][1]=centroids_yuv2(1)[0][0];
+                            centroids_yuv[i][2]=centroids_yuv2(2)[0][0];
+                        }
+                    }
+                    
+                    //We update percentages of each dominant color
+                    for(std::size_t i = 0; i < 8; i++)
+                    {
+                        _percentage[i] = (float64)count[i]/(float64)histo.num_points();
+                    }
+                    
+                    //We compute the improvement achieved
+                    if(previous_distort>0)
+                    {
+                        improve = (float64)(previous_distort-distort)/previous_distort;
+                    }
+                    else
+                    {
+                        improve = -1.0;
+                    }
+                    
+                    //The actual distortion becomes the previous distortion and we reset distort
+                    previous_distort = distort;
+                    distort = 0;
+                    
+                    //We increment the counter of iterations
+                    counter++;
+                    
+                    //We reset mean and count
+                    for(std::size_t i = 0; i < 8; i++)
+                    {
+                        mean[i].assign(0);
+                    }
+                    count.assign(0);
+                }
+                
+                boost::array<uint8,8> absorbed_by;
+                for(uint8 ii=0; ii < 8; ii++)
+                {
+                    absorbed_by[ii]=ii;
+                }
+                //If two centroids are not at least Td distance apart, we merge them in a new one
+                for(uint8 ii = 0; ii < 7; ii++)
+                {
+                    if(_percentage[ii]!=0)
+                    {
+                        for(uint8 jj = ii+1; jj < 8; jj++)
+                        {
+                            if(_percentage[jj]!=0)
+                            {
+                                float64 distance = (centroids_yuv[ii][0]-centroids_yuv[jj][0])*(centroids_yuv[ii][0]-centroids_yuv[jj][0])+(centroids_yuv[ii][1]-centroids_yuv[jj][1])*(centroids_yuv[ii][1]-centroids_yuv[jj][1])+(centroids_yuv[ii][2]-centroids_yuv[jj][2])*(centroids_yuv[ii][2]-centroids_yuv[jj][2]);
+                                if ( distance < 255.0 )
+                                {
+                                    centroids_yuv[ii][0] = (_percentage[ii]*centroids_yuv[ii][0] + _percentage[jj]*centroids_yuv[jj][0])/(_percentage[ii]+_percentage[jj]);
+                                    centroids_yuv[ii][1] = (_percentage[ii]*centroids_yuv[ii][1] + _percentage[jj]*centroids_yuv[jj][1])/(_percentage[ii]+_percentage[jj]);
+                                    centroids_yuv[ii][2] = (_percentage[ii]*centroids_yuv[ii][2] + _percentage[jj]*centroids_yuv[jj][2])/(_percentage[ii]+_percentage[jj]);
+                                    _percentage[ii] += _percentage[jj]; 
+                                    _percentage[jj]=0;
+                                    absorbed_by[jj]=ii;
+                                    
+                                }
+                            }
+                        }
+                    }
+
+                }
+                
+                //We compute color variance of each cluster
+                boost::array< boost::array<float64,3>, 8> color_variance;
+                for(uint8 ii = 0; ii<8; ii++)
+                {
+                    color_variance[ii].assign(0);
+                }
+                for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                {
+                    for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                    {
+                        for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                        {
+                            if(histo[k][j][i]!=0)
+                            {
+                                pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                uint8 index = nearest_centroid[k][j][i];
+                                while(absorbed_by[index]!=index)
+                                {
+                                    index = absorbed_by[index];
+                                }
+                                color_variance[index][0] += histo[k][j][i]*(pos[0]-centroids_yuv[index][0])*(pos[0]-centroids_yuv[index][0]);
+                                color_variance[index][1] += histo[k][j][i]*(pos[1]-centroids_yuv[index][1])*(pos[1]-centroids_yuv[index][1]);
+                                color_variance[index][2] += histo[k][j][i]*(pos[2]-centroids_yuv[index][2])*(pos[2]-centroids_yuv[index][2]);
+                            }
+                        }
+                    }
+                }
+                
+                for(uint8 ii = 0; ii < 8; ii++)
+                {
+                    _centroids_yuv[ii][0] = (uint8)centroids_yuv[ii][0];
+                    _centroids_yuv[ii][1] = (uint8)centroids_yuv[ii][1];
+                    _centroids_yuv[ii][2] = (uint8)centroids_yuv[ii][2];
+                    _color_variance[ii][0] = (uint64)color_variance[ii][0];
+                    _color_variance[ii][1] = (uint64)color_variance[ii][1];
+                    _color_variance[ii][2] = (uint64)color_variance[ii][2];
+                }
+                
+                //We compute spatial coherency
+                _sc_computed = true;
+                boost::array<std::size_t, 2> borders2d = {{1,1}};
+                const Mask<typename InputModel::CoordType>& mask_with_border = peer_descs->calculate(new Mask<typename InputModel::CoordType>(borders2d), first, last);
+
+                Quantizer<typename InputModel::data_type> q_map( 0, 255, _num_bins );
+                boost::array<float64, 8 > spatial_coherency;
+                spatial_coherency.assign(0.0);
+                count.assign(0);
+                
+                Neighborhood2D ngb;
+                ngb.resize(4);
+                ngb[0]=Neighborhood2D::CoordType(-1, 0 );
+                ngb[1]=Neighborhood2D::CoordType( 0,-1 );
+                ngb[2]=Neighborhood2D::CoordType( 1, 0 );
+                ngb[3]=Neighborhood2D::CoordType( 0, 1 );
+                
+                //We compute spatial coherency
+                for(IteratorModel it = first; it!=last; ++it)
+                {
+                    uint8 index1 = q_map.bin((*it).value(0));
+                    uint8 index2 = q_map.bin((*it).value(1));
+                    uint8 index3 = q_map.bin((*it).value(2));
+                    uint8 index = nearest_centroid[index1][index2][index3];
+                    while(absorbed_by[index]!=index)
+                    {
+                        index = absorbed_by[index];
+                    }
+                    for(typename IteratorModel::pixel_type::neighbor_iterator nit = (*it).local_begin(ngb); nit != (*it).local_end(ngb); ++nit)
+                    {
+                        if(mask_with_border(0)((*nit).position()))
+                        {
+                            count[index]++;
+                            index1 = q_map.bin((*nit).value(0));
+                            index2 = q_map.bin((*nit).value(1));
+                            index3 = q_map.bin((*nit).value(2));
+                            uint8 n_index = nearest_centroid[index1][index2][index3];
+                            while(absorbed_by[n_index]!=n_index)
+                            {
+                                n_index = absorbed_by[n_index];
+                            }
+                            if(n_index == index)
+                            {
+                                spatial_coherency[index]++;
+                            }
+                        }
+                    }
+                }
+                _spatial_coherency = 0.0;
+                for(uint8 ii=0; ii < 8; ii++)
+                {
+                    if(count[ii]!=0)
+                    {
+                        spatial_coherency[ii] = spatial_coherency[ii]/(float64)(count[ii]);
+                        _spatial_coherency += _percentage[ii]*spatial_coherency[ii];
+                    }
+                }
+                
+                //Convert centroids to RGB color space
+                ImageYUV<uint8> centroids_yuv2(8,1);
+                for(uint8 i = 0; i < 8; i++)
+                {
+                    centroids_yuv2(0)[i][0] = _centroids_yuv[i][0];
+                    centroids_yuv2(1)[i][0] = _centroids_yuv[i][1];
+                    centroids_yuv2(2)[i][0] = _centroids_yuv[i][2];
+                }
+                ImageRGB<uint8> centroids_rgb = to_rgb(centroids_yuv2);
+                for(uint8 i = 0; i < 8; i++)
+                {
+                    _centroids[i][0] = centroids_rgb(0)[i][0];
+                    _centroids[i][1] = centroids_rgb(1)[i][0];
+                    _centroids[i][2] = centroids_rgb(2)[i][0];
+                }
+            }
+       
+            //! \brief Computes the 8 dominant colors for recursive case
+            //!
+            //! \param[in]  histo : Color histogram
+            void _compute_centroids(const math::statistics::Histogram<InputModel>& histo)
+            {
+                //Distortion in the actual iteration
+                float64 distort = 0;
+                
+                //Distortion in the previous iteration
+                float64 previous_distort = 0;
+                
+                //Improvement achieved
+                float64 improve = 1.0;
+                
+                //Number of iterations
+                uint64 counter = 0;
+                
+                //Distances
+                float64 d1, d2;
+                
+                //Actual color
+                boost::array<float64,3> pos;
+                
+                //Sum of all points assigned to each centroids in order to compute your mean and update the centroids.
+                boost::array< boost::array<float64,3>, 8 > mean;
+                
+                //Number of points assigned to each centroid
+                boost::array<uint64,8> count;
+                
+                //MultiArray with the index of nearest centroid of each color.
+                MultiArray<uint64, 3> nearest_centroid(histo.num_bins()[0], histo.num_bins()[1], histo.num_bins()[2]);
+                
+                boost::array< boost::array<float64,3>, 8 > centroids_yuv;
+                centroids_yuv[0][0] = 64;
+                centroids_yuv[0][1] = 64;
+                centroids_yuv[0][2] = 64;
+                centroids_yuv[1][0] = 64;
+                centroids_yuv[1][1] = 64;
+                centroids_yuv[1][2] = 192;
+                centroids_yuv[2][0] = 64;
+                centroids_yuv[2][1] = 192;
+                centroids_yuv[2][2] = 64;
+                centroids_yuv[3][0] = 64;
+                centroids_yuv[3][1] = 192;
+                centroids_yuv[3][2] = 192;
+                centroids_yuv[4][0] = 192;
+                centroids_yuv[4][1] = 64;
+                centroids_yuv[4][2] = 64;
+                centroids_yuv[5][0] = 192;
+                centroids_yuv[5][1] = 64;
+                centroids_yuv[5][2] = 192;
+                centroids_yuv[6][0] = 192;
+                centroids_yuv[6][1] = 192;
+                centroids_yuv[6][2] = 64;
+                centroids_yuv[7][0] = 192;
+                centroids_yuv[7][1] = 192;
+                centroids_yuv[7][2] = 192;
+                
+                //We set mean and count to zero
+                for(uint8 i = 0; i < 8; i++)
+                {
+                    mean[i].assign(0);
+                }
+                count.assign(0);
+                //We compute k-means algorithm until the improvement achieved is smaller than 5% or the number of iterations is greater than 100
+                while(((improve > 0.05)||(improve<0.0))&&(counter < 100))
+                {
+                    //We compute the nearest centroid of each color point, the number of points assigned to each centroid, their means and the distortion
+                    for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                    {
+                        for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                        {
+                            for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                            {
+                                if(histo[k][j][i]!=0)
+                                {
+                                    pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                    pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                    pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                    d1 = _distance_to_centroid(pos,centroids_yuv[0]);
+                                    nearest_centroid[k][j][i] = 0;
+                                    for(uint64 m = 1; m<8; m++)
+                                    {
+                                        d2 = _distance_to_centroid(pos,centroids_yuv[m]);
+                                        if(d2<d1)
+                                        {
+                                            d1 = d2;
+                                            nearest_centroid[k][j][i] = m;
+                                        }
+                                    }
+                                    mean[nearest_centroid[k][j][i]][0] = mean[nearest_centroid[k][j][i]][0] + histo[k][j][i]*pos[0];
+                                    mean[nearest_centroid[k][j][i]][1] = mean[nearest_centroid[k][j][i]][1] + histo[k][j][i]*pos[1];
+                                    mean[nearest_centroid[k][j][i]][2] = mean[nearest_centroid[k][j][i]][2] + histo[k][j][i]*pos[2];
+                                    count[nearest_centroid[k][j][i]] = count[nearest_centroid[k][j][i]] + histo[k][j][i];
+                                    distort = distort + histo[k][j][i]*d1;
+                                }
+                            }
+                        }
+                    }
+                    
+                    //We update the centroids
+                    for(uint8 i = 0; i < 8; i++)
+                    {
+                        //The centroids are computed by the mean of the points assigned to each centroid
+                        if(count[i]!=0)
+                        {
+                            centroids_yuv[i] = mean[i]/(float64)(count[i]);
+                        }
+                        //If there is an empty cluster, we assigne it one color randomly
+                        else
+                        {
+                            int64 random1 = imageplus::math::statistics::rand_uniform_int(0,255);
+                            int64 random2 = imageplus::math::statistics::rand_uniform_int(0,255);
+                            int64 random3 = imageplus::math::statistics::rand_uniform_int(0,255);
+                            
+                            centroids_yuv[i][0]=random1;
+                            centroids_yuv[i][1]=random2;
+                            centroids_yuv[i][2]=random3;
+                        }
+                    }
+                    
+                    //We update percentages of each dominant color
+                    for(std::size_t i = 0; i < 8; i++)
+                    {
+                        _percentage[i] = (float64)count[i]/(float64)histo.num_points();
+                    }
+                    
+                    //We compute the improvement achieved
+                    if(previous_distort>0)
+                    {
+                        improve = (float64)(previous_distort-distort)/previous_distort;
+                    }
+                    else
+                    {
+                        improve = -1.0;
+                    }
+                    
+                    //The actual distortion becomes the previous distortion and we reset distort
+                    previous_distort = distort;
+                    distort = 0;
+                    
+                    //We increment the counter of iterations
+                    counter++;
+                    
+                    //We reset mean and count
+                    for(std::size_t i = 0; i < 8; i++)
+                    {
+                        mean[i].assign(0);
+                    }
+                    count.assign(0);
+                }
+                boost::array<uint8,8> absorbed_by;
+                for(uint8 ii=0; ii < 8; ii++)
+                {
+                    absorbed_by[ii]=ii;
+                }
+                //If two centroids are not at least Td distance apart, we merge them in a new one
+                for(uint8 ii = 0; ii < 7; ii++)
+                {
+                    if(_percentage[ii]!=0)
+                    {
+                        for(uint8 jj = ii+1; jj < 8; jj++)
+                        {
+                            if(_percentage[jj]!=0)
+                            {
+                                float64 distance = (centroids_yuv[ii][0]-centroids_yuv[jj][0])*(centroids_yuv[ii][0]-centroids_yuv[jj][0])+(centroids_yuv[ii][1]-centroids_yuv[jj][1])*(centroids_yuv[ii][1]-centroids_yuv[jj][1])+(centroids_yuv[ii][2]-centroids_yuv[jj][2])*(centroids_yuv[ii][2]-centroids_yuv[jj][2]);
+                                if ( distance < 255.0 )
+                                {
+                                    centroids_yuv[ii][0] = (_percentage[ii]*centroids_yuv[ii][0] + _percentage[jj]*centroids_yuv[jj][0])/(_percentage[ii]+_percentage[jj]);
+                                    centroids_yuv[ii][1] = (_percentage[ii]*centroids_yuv[ii][1] + _percentage[jj]*centroids_yuv[jj][1])/(_percentage[ii]+_percentage[jj]);
+                                    centroids_yuv[ii][2] = (_percentage[ii]*centroids_yuv[ii][2] + _percentage[jj]*centroids_yuv[jj][2])/(_percentage[ii]+_percentage[jj]);
+                                    _percentage[ii] += _percentage[jj]; 
+                                    _percentage[jj]=0;
+                                    absorbed_by[jj]=ii;
+                                    
+                                }
+                            }
+                        }
+                    }
+
+                }
+                
+                //We compute color variance of each cluster
+                boost::array< boost::array<float64,3>, 8> color_variance;
+                for(uint8 ii = 0; ii<8; ii++)
+                {
+                    color_variance[ii].assign(0);
+                }
+                for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                {
+                    for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                    {
+                        for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                        {
+                            if(histo[k][j][i]!=0)
+                            {
+                                pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                uint8 index = nearest_centroid[k][j][i];
+                                while(absorbed_by[index]!=index)
+                                {
+                                    index = absorbed_by[index];
+                                }
+                                color_variance[index][0] += histo[k][j][i]*(pos[0]-centroids_yuv[index][0])*(pos[0]-centroids_yuv[index][0]);
+                                color_variance[index][1] += histo[k][j][i]*(pos[1]-centroids_yuv[index][1])*(pos[1]-centroids_yuv[index][1]);
+                                color_variance[index][2] += histo[k][j][i]*(pos[2]-centroids_yuv[index][2])*(pos[2]-centroids_yuv[index][2]);
+                            }
+                        }
+                    }
+                }
+                
+                for(uint8 ii = 0; ii < 8; ii++)
+                {
+                    _centroids_yuv[ii][0] = (uint8)centroids_yuv[ii][0];
+                    _centroids_yuv[ii][1] = (uint8)centroids_yuv[ii][1];
+                    _centroids_yuv[ii][2] = (uint8)centroids_yuv[ii][2];
+                    _color_variance[ii][0] = (uint64)color_variance[ii][0];
+                    _color_variance[ii][1] = (uint64)color_variance[ii][1];
+                    _color_variance[ii][2] = (uint64)color_variance[ii][2];
+                }
+                
+                //We can't compute the spatial coherency recursively
+                _sc_computed = false;
+                
+                //Convert centroids to RGB color space
+                ImageYUV<uint8> centroids_yuv2(8,1);
+                for(std::size_t i = 0; i < 8; i++)
+                {
+                    centroids_yuv2(0)[i][0] = _centroids_yuv[i][0];
+                    centroids_yuv2(1)[i][0] = _centroids_yuv[i][1];
+                    centroids_yuv2(2)[i][0] = _centroids_yuv[i][2];
+                }
+                ImageRGB<uint8> centroids_rgb = to_rgb(centroids_yuv2);
+                for(std::size_t i = 0; i < 8; i++)
+                {
+                    _centroids[i][0] = centroids_rgb(0)[i][0];
+                    _centroids[i][1] = centroids_rgb(1)[i][0];
+                    _centroids[i][2] = centroids_rgb(2)[i][0];
+                }
+            }
+        };
+        
+        //!
+        //! Class for visual descriptor that allows specification of a small number of 
+        //! dominant color values as well as their statistical properties such as distribution and variance.
+        //! This descriptor is based on top-down implementation which is specified in MPEG-7 standard. Firstly, only the centroid of the whole region
+        //! is computed. If the distortion is greater than a threshold, then the centroid is splitted in two new centroids. Next, Generalized Lloyd Algorithm
+        //! is applied and the cluster with highest distortion is again splitted. This process is iteratively repeated until either the distortion is smaller than 
+        //! this threshold or the number of dominant color is 8. Finally, if the distance between two dominant
+        //! colors is smaller than a threshold Td then they are merged in one dominant color.
+        //! The dominant color values are sorted in decreasing order of percentage (the first one is therefore the most representative).
+        //! The dominant color values are computed in YUV color space because of its perceptual uniformity but the results are in RGB color space too.
+        //!
+        //! The user may use the helper functions defined in visual_descriptors.hpp because of their simplicity.
+        //!
+        //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+        //!
+        //! \date 09-10-2009     
+        template<class InputModel>
+        class DominantColor : public DescriptorBase
+        {
+        public:
+            
+            //!
+            //! \brief Default constructor with intial centroids uniformly distributed in color space
+            //!
+            //! \param[in] num_bins : Each dimension of the color space will be quantized in num_bins. Its default value is 64.
+        	//! \param[in] color_space : Color space in which the centroids are computed. CIE Lab color space is recommended.
+            DominantColor(uint8 num_bins = 64, std::size_t color_space = CIELab) 
+                : DescriptorBase("DominantColor",false), _centroids(), _centroids_new_color_space(),_percentage(), _color_variance(), _spatial_coherency()
+            {
+                _num_bins = num_bins;
+                _color_space = color_space;
+            }        
+            
+            
+            //! \brief Calculates the representative colors in an image or image region given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the image or image region
+            //! \param[in] last : Iterator to the end of the image or image region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {        
+                math::statistics::Histogram<InputModel> histo(0,255,_num_bins);
+                const ImaVolMask<InputModel::dimensions>& mask = peer_descs->calculate(new Mask<typename InputModel::CoordType>(), first, last);
+                if(_color_space == YUV)
+                {
+                    //We convert the image to YUV color space
+                    const ImageYUV<typename InputModel::data_type>& im_yuv = peer_descs->global_desc()->calculate(new VDImageYUV<InputModel>(), (*first).global_begin(), (*first).global_end());
+                    
+                    //We compute the histogram in YUV color space to know the color statistics
+                    //We decided 64 bins for channel in order to reduce computational cost
+                    histo = peer_descs->calculate(new math::statistics::Histogram<InputModel>(0,255,_num_bins), im_yuv.colors_begin(mask), im_yuv.colors_end(mask));
+                }
+                else
+                {
+                    //We convert the image to CIE Lab color space because this one is perceptually more uniform.
+                    
+                    if(peer_descs->global_desc()!=0x0)
+                    {
+                    	const ImageCIELab<typename InputModel::data_type>& im_lab = peer_descs->global_desc()->calculate(new VDImageCIELab<InputModel>(), (*first).global_begin(), (*first).global_end());
+
+                    	//We compute the histogram in CIE Lab color space to know the color statistics
+                        //We decided 64 bins for channel in order to reduce computational cost
+                        histo = peer_descs->calculate(new math::statistics::Histogram<InputModel>(0,255,_num_bins), im_lab.colors_begin(mask), im_lab.colors_end(mask));
+                    }
+                    else
+                    {
+//                    	peta
+                    }
+                }
+
+                //We call a private method that computes the 8 dominant colors
+                _compute_centroids(first, last, histo, peer_descs);
+
+                _sort();
+            }
+            
+            
+            //! \brief Returns the values of the 8 dominant colors in RGB color space
+            //!
+            //! \return 8 dominant colors in RGB color space
+            const std::vector< boost::array<uint8,3> >& value() const
+            {
+                return _centroids;
+            }
+            
+            //! \brief Returns the values of the 8 dominant colors in YUV color space
+            //!
+            //! \return 8 dominant colors in YUV color space
+            const std::vector< boost::array<uint8,3> >& value_aux() const
+            {
+                return _centroids_new_color_space;
+            }
+            
+            //! \brief Returns the percentages of each dominant color
+            //!
+            //! \return The percentages of each dominant color
+            const std::vector<float64>& percentages() const
+            {
+                return _percentage;
+            }
+            
+            //! \brief Returns the color variance of each dominant color
+            //!
+            //! \return The color variance of each dominant color
+            const std::vector<boost::array<uint64,3> >& color_variance() const
+            {
+                return _color_variance;
+            }
+            
+            //! \brief Returns the spatial coherency
+            //!
+            //! \return The spatial coherency
+            const float64& spatial_coherency() const
+            {
+                return _spatial_coherency;
+            }
+            
+            //! \brief Returns an image that represents the percentatges of each dominant color
+            //!
+            //! \return An image that represents the percentatges of each dominant color
+            ImageRGB<uint8> image_results() const
+            {
+                std::size_t curr_percent=0;
+                std::size_t width=100;
+                std::size_t height=20;
+                ImageRGB<uint8> my_output(width,height);
+                for(std::size_t ii=0; ii<_percentage.size(); ii++)
+                {
+                    std::size_t new_percent;
+                    if (ii==(_percentage.size()-1))
+                    {
+                        new_percent=width;
+                    }
+                    else
+                    {
+                        new_percent=curr_percent+(std::size_t)round(_percentage[ii]*width);
+                    }
+                    for(std::size_t jj=curr_percent; jj<new_percent; jj++)
+                    {
+                        for(std::size_t kk=0; kk<height; kk++)
+                        {
+                            my_output(0)[jj][kk] = _centroids[ii][0];
+                            my_output(1)[jj][kk] = _centroids[ii][1];
+                            my_output(2)[jj][kk] = _centroids[ii][2];
+                        }
+                    }
+                    curr_percent = new_percent;
+                }
+                return my_output;
+            }
+            
+            //! Writes the value of the descriptor.
+            //! \param[in] os: TXT file we are writing to.
+            void txt_write(std::fstream &os)
+            {
+                os << " " << _percentage.size();
+                for(uint64 ii=0; ii<_percentage.size(); ii++)
+                {
+                    os << " " << _percentage[ii];
+                    for(uint64 kk=0; kk<3; kk++)
+                    {
+                        os << " " << (uint64)_centroids[ii][kk];
+                    }
+                    for(uint64 kk=0; kk<3; kk++)
+                    {
+                        os << " " << _color_variance[ii][kk];
+                    }
+                }
+                os << " " << _spatial_coherency;
+            }
+
+            //! Reads the value of the descriptor.
+            //! \param[in] is: TXT file we are reading from.
+            void txt_read(std::fstream& is)
+            {
+                uint64 num_colors;
+                is >> num_colors;
+                _percentage.resize(num_colors);
+                _centroids.resize(num_colors);
+                _color_variance.resize(num_colors);
+                for(uint64 ii=0; ii<num_colors; ii++)
+                {
+                    is >> _percentage[ii];
+                    for(uint64 kk=0; kk<3; kk++)
+                    {
+                        uint64 aux;
+                        is >> aux;
+                        _centroids[ii][kk] = (uint8)aux;
+                    }
+                    for(uint64 kk=0; kk<3; kk++)
+                    {
+                        is >> _color_variance[ii][kk];
+                    }
+                }
+                is >> _spatial_coherency;
+            }
+
+            
+        #ifdef USE_XML   
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "DominantColorType";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem, *dataElem2;
+                XERCES_CPP_NAMESPACE::DOMText* textElem;
+                std::string append, append2;
+                std::string space(" ");
+                Quantizer<float64> q(0,1,32);
+                Quantizer<float64> q2(0.7,1.0,30);
+                
+                //The weighted sum of per-dominant-color spatial coherencies is normalized from 0 to 1, then non-uniformly quantized to the range from 1 to 31 as follows. 
+                //Normalized values less than 0.7 are set to 1, while values between 0.7 to 1 are uniformly quantized to the range 2 to 31. 
+                //0 is used to signal that this element is not computed (note that if it is not computed it does not mean that the spatial coherency is low).
+                dataElem = doc->createElement(io::fromNative("SpatialCoherency").c_str());
+                vdElem->appendChild(dataElem);
+                if(_spatial_coherency < 0.7)
+                {
+                    append = boost::lexical_cast<std::string>(1);
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                }
+                else
+                {
+                    append = boost::lexical_cast<std::string>(q2.bin(_spatial_coherency)+2);
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                }
+                dataElem->appendChild(textElem);
+                
+                for(uint8 i=0; i<_percentage.size(); i++)
+                {
+                    dataElem = doc->createElement(io::fromNative("Value").c_str());
+                    vdElem->appendChild(dataElem);
+                    
+                    //The percentage value is uniformly quantized to 5 bits with 0 corresponding to 0 percentage and 31 corresponding to 100%
+                    dataElem2 = doc->createElement(io::fromNative("Percentage").c_str());
+                    dataElem->appendChild(dataElem2);
+                    append = boost::lexical_cast<std::string>(q.bin(_percentage[i]));
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    dataElem2->appendChild(textElem);
+                    
+                    dataElem2 = doc->createElement(io::fromNative("Index").c_str());
+                    dataElem->appendChild(dataElem2);
+                    append = boost::lexical_cast<std::string>((uint16)_centroids[i][0]);
+                    append2 = boost::lexical_cast<std::string>((uint16)_centroids[i][1]);
+                    append = append + space + append2;
+                    append2 = boost::lexical_cast<std::string>((uint16)_centroids[i][2]);
+                    append = append + space + append2;
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    dataElem2->appendChild(textElem);
+                    
+                    //Each component is quantized to 1 bit, with "0" corresponding to low variance and "1" corresponding to high variance. 
+                    //The quantization threshold is equal to 0.005 of the squared color component value range.
+                    dataElem2 = doc->createElement(io::fromNative("ColorVariance").c_str());
+                    dataElem->appendChild(dataElem2);
+                    if(_color_variance[i][0] > 325)
+                    {
+                        append = boost::lexical_cast<std::string>(1);
+                    }
+                    else
+                    {
+                        append = boost::lexical_cast<std::string>(0);
+                    }
+                    if(_color_variance[i][1] > 325)
+                    {
+                        append2 = boost::lexical_cast<std::string>(1);
+                    }
+                    else
+                    {
+                        append2 = boost::lexical_cast<std::string>(0);
+                    }
+                    append = append + space + append2;
+                    if(_color_variance[i][2] > 325)
+                    {
+                        append2 = boost::lexical_cast<std::string>(1);
+                    }
+                    else
+                    {
+                        append2 = boost::lexical_cast<std::string>(0);
+                    }
+                    append = append + space + append2;
+                    textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                    dataElem2->appendChild(textElem);
+                }
+            }
+
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \returns true if the descriptor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "DominantColorType");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("DominantColorType not found");
+                }
+                else
+                {
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = io::xml_get_check_son(curr_node, "SpatialCoherency");
+                    std::string text = io::xml_get_text_son(curr_node2, curr_node2);
+                    sscanf(text.c_str(), "%lf", &_spatial_coherency);
+                    
+                    XERCES_CPP_NAMESPACE::DOMNodeList *child_list;
+                    int64 num_children;
+                    // Gets the list of children
+                    child_list = curr_node->getChildNodes();
+                    
+                    // Gets the number of children
+                    num_children = child_list->getLength();
+                    XERCES_CPP_NAMESPACE::DOMNode *son;
+                    for(int64 ii=0; ii<num_children; ii++ )
+                    {  
+                        son = child_list->item(ii);
+                        if(son->getNodeType() == XERCES_CPP_NAMESPACE::DOMNode::ELEMENT_NODE)
+                        {
+                            char* name = xercesc::XMLString::transcode(son->getNodeName());
+                            if(strcmp(name, "Value") == 0)
+                            {
+                                float64 percentage;
+                                XERCES_CPP_NAMESPACE::DOMNode* curr_node_aux = io::xml_get_check_son(son, "Percentage");
+                                text = io::xml_get_text_son(curr_node_aux, curr_node_aux);
+                                sscanf(text.c_str(),"%lf",&percentage);
+                                _percentage.push_back(percentage);
+                                
+                                boost::array< uint8,3> curr_centroid;
+                                curr_node_aux = io::xml_get_check_son(son, "Index");
+                                text = io::xml_get_text_son(curr_node_aux, curr_node_aux);
+                                uint32 j = 0;
+                                int pos = 0;
+                                for(j=0; j < 2; j++)
+                                {
+                                    std::string value;
+                                    value.push_back(text[pos]);
+                                    pos++;
+                                    while(text[pos]!=' ')
+                                    {
+                                        value.push_back(text[pos]);
+                                        pos++;
+                                    }
+                                    pos++;
+                                    sscanf(value.c_str(), "%hhu", &curr_centroid[j]);
+                                }
+                                std::string value_aux;
+                                std::string::iterator it;
+                                for(it=text.begin()+pos;it!=text.end();++it)
+                                {
+                                    value_aux.push_back(*it);
+                                }
+                                sscanf(value_aux.c_str(), "%hhu", &curr_centroid[2]);
+                                _centroids.push_back(curr_centroid);
+                                
+                                boost::array< uint64,3> curr_color_variance;
+                                curr_node_aux = io::xml_get_check_son(son, "ColorVariance");
+                                text = io::xml_get_text_son(curr_node_aux, curr_node_aux);
+                                pos = 0;
+                                for(j=0; j < 2; j++)
+                                {
+                                    std::string value;
+                                    value.push_back(text[pos]);
+                                    pos++;
+                                    while(text[pos]!=' ')
+                                    {
+                                        value.push_back(text[pos]);
+                                        pos++;
+                                    }
+                                    pos++;
+                                    sscanf(value.c_str(), "%llu", &curr_color_variance[j]);
+                                }
+                                value_aux.resize(0);
+                                for(it=text.begin()+pos;it!=text.end();++it)
+                                {
+                                    value_aux.push_back(*it);
+                                }
+                                sscanf(value_aux.c_str(), "%llu", &curr_color_variance[2]);
+                                _color_variance.push_back(curr_color_variance);
+
+                            }
+                        }
+                    }
+                    read = true;
+                }
+                return read;
+            }
+        #endif
+                      
+        private:
+    
+            //! Values of the 8 dominant colors in RGB color space
+            std::vector< boost::array<uint8,3> > _centroids;
+            
+            //! Values of the 8 dominant colors in the color space specified by _color_space
+            std::vector< boost::array<uint8,3> > _centroids_new_color_space;
+            
+            //! Color space in which the dominant color are computed
+            std::size_t _color_space;
+            
+            //! Number of bins of each channel of the histogram
+            uint8 _num_bins;
+            
+            //! Percentages of each dominant color
+            std::vector<float64> _percentage;
+            
+            //! Color variance of each dominant color
+            std::vector<boost::array<uint64,3> > _color_variance;
+            
+            //! Spatial coherency ( average of cluster's spatial variance )
+            float64 _spatial_coherency;
+            
+            //! \brief It sorts dominant colors in decreasing order of percentage (the first one is therefore the most representative)
+            void _sort()
+            {
+                uint8 size = _percentage.size();
+                std::vector<uint8> id;
+                id.resize(size);
+                for(uint8 ii=0; ii<size; ii++)
+                {
+                    id[ii]=ii;
+                }
+                for(uint8 jj = size-1; jj>0; jj--)
+                {
+                    for(uint8 ii = 0; ii < jj; ii++)
+                    {
+                        if(_percentage[ii]<_percentage[ii+1])
+                        {
+                            float64 tmp = _percentage[ii+1];
+                            _percentage[ii+1] = _percentage[ii];
+                            _percentage[ii] = tmp;
+                            uint8 tmp2 = id[ii+1];
+                            id[ii+1]=id[ii];
+                            id[ii]=tmp2;
+                        }
+                    }
+                }
+                std::vector< boost::array<uint8,3> > centr(_centroids);
+                std::vector< boost::array<uint8,3> > centr_aux(_centroids_new_color_space);
+                std::vector<boost::array<uint64,3> > col_variance(_color_variance);
+                for(uint8 ii = 0; ii < size; ii++)
+                {
+                    _centroids[ii] = centr[id[ii]];
+                    _centroids_new_color_space[ii] = centr_aux[id[ii]];
+                    _color_variance[ii] = col_variance[id[ii]];
+                }
+                
+                
+            }
+            
+            
+            //! \brief Computes the distance between the point given by the user and the centroid indicated by index in the color space
+            //!
+            //! \param[in]  point : color which we want to compute its distance to the given centroid 
+            //! \param[in]  centroid : indicates to which centroid we want to compute the previous distance
+            //!
+            //! \return Distance value
+            float64 _distance_to_centroid(boost::array<float64,3>& point, boost::array<float64,3>& centroid)
+            {
+                float64 dist = (point[0]-centroid[0])*(point[0]-centroid[0]) + (point[1]-centroid[1])*(point[1]-centroid[1]) + (point[2]-centroid[2])*(point[2]-centroid[2]);
+                return dist;
+            }
+            
+            
+            
+            //! \brief Computes the dominant colors for non-recursive case
+            //!
+            //! \param[in]  first : Iterator to the beginning of the image or image region
+            //! \param[in]  last  : Iterator to the end of the image or image region
+            //! \param[in]  histo : Color histogram
+            //! \param[in]  peer_descs: Pointer to CollaborativeDescriptors
+            template< class IteratorModel >
+            void _compute_centroids(IteratorModel first, IteratorModel last, const math::statistics::Histogram<InputModel>& histo, CollaborativeDescriptors* peer_descs)
+            {
+                
+                //Distortion in the actual iteration
+                float64 distort = 0;
+                
+                //Distortion in the previous iteration
+                float64 previous_distort = 0;
+                
+                //Improvement achieved
+                float64 improve = 1.0;
+                
+                //Number of iterations
+                uint64 counter = 0;
+                
+                //Distances
+                float64 d1, d2;
+                
+                //Actual color
+                boost::array<float64,3> pos;
+                
+                //Sum of all points assigned to each centroids in order to compute your mean and update the centroids.
+                std::vector< boost::array<float64,3> > mean;
+                
+                //Number of points assigned to each centroid
+                std::vector<uint64> count;
+                
+                //MultiArray with the index of nearest centroid of each color.
+                MultiArray<uint64, 3> nearest_centroid(histo.num_bins()[0], histo.num_bins()[1], histo.num_bins()[2]);
+                
+                std::vector< boost::array<float64,3> > centroids_aux;
+                
+                count.push_back(0);
+                mean.resize(1);
+                mean[0].assign(0);
+                //We compute initial centroid
+                for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                {
+                    for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                    {
+                        for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                        {
+                            if(histo[k][j][i]!=0)
+                            {
+                                pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                mean[0][0] += histo[k][j][i]*pos[0];
+                                mean[0][1] += histo[k][j][i]*pos[1];
+                                mean[0][2] += histo[k][j][i]*pos[2];
+                                count[0] += histo[k][j][i];
+                            }
+                        }
+                    }
+                }
+                boost::array<float64,3> init_mean;
+                init_mean[0] = (float64)mean[0][0]/(float64)count[0];
+                init_mean[1] = (float64)mean[0][1]/(float64)count[0];
+                init_mean[2] = (float64)mean[0][2]/(float64)count[0];
+                centroids_aux.push_back(init_mean);
+                _percentage.push_back(1.0);
+                
+                //We compute initial distortion
+                for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                {
+                    for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                    {
+                        for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                        {
+                            if(histo[k][j][i]!=0)
+                            {
+                                pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                d1 = _distance_to_centroid(pos,centroids_aux[0]);
+                                nearest_centroid[k][j][i] = 0;
+                                distort = distort + histo[k][j][i]*d1;
+                            }
+                        }
+                    }
+                }
+                
+                uint8 current_bin_num = 1;
+                std::vector<float64> cluster_distortion;
+                while(distort > 0 && current_bin_num < 8)
+                {
+                    uint8 cluster_to_split = 0;
+                    //We are looking for the cluster with the highest distortion
+                    if(current_bin_num > 1) // If we only have one cluster we know which cluster we have to split
+                    {
+                        cluster_distortion.resize(current_bin_num);
+                        cluster_distortion.assign(current_bin_num,0);
+                        for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                        {
+                            for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                            {
+                                for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                                {
+                                    if(histo[k][j][i]!=0)
+                                    {
+                                        pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        uint64 index = nearest_centroid[k][j][i];
+                                        d1 = _distance_to_centroid(pos, centroids_aux[index]);
+                                        cluster_distortion[index] += histo[k][j][i]*d1;
+                                    }
+                                }
+                            }
+                        }
+                        float64 max_distort = cluster_distortion[0];
+                        cluster_to_split = 0;
+                        for(uint8 ii=1; ii<current_bin_num; ii++ )
+                        {
+                            if(cluster_distortion[ii]>max_distort)
+                            {
+                                max_distort = cluster_distortion[ii];
+                                cluster_to_split = ii;
+                            }
+                        }
+                    }
+
+                    
+                    //We have to split the cluster with the highest distortion
+                    //First, we compute the direction of the principal axis.
+                    boost::array<float64, 3> principal_axis;
+                    principal_axis.assign(0.0);
+                    
+                    MultiArray<float64,2> M(3, 3);
+                    for(uint8 ii=0; ii<3; ii++)
+                    {
+                        for(uint8 jj=0; jj<3; jj++)
+                        {
+                            M[ii][jj] = 0;
+                        }
+                    }
+                    for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                    {
+                        for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                        {
+                            for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                            {
+                                if(histo[k][j][i]!=0)
+                                {
+                                    if(nearest_centroid[k][j][i]==cluster_to_split)
+                                    {
+                                        pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        M[0][0] += (float64)(histo[k][j][i]*pos[0]*pos[0]);
+                                        M[0][1] += (float64)(histo[k][j][i]*pos[0]*pos[1]);
+                                        M[0][2] += (float64)(histo[k][j][i]*pos[0]*pos[2]);
+                                        M[1][1] += (float64)(histo[k][j][i]*pos[1]*pos[1]);
+                                        M[1][2] += (float64)(histo[k][j][i]*pos[1]*pos[2]);
+                                        M[2][2] += (float64)(histo[k][j][i]*pos[2]*pos[2]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    for(uint8 ii=0; ii<3; ii++)
+                    {
+                        for(uint8 jj=ii; jj<3; jj++)
+                        {
+                            M[ii][jj] = M[ii][jj]/(float64)(count[cluster_to_split])-centroids_aux[cluster_to_split][ii]*centroids_aux[cluster_to_split][jj];
+                        }
+                    }
+                    M[1][0] = M[0][1];
+                    M[2][0] = M[0][2];
+                    M[2][1] = M[1][2];
+                    
+                    imageplus::math::numeric::SVD svd(M);
+                    principal_axis[0]  = svd.u()[0][0];
+                    principal_axis[1]  = svd.u()[0][1];
+                    principal_axis[2]  = svd.u()[0][2];
+                    
+                    //We need to compute the deviation in the direction found
+                    //In order to compute it, we need to project all the cluster's samples to the principal axis.
+                    
+                    float64 deviation = 0.0;
+                    for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                    {
+                        for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                        {
+                            for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                            {
+                                if(histo[k][j][i]!=0)
+                                {
+                                    if(nearest_centroid[k][j][i]==cluster_to_split)
+                                    {
+                                        boost::array<float64,3> pos_relative;
+                                        pos_relative[0] = k*(256/_num_bins)+(128/_num_bins)-0.5-centroids_aux[cluster_to_split][0];
+                                        pos_relative[1] = j*(256/_num_bins)+(128/_num_bins)-0.5-centroids_aux[cluster_to_split][1];
+                                        pos_relative[2] = i*(256/_num_bins)+(128/_num_bins)-0.5-centroids_aux[cluster_to_split][2];
+                                        float64 alfa = pos_relative[0]*principal_axis[0]+pos_relative[1]*principal_axis[1]+pos_relative[2]*principal_axis[2];
+                                        deviation += histo[k][j][i]*alfa*alfa;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    deviation = deviation / (float64)(count[cluster_to_split]);
+                    deviation = std::sqrt(deviation);
+                    boost::array<float64, 3> perturbance_vector;
+                    for(uint8 ii=0; ii<3; ii++)
+                    {
+                        perturbance_vector[ii]=deviation*principal_axis[ii];
+                    }
+                    
+                    boost::array<float64, 3> centroid1;
+                    for(uint8 ii=0; ii<3; ii++)
+                    {
+                        centroid1[ii]=centroids_aux[cluster_to_split][ii]+perturbance_vector[ii];
+                    }
+                    boost::array<float64, 3> centroid2;
+                    for(uint8 ii=0; ii<3; ii++)
+                    {
+                        centroid2[ii]=centroids_aux[cluster_to_split][ii]-perturbance_vector[ii];
+                    }
+                    
+                    centroids_aux.push_back(centroid1);
+                    centroids_aux.push_back(centroid2);
+                    centroids_aux.erase(centroids_aux.begin()+cluster_to_split);
+
+                    current_bin_num++;
+                    improve = 1.0;
+                    counter= 0;
+                    count.resize(current_bin_num);
+                    mean.resize(current_bin_num);
+                    _percentage.resize(current_bin_num);
+                    boost::array<float64,3> null;
+                    null.assign(0);
+                    
+                    //We compute k-means algorithm until the improvement achieved is smaller than 5% or the number of iterations is greater than 100
+                    while(((improve > 0.05)||(improve<0.0))&&(counter < 100))
+                    {
+                        //We reset mean and count
+                        count.assign(current_bin_num, 0);
+                        mean.assign(current_bin_num, null);
+                        
+                        //The actual distortion becomes the previous distortion and we reset distort
+                        previous_distort = distort;
+                        distort = 0;
+                        
+                        //We compute the nearest centroid of each color point, the number of points assigned to each centroid, their means and the distortion
+                        for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                        {
+                            for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                            {
+                                for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                                {
+                                    if(histo[k][j][i]!=0)
+                                    {
+                                        pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                        d1 = _distance_to_centroid(pos,centroids_aux[0]);
+                                        nearest_centroid[k][j][i] = 0;
+                                        for(uint64 m = 1; m<current_bin_num; m++)
+                                        {
+                                            d2 = _distance_to_centroid(pos,centroids_aux[m]);
+                                            if(d2<d1)
+                                            {
+                                                d1 = d2;
+                                                nearest_centroid[k][j][i] = m;
+                                            }
+                                        }
+                                        mean[nearest_centroid[k][j][i]][0] = mean[nearest_centroid[k][j][i]][0] + histo[k][j][i]*pos[0];
+                                        mean[nearest_centroid[k][j][i]][1] = mean[nearest_centroid[k][j][i]][1] + histo[k][j][i]*pos[1];
+                                        mean[nearest_centroid[k][j][i]][2] = mean[nearest_centroid[k][j][i]][2] + histo[k][j][i]*pos[2];
+                                        count[nearest_centroid[k][j][i]] = count[nearest_centroid[k][j][i]] + histo[k][j][i];
+                                        distort = distort + histo[k][j][i]*d1;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        //We update the centroids
+                        for(std::size_t i = 0; i < current_bin_num; i++)
+                        {
+                            //The centroids are computed by the mean of the points assigned to each centroid
+                            ASSERT( count[i] != 0, "There can't be an empty cluster")
+                            
+                            centroids_aux[i][0] = mean[i][0]/(float64)count[i];
+                            centroids_aux[i][1] = mean[i][1]/(float64)count[i];
+                            centroids_aux[i][2] = mean[i][2]/(float64)count[i];
+                        }
+                        
+                        //We update percentages of each dominant color
+                        for(std::size_t i = 0; i < current_bin_num; i++)
+                        {
+                            _percentage[i] = (float64)count[i]/(float64)histo.num_points();
+                        }
+                        
+                        //We compute the improvement achieved
+                        if(previous_distort>0)
+                        {
+                            improve = (float64)(previous_distort-distort)/previous_distort;
+                        }
+                        else
+                        {
+                            improve = 0.0;
+                        }
+                        
+                        //We increment the counter of iterations
+                        counter++;
+                    }
+                }
+                
+                
+                std::vector<uint8> absorbed_by;
+                absorbed_by.resize(current_bin_num);
+                for(uint8 ii=0; ii < current_bin_num; ii++)
+                {
+                    absorbed_by[ii]=ii;
+                }
+                
+                //If two centroids are not at least Td distance apart, we merge them in a new one
+                //The Threshold Td is set to 255.0 for CIE LUV Space according to ISO/IEC 15938-8 DTR (Extraction and Use of MPEG-7 Descriptions) 
+                for(uint8 ii = 0; ii < current_bin_num-1; ii++)
+                {
+                    if(_percentage[ii]!=0)
+                    {
+                        for(uint8 jj = ii+1; jj < current_bin_num;)
+                        {
+                            if(_percentage[jj]!=0 && jj!=ii)
+                            {
+                                float64 distance = (centroids_aux[ii][0]-centroids_aux[jj][0])*(centroids_aux[ii][0]-centroids_aux[jj][0])+(centroids_aux[ii][1]-centroids_aux[jj][1])*(centroids_aux[ii][1]-centroids_aux[jj][1])+(centroids_aux[ii][2]-centroids_aux[jj][2])*(centroids_aux[ii][2]-centroids_aux[jj][2]);
+                                if ( distance <= 255 )
+                                {
+                                    centroids_aux[ii][0] = (uint8)((_percentage[ii]*centroids_aux[ii][0] + _percentage[jj]*centroids_aux[jj][0])/(_percentage[ii]+_percentage[jj]));
+                                    centroids_aux[ii][1] = (uint8)((_percentage[ii]*centroids_aux[ii][1] + _percentage[jj]*centroids_aux[jj][1])/(_percentage[ii]+_percentage[jj]));
+                                    centroids_aux[ii][2] = (uint8)((_percentage[ii]*centroids_aux[ii][2] + _percentage[jj]*centroids_aux[jj][2])/(_percentage[ii]+_percentage[jj]));
+                                    _percentage[ii] += _percentage[jj]; 
+                                    _percentage[jj]=0;
+                                    absorbed_by[jj]=ii;
+                                    jj=0; //We have to check again the previous comparisons with the new centroid
+                                    
+                                }
+                                else
+                                {
+                                    jj++;
+                                }
+                            }
+                            else
+                            {
+                                jj++;
+                            }
+                        }
+                    }
+
+                }
+                
+                //We compute color variance of each cluster
+                std::vector< boost::array<float64,3> > color_variance;
+                color_variance.resize(current_bin_num);
+                for(uint8 ii = 0; ii < current_bin_num; ii++)
+                {
+                    color_variance[ii].assign(0);
+                }
+                for(std::size_t k=0; k<histo.num_bins()[0]; k++)
+                {
+                    for(std::size_t j=0; j<histo.num_bins()[1]; j++)
+                    {
+                        for(std::size_t i = 0; i<histo.num_bins()[2]; i++)
+                        {
+                            if(histo[k][j][i]!=0)
+                            {
+                                pos[0] = k*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[1] = j*(256/_num_bins)+(128/_num_bins)-0.5;
+                                pos[2] = i*(256/_num_bins)+(128/_num_bins)-0.5;
+                                uint8 index = nearest_centroid[k][j][i];
+                                while(absorbed_by[index]!=index)
+                                {
+                                    index = absorbed_by[index];
+                                }
+                                color_variance[index][0] += histo[k][j][i]*(pos[0]-centroids_aux[index][0])*(pos[0]-centroids_aux[index][0]);
+                                color_variance[index][1] += histo[k][j][i]*(pos[1]-centroids_aux[index][1])*(pos[1]-centroids_aux[index][1]);
+                                color_variance[index][2] += histo[k][j][i]*(pos[2]-centroids_aux[index][2])*(pos[2]-centroids_aux[index][2]);
+                            }
+                        }
+                    }
+                }
+                
+                uint8 size = centroids_aux.size();
+                _centroids_new_color_space.resize(size);
+                _color_variance.resize(size);
+                for(uint8 ii = 0; ii < size; ii++)
+                {
+                    _centroids_new_color_space[ii][0] = (uint8)centroids_aux[ii][0];
+                    _centroids_new_color_space[ii][1] = (uint8)centroids_aux[ii][1];
+                    _centroids_new_color_space[ii][2] = (uint8)centroids_aux[ii][2];
+                    _color_variance[ii][0] = (uint64)color_variance[ii][0];
+                    _color_variance[ii][1] = (uint64)color_variance[ii][1];
+                    _color_variance[ii][2] = (uint64)color_variance[ii][2];
+                }
+                
+                boost::array<std::size_t, 2> borders2d = {{1,1}};
+                const Mask<typename InputModel::CoordType>& mask_with_border =
+                   peer_descs->calculate(new Mask<typename InputModel::CoordType>(borders2d), first, last);
+
+                Quantizer<typename InputModel::data_type> q_map( 0, 255, _num_bins );
+                std::vector< float64 > spatial_coherency;
+                spatial_coherency.resize(current_bin_num);
+                spatial_coherency.assign(current_bin_num,0.0);
+                count.assign(current_bin_num,0);
+                
+                Neighborhood2D ngb;
+                ngb.resize(4);
+                ngb[0]=Neighborhood2D::CoordType(-1, 0 );
+                ngb[1]=Neighborhood2D::CoordType( 0,-1 );
+                ngb[2]=Neighborhood2D::CoordType( 1, 0 );
+                ngb[3]=Neighborhood2D::CoordType( 0, 1 );
+                
+                //We compute spatial coherency
+                for(IteratorModel it = first; it!=last; ++it)
+                {
+                    ImageRGB<uint8> color_rgb(1,1);
+                    color_rgb(0)[0][0] = (*it).value(0);
+                    color_rgb(1)[0][0] = (*it).value(1);
+                    color_rgb(2)[0][0] = (*it).value(2);
+                    uint8 index1,index2,index3;
+                    if(_color_space==YUV)
+                    {
+                        ImageYUV<uint8> color_yuv = to_yuv(color_rgb);
+                    	index1 = q_map.bin(color_yuv(0)[0][0]);
+                        index2 = q_map.bin(color_yuv(1)[0][0]);
+                        index3 = q_map.bin(color_yuv(2)[0][0]);
+                    }
+                    else
+                    {
+                        ImageCIELab<uint8> color_lab = to_cielab(color_rgb);
+                    	index1 = q_map.bin(color_lab(0)[0][0]);
+                        index2 = q_map.bin(color_lab(1)[0][0]);
+                        index3 = q_map.bin(color_lab(2)[0][0]);
+                    }
+
+                    uint8 index = nearest_centroid[index1][index2][index3];
+                    while(absorbed_by[index]!=index)
+                    {
+                        index = absorbed_by[index];
+                    }
+                    for(typename IteratorModel::pixel_type::neighbor_iterator nit = (*it).local_begin(ngb); nit != (*it).local_end(ngb); ++nit)
+                    {
+                        if(mask_with_border(0)((*nit).position()))
+                        {
+                            count[index]++;
+                            ImageRGB<uint8> color_rgb_neigh(1,1);
+                            color_rgb_neigh(0)[0][0] = (*nit).value(0);
+                            color_rgb_neigh(1)[0][0] = (*nit).value(1);
+                            color_rgb_neigh(2)[0][0] = (*nit).value(2);
+                            uint8 index1,index2,index3;
+                            if(_color_space==YUV)
+                            {
+                                ImageYUV<uint8> color_yuv_neigh = to_yuv(color_rgb_neigh);
+                            	index1 = q_map.bin(color_yuv_neigh(0)[0][0]);
+                                index2 = q_map.bin(color_yuv_neigh(1)[0][0]);
+                                index3 = q_map.bin(color_yuv_neigh(2)[0][0]);
+                            }
+                            else
+                            {
+                                ImageCIELab<uint8> color_lab_neigh = to_cielab(color_rgb_neigh);
+                            	index1 = q_map.bin(color_lab_neigh(0)[0][0]);
+                                index2 = q_map.bin(color_lab_neigh(1)[0][0]);
+                                index3 = q_map.bin(color_lab_neigh(2)[0][0]);
+                                break;
+                            }
+
+                            uint8 n_index = nearest_centroid[index1][index2][index3];
+                            while(absorbed_by[n_index]!=n_index)
+                            {
+                                n_index = absorbed_by[n_index];
+                            }
+                            if(n_index == index)
+                            {
+                                spatial_coherency[index]++;
+                            }
+                        }
+                    }
+                }
+                _spatial_coherency = 0.0;
+                for(uint8 ii=0; ii < current_bin_num; ii++)
+                {
+                    if(count[ii]!=0)
+                    {
+                        spatial_coherency[ii] = spatial_coherency[ii]/(float64)(count[ii]);
+                        _spatial_coherency += _percentage[ii]*spatial_coherency[ii];
+                    }
+                }
+                
+                for(int8 ii = 0; ii < (int8)current_bin_num; ii++)
+                {
+                    if(_percentage[ii]==0.0)
+                    {
+                        _percentage.erase(_percentage.begin()+ii);
+                        _centroids_new_color_space.erase(_centroids_new_color_space.begin()+ii);
+                        _color_variance.erase(_color_variance.begin()+ii);
+                        current_bin_num--;
+                        ii--;
+                    }
+                }
+                
+                //Convert centroids to RGB color space
+                ImageRGB<uint8> centroids_rgb;
+                if(_color_space==YUV)
+                {
+                    ImageYUV<uint8> centroids_yuv2(current_bin_num,1);
+                    for(uint8 i = 0; i < current_bin_num; i++)
+                    {
+                        centroids_yuv2(0)[i][0] = _centroids_new_color_space[i][0];
+                        centroids_yuv2(1)[i][0] = _centroids_new_color_space[i][1];
+                        centroids_yuv2(2)[i][0] = _centroids_new_color_space[i][2];
+                    }
+                    centroids_rgb = to_rgb(centroids_yuv2);
+                }
+                else
+                {
+                    ImageCIELab<uint8> centroids_lab2(current_bin_num,1);
+                    for(uint8 i = 0; i < current_bin_num; i++)
+                    {
+                        centroids_lab2(0)[i][0] = _centroids_new_color_space[i][0];
+                        centroids_lab2(1)[i][0] = _centroids_new_color_space[i][1];
+                        centroids_lab2(2)[i][0] = _centroids_new_color_space[i][2];
+                    }
+                    centroids_rgb = to_rgb(centroids_lab2);
+                }
+
+                _centroids.resize(current_bin_num);
+                for(uint8 i = 0; i < current_bin_num; i++)
+                {
+                    _centroids[i][0] = centroids_rgb(0)[i][0];
+                    _centroids[i][1] = centroids_rgb(1)[i][0];
+                    _centroids[i][2] = centroids_rgb(2)[i][0];
+                }
+                
+            }
+        };
+        
+        //! Similarity matching without considering neither spatial coherency nor color variance.
+        //!
+        //! \param[in] centroids_yuv_1: Dominant color values in YUV color space of the first descriptor
+        //! \param[in] centroids_yuv_2: Dominant color values in YUV color space of the second descriptor
+        //! \param[in] percentages_1  : Percentages values of the first descriptor
+        //! \param[in] percentages_2  : Percentages values of the second descriptor
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dominant_color( const std::vector< boost::array< uint8,3> >& centroids_yuv_1,const std::vector< boost::array< uint8,3> >& centroids_yuv_2,const std::vector< float64>& percentages_1,const std::vector< float64>& percentages_2)
+        {
+            float64 dist = 0.0;
+            bool no_similarity = true;
+            
+            for(uint8 jj = 0; jj < percentages_1.size(); jj++)
+            {
+                dist = dist + percentages_1[jj]*percentages_1[jj]; 
+                for(uint8 kk = 0; kk < percentages_2.size(); kk++)
+                {
+                    if((percentages_1[jj]!=0)&&(percentages_2[kk]!=0))
+                    {
+                        float64 d_jk = (centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                        if (d_jk <= 255.0)
+                        {
+                            dist = dist - (1-std::sqrt(d_jk/255.0))*2.0*percentages_1[jj]*percentages_2[kk];
+                            no_similarity = false;
+                        }
+                    }
+                }
+            }
+            if(no_similarity)
+            {
+                dist=2.0;
+            }
+            else
+            {
+                for(uint8 kk=0; kk<percentages_2.size(); kk++)
+                {
+                    dist = dist + percentages_2[kk]*percentages_2[kk];
+                }
+                if(dist < 1e-15) // This distance is result of an error quantization and must be zero
+                {
+                    dist = 0;
+                } 
+            }
+            
+            return std::sqrt(dist);
+        }
+        
+        //! \brief Similarity matching without considering the color variance.
+        //!
+        //! \param[in] centroids_yuv_1: Dominant color values in YUV color space of the first descriptor
+        //! \param[in] centroids_yuv_2: Dominant color values in YUV color space of the second descriptor
+        //! \param[in] percentages_1  : Percentages values of the first descriptor
+        //! \param[in] percentages_2  : Percentages values of the second descriptor
+        //! \param[in] spatial_coherency_1: Spatial coherency value of the first descriptor
+        //! \param[in] spatial_coherency_2: Spatial coherency value of the second descriptor
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dominant_color_with_spatial_coherency(const std::vector< boost::array< uint8,3> >& centroids_yuv_1,const std::vector< boost::array< uint8,3> >& centroids_yuv_2,const std::vector< float64>& percentages_1,const std::vector< float64>& percentages_2,const float64& spatial_coherency_1,const float64& spatial_coherency_2)
+        {
+            float64 dist = dist_dominant_color(centroids_yuv_1, centroids_yuv_2, percentages_1, percentages_2);
+            dist = 0.3*std::abs(spatial_coherency_1-spatial_coherency_2)*dist + 0.7*dist;
+            
+            return dist;
+        }
+        
+        //! \brief Similarity matching considering the color variance instead of the spatial coherency
+        //!
+        //! \param[in] centroids_yuv_1: Dominant color values in YUV color space of the first descriptor
+        //! \param[in] centroids_yuv_2: Dominant color values in YUV color space of the second descriptor
+        //! \param[in] percentages_1  : Percentages values of the first descriptor
+        //! \param[in] percentages_2  : Percentages values of the second descriptor
+        //! \param[in] variance1: Color variance for each component of each dominant color value of the first descriptor
+        //! \param[in] variance2: Color variance for each component of each dominant color value of the second descriptor
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dominant_color_with_color_variance(const std::vector< boost::array< uint8,3> >& centroids_yuv_1,const std::vector< boost::array< uint8,3> >& centroids_yuv_2,const std::vector< float64>& percentages_1,const std::vector< float64>& percentages_2, const std::vector<boost::array<uint64,3> >& variance1, const std::vector<boost::array<uint64,3> >& variance2)
+        {
+            float64 dist = 0;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                for(uint8 jj=0; jj<size_1; jj++)
+                {
+                    float64 aux_cl = (centroids_yuv_1[ii][0]-centroids_yuv_1[jj][0])*(centroids_yuv_1[ii][0]-centroids_yuv_1[jj][0]);
+                    float64 aux_cu = (centroids_yuv_1[ii][1]-centroids_yuv_1[jj][1])*(centroids_yuv_1[ii][1]-centroids_yuv_1[jj][1]);
+                    float64 aux_cv = (centroids_yuv_1[ii][2]-centroids_yuv_1[jj][2])*(centroids_yuv_1[ii][2]-centroids_yuv_1[jj][2]);
+                    float64 aux_vl = (variance1[ii][0]+variance1[jj][0]);
+                    float64 aux_vu = (variance1[ii][1]+variance1[jj][1]);
+                    float64 aux_vv = (variance1[ii][2]+variance1[jj][2]);
+                    float64 aux = (aux_cl/aux_vl + aux_cu/aux_vu + aux_cv/aux_vv)*(-0.5);
+                    aux = std::pow(2.7182818284590452354,aux);
+                    aux = aux/(2.0*3.14159265358979*std::sqrt(aux_vl*aux_vu*aux_vv));
+                    dist = dist + percentages_1[ii]*percentages_1[jj]*aux;
+                }
+            }
+            
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                for(uint8 jj=0; jj<size_2; jj++)
+                {
+                    float64 aux_cl = (centroids_yuv_2[ii][0]-centroids_yuv_2[jj][0])*(centroids_yuv_2[ii][0]-centroids_yuv_2[jj][0]);
+                    float64 aux_cu = (centroids_yuv_2[ii][1]-centroids_yuv_2[jj][1])*(centroids_yuv_2[ii][1]-centroids_yuv_2[jj][1]);
+                    float64 aux_cv = (centroids_yuv_2[ii][2]-centroids_yuv_2[jj][2])*(centroids_yuv_2[ii][2]-centroids_yuv_2[jj][2]);
+                    float64 aux_vl = (variance2[ii][0]+variance2[jj][0]);
+                    float64 aux_vu = (variance2[ii][1]+variance2[jj][1]);
+                    float64 aux_vv = (variance2[ii][2]+variance2[jj][2]);
+                    float64 aux = (aux_cl/aux_vl + aux_cu/aux_vu + aux_cv/aux_vv)*(-0.5);
+                    aux = std::pow(2.7182818284590452354,aux);
+                    aux = aux/(2.0*3.14159265358979*std::sqrt(aux_vl*aux_vu*aux_vv));
+                    dist = dist + percentages_2[ii]*percentages_2[jj]*aux;
+                }
+            }
+            
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                for(uint8 jj=0; jj<size_2; jj++)
+                {
+                    float64 aux_cl = (centroids_yuv_1[ii][0]-centroids_yuv_2[jj][0])*(centroids_yuv_1[ii][0]-centroids_yuv_2[jj][0]);
+                    float64 aux_cu = (centroids_yuv_1[ii][1]-centroids_yuv_2[jj][1])*(centroids_yuv_1[ii][1]-centroids_yuv_2[jj][1]);
+                    float64 aux_cv = (centroids_yuv_1[ii][2]-centroids_yuv_2[jj][2])*(centroids_yuv_1[ii][2]-centroids_yuv_2[jj][2]);
+                    float64 aux_vl = (variance1[ii][0]+variance2[jj][0]);
+                    float64 aux_vu = (variance1[ii][1]+variance2[jj][1]);
+                    float64 aux_vv = (variance1[ii][2]+variance2[jj][2]);
+                    float64 aux = (aux_cl/aux_vl + aux_cu/aux_vu + aux_cv/aux_vv)*(-0.5);
+                    aux = std::pow(2.7182818284590452354,aux);
+                    aux = aux/(2.0*3.14159265358979*std::sqrt(aux_vl*aux_vu*aux_vv));
+                    dist = dist - 2.0*percentages_1[ii]*percentages_2[jj]*aux;
+                }
+            }
+            return dist;
+        }
+        
+        //! \brief Similarity matching consisting in guaranteeing a minimum percentage of pixels for both
+        //! images represented by dominant color values matched.
+        //!
+        //! \param[in] threshold      : Minimum percentage of pixels represented by common dominant color values.
+        //! \param[in] centroids_yuv_1: Dominant color values in YUV color space of the first descriptor
+        //! \param[in] centroids_yuv_2: Dominant color values in YUV color space of the second descriptor
+        //! \param[in] percentages_1  : Percentages values of the first descriptor
+        //! \param[in] percentages_2  : Percentages values of the second descriptor
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dcd_percentage(float64 threshold, const std::vector< boost::array< uint8,3> >& centroids_yuv_1,const std::vector< boost::array< uint8,3> >& centroids_yuv_2,const std::vector< float64>& percentages_1,const std::vector< float64>& percentages_2)
+        {
+            float64 dist = 0.0;
+            bool no_similarity = true;
+            float64 acum_perc_1 = 0.0;
+            float64 acum_perc_2 = 0.0;
+            std::vector<bool> centroids_matched_1;
+            std::vector<bool> centroids_matched_2;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            centroids_matched_1.resize(size_1);
+            centroids_matched_2.resize(size_2);
+            
+            
+            for(uint8 jj = 0; jj < size_1; jj++)
+            {
+                dist = dist + percentages_1[jj]*percentages_1[jj]; 
+                for(uint8 kk = 0; kk < size_2; kk++)
+                {
+                    if((percentages_1[jj]!=0)&&(percentages_2[kk]!=0))
+                    {
+                        float64 d_jk = (centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                        if (d_jk <= 255.0)
+                        {
+                            dist = dist - (1-std::sqrt(d_jk/255.0))*2.0*percentages_1[jj]*percentages_2[kk];
+                            no_similarity = false;
+                            centroids_matched_1[jj]=true;
+                            centroids_matched_2[kk]=true;
+                        }
+                    }
+                }
+            }
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                if(centroids_matched_1[ii])
+                {
+                    acum_perc_1 += percentages_1[ii];
+                }
+            }
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                if(centroids_matched_2[ii])
+                {
+                    acum_perc_2 += percentages_2[ii];
+                }
+            }
+            if((acum_perc_1 < threshold)||(acum_perc_2 < threshold))
+            {
+                no_similarity = true;
+            }
+            if(no_similarity)
+            {
+                dist=4.0;
+            }
+            else
+            {
+                for(uint8 kk=0; kk<percentages_2.size(); kk++)
+                {
+                    dist = dist + percentages_2[kk]*percentages_2[kk];
+                }
+                if(dist < 1e-15) // This distance is result of a error quantization and must be zero
+                {
+                    dist = 0;
+                } 
+            }
+            
+            return std::sqrt(dist);
+        }
+        
+        //! \brief Similarity matching consisting in guaranteeing a minimum number M of dominant color values
+        //! of the N most representative ones have been matched.
+        //!
+        //! \param[in] M              : Minimum number of dominant color values matched among the N most representative ones.
+        //! \param[in] N              : Among the N most representative dominant color values, a minimum number M of them has to be matched.
+        //! \param[in] centroids_yuv_1: Dominant color values in YUV color space of the first descriptor
+        //! \param[in] centroids_yuv_2: Dominant color values in YUV color space of the second descriptor
+        //! \param[in] percentages_1  : Percentages values of the first descriptor
+        //! \param[in] percentages_2  : Percentages values of the second descriptor
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dcd_most_dominant(uint8 M, uint8 N, const std::vector< boost::array< uint8,3> >& centroids_yuv_1,const std::vector< boost::array< uint8,3> >& centroids_yuv_2,const std::vector< float64>& percentages_1,const std::vector< float64>& percentages_2)
+        {
+            float64 dist = 0.0;
+            bool no_similarity = true;
+            std::vector<std::vector<uint8> > centroids_matched_1;
+            std::vector<std::vector<uint8> > centroids_matched_2;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            centroids_matched_1.resize(size_1);
+            centroids_matched_2.resize(size_2);
+            uint8 count_1=0;
+            uint8 count_2=0;
+            uint8 N_aux_1,N_aux_2;
+            uint8 M_aux_1,M_aux_2;
+            
+            if(N > size_1)
+            {
+                N_aux_1 = size_1;
+            }
+            else
+            {
+                N_aux_1 = N;
+            }
+            
+            if(N > size_2)
+            {
+                N_aux_2 = size_2;
+            }
+            else
+            {
+                N_aux_2 = N;
+            }
+            
+            if(M > N_aux_1)
+            {
+                M_aux_1 = N_aux_1;
+            }
+            else
+            {
+                M_aux_1 = M;
+            }
+            
+            if(M > N_aux_2)
+            {
+                M_aux_2 = N_aux_2;
+            }
+            else
+            {
+                M_aux_2 = M;
+            }
+            
+            for(uint8 jj = 0; jj < size_1; jj++)
+            {
+                dist = dist + percentages_1[jj]*percentages_1[jj]; 
+                for(uint8 kk = 0; kk < size_2; kk++)
+                {
+                    if((percentages_1[jj]!=0)&&(percentages_2[kk]!=0))
+                    {
+                        float64 d_jk = (centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                        if (d_jk <= 255.0)
+                        {
+                            dist = dist - (1-std::sqrt(d_jk/255.0))*2.0*percentages_1[jj]*percentages_2[kk];
+                            no_similarity = false;
+                            centroids_matched_1[jj].push_back(kk);
+                            centroids_matched_2[kk].push_back(jj);
+                        }
+                    }
+                }
+            }
+            
+            for(uint8 ii=0; ii<N_aux_1; ii++)
+            {
+                for(uint8 jj=0;jj<centroids_matched_1[ii].size();jj++)
+                {
+                    if(centroids_matched_1[ii][jj]<N_aux_1)
+                    {
+                        count_1++;
+                        jj=centroids_matched_1[ii].size();
+                    }
+                }
+            }
+            for(uint8 ii=0; ii<N_aux_2; ii++)
+            {
+                for(uint8 jj=0;jj<centroids_matched_2[ii].size();jj++)
+                {
+                    if(centroids_matched_2[ii][jj]<N_aux_2)
+                    {
+                        count_2++;
+                        jj=centroids_matched_2[ii].size();
+                    }
+                }
+            }
+            
+            if((count_1 < M_aux_1)||(count_2 < M_aux_2))
+            {
+                no_similarity = true;
+            }
+            
+            if(no_similarity)
+            {
+                dist=4.0;
+            }
+            else
+            {
+                for(uint8 kk=0; kk<percentages_2.size(); kk++)
+                {
+                    dist = dist + percentages_2[kk]*percentages_2[kk];
+                }
+                if(dist < 1e-15) // This distance is result of a error quantization and must be zero
+                {
+                    dist = 0;
+                } 
+            }
+            return std::sqrt(dist);
+        }
+        
+        
+        
+        //! \brief Similarity matching consisting in a technique called Merged Palette Histogram Similarity
+        //! Matching (MPHSM). In this, a common palette is created using common and non-common colors for 
+        //! each descriptor and obtaining two new histograms that are compared by Histogram Intersection.
+        //!
+        //! \param[in] centroids_yuv_1: Dominant color values in YUV color space of the first descriptor
+        //! \param[in] centroids_yuv_2: Dominant color values in YUV color space of the second descriptor
+        //! \param[in] percentages_1  : Percentages values of the first descriptor
+        //! \param[in] percentages_2  : Percentages values of the second descriptor
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dcd_mphsm(const std::vector< boost::array< uint8,3> >& centroids_yuv_1,const std::vector< boost::array< uint8,3> >& centroids_yuv_2,const std::vector< float64>& percentages_1,const std::vector< float64>& percentages_2)
+        {
+            float64 dist = 0.0;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            std::vector<float64> perc1;
+            perc1.resize(size_1);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                perc1[ii]=percentages_1[ii];
+            }
+            std::vector<float64> perc2;
+            perc2.resize(size_2);
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                perc2[ii]=percentages_2[ii];
+            }
+            std::vector< boost::array< uint8,3> > centroids1;
+            centroids1.resize(size_1);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                for(uint8 jj=0; jj<3; jj++)
+                {
+                    centroids1[ii][jj]=centroids_yuv_1[ii][jj];
+                }
+            }
+            std::vector< boost::array< uint8,3> > centroids2;
+            centroids2.resize(size_2);
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                for(uint8 jj=0; jj<3; jj++)
+                {
+                    centroids2[ii][jj]=centroids_yuv_2[ii][jj];
+                }
+            }
+            
+            std::vector< std::vector<float64> > distances;
+            distances.resize(size_1);
+            std::vector< boost::array< float64,3> > centroids_merged_palette;
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                distances[ii].resize(size_2);
+            }
+            
+            for(uint8 jj=0; jj<size_1; jj++)
+            {
+                for(uint8 kk=0; kk<size_2; kk++)
+                {
+                    distances[jj][kk]=(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                }
+            }
+            
+            bool end = false;
+            while(!end)
+            {
+                float64 min = 1000.0;
+                uint8 index_min_1=0;
+                uint8 index_min_2=0;
+                size_1 = perc1.size();
+                size_2 = perc2.size();
+                for(std::size_t jj=0; jj<size_1; jj++)
+                {
+                    for(uint8 kk=0; kk<size_2; kk++)
+                    {
+                        if(distances[jj][kk]<min)
+                        {
+                            min = distances[jj][kk];
+                            index_min_1 = jj;
+                            index_min_2 = kk;
+                        }
+                    }
+                }
+                if(min<255.0)
+                {
+                    boost::array< float64,3> centroid;
+                    centroid[0]=(perc1[index_min_1]*(float64)(centroids1[index_min_1][0])+perc2[index_min_2]*(float64)(centroids2[index_min_2][0]))/(perc1[index_min_1]+perc2[index_min_2]);
+                    centroid[1]=(perc1[index_min_1]*(float64)(centroids1[index_min_1][1])+perc2[index_min_2]*(float64)(centroids2[index_min_2][1]))/(perc1[index_min_1]+perc2[index_min_2]);
+                    centroid[2]=(perc1[index_min_1]*(float64)(centroids1[index_min_1][2])+perc2[index_min_2]*(float64)(centroids2[index_min_2][2]))/(perc1[index_min_1]+perc2[index_min_2]);
+                    centroids_merged_palette.push_back(centroid);
+                    centroids1.erase(centroids1.begin()+index_min_1);
+                    centroids2.erase(centroids2.begin()+index_min_2);
+                    perc1.erase(perc1.begin()+index_min_1);
+                    perc2.erase(perc2.begin()+index_min_2);
+                }
+                else
+                {
+                    end = true;
+                }
+            }
+            size_1 = perc1.size();
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                boost::array< float64,3> centroid;
+                centroid[0]=(float64)(centroids1[ii][0]);
+                centroid[1]=(float64)(centroids1[ii][1]);
+                centroid[2]=(float64)(centroids1[ii][2]);
+                centroids_merged_palette.push_back(centroid);
+            }
+            size_2 = perc2.size();
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                boost::array< float64,3> centroid;
+                centroid[0]=(float64)(centroids2[ii][0]);
+                centroid[1]=(float64)(centroids2[ii][1]);
+                centroid[2]=(float64)(centroids2[ii][2]);
+                centroids_merged_palette.push_back(centroid);
+            }
+            
+            uint8 new_size = centroids_merged_palette.size();
+            std::vector<float64> new_perc1;
+            new_perc1.resize(new_size);
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                for(uint8 jj=0; jj<percentages_1.size(); jj++)
+                {
+                    float64 dist_aux = (centroids_merged_palette[ii][0]-centroids_yuv_1[jj][0])*(centroids_merged_palette[ii][0]-centroids_yuv_1[jj][0])+(centroids_merged_palette[ii][1]-centroids_yuv_1[jj][1])*(centroids_merged_palette[ii][1]-centroids_yuv_1[jj][1])+(centroids_merged_palette[ii][2]-centroids_yuv_1[jj][2])*(centroids_merged_palette[ii][2]-centroids_yuv_1[jj][2]);
+                    if(dist_aux < 255.0)
+                    {
+                        new_perc1[ii]=new_perc1[ii]+percentages_1[jj];
+                    }
+                }
+            }
+            float64 sum_perc1=0;
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                sum_perc1 += new_perc1[ii];
+            }
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                new_perc1[ii] = new_perc1[ii]/sum_perc1;
+            }
+            
+            std::vector<float64> new_perc2;
+            new_perc2.resize(new_size);
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                for(uint8 jj=0; jj<percentages_2.size(); jj++)
+                {
+                    float64 dist_aux = (centroids_merged_palette[ii][0]-centroids_yuv_2[jj][0])*(centroids_merged_palette[ii][0]-centroids_yuv_2[jj][0])+(centroids_merged_palette[ii][1]-centroids_yuv_2[jj][1])*(centroids_merged_palette[ii][1]-centroids_yuv_2[jj][1])+(centroids_merged_palette[ii][2]-centroids_yuv_2[jj][2])*(centroids_merged_palette[ii][2]-centroids_yuv_2[jj][2]);
+                    if(dist_aux < 255.0)
+                    {
+                        new_perc2[ii]=new_perc2[ii]+percentages_2[jj];
+                    }
+                }
+            }
+            float64 sum_perc2=0;
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                sum_perc2 += new_perc2[ii];
+            }
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                new_perc2[ii] = new_perc2[ii]/sum_perc2;
+            }
+            
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                if(new_perc1[ii]<new_perc2[ii])
+                {
+                    dist += new_perc1[ii];
+                }
+                else
+                {
+                    dist += new_perc2[ii];
+                }
+            }
+            
+            dist = 1 - dist;
+            return dist;
+
+        }
+        
+        
+        
+        //! \brief Similarity matching consisting in a technique called Merged Palette Histogram Similarity
+        //! Matching (MPHSM). In this, a common palette is created using common and non-common colors for 
+        //! each descriptor and obtaining two new histograms that are compared by Histogram Intersection.
+        //! In the process of creating the common palette a variation is introduced that consists in obtained
+        //! this palette by applying the Hungarian Algorithm.
+        //!
+        //! \param[in] centroids_yuv_1: Dominant color values in YUV color space of the first descriptor
+        //! \param[in] centroids_yuv_2: Dominant color values in YUV color space of the second descriptor
+        //! \param[in] percentages_1  : Percentages values of the first descriptor
+        //! \param[in] percentages_2  : Percentages values of the second descriptor
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dcd_mphsm_hungarian(const std::vector< boost::array< uint8,3> >& centroids_yuv_1,const std::vector< boost::array< uint8,3> >& centroids_yuv_2,const std::vector< float64>& percentages_1,const std::vector< float64>& percentages_2)
+        {
+            float64 dist = 0.0;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            uint8 size_max = std::max(size_1, size_2);
+            MultiArray<float32,2> costs(size_max,size_max);
+            costs = 0;
+            for(uint8 jj=0; jj<size_1; jj++)
+            {
+                for(uint8 kk=0; kk<size_2; kk++)
+                {
+                    float32 cost_tmp;
+                    cost_tmp=(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                    if(cost_tmp<255.0)
+                    {
+                        costs[kk][jj]=cost_tmp-255.0;
+                    }
+                }
+            }
+            std::vector<int32> row;
+            std::vector<int32> col;
+            math::graphs::hungarian(costs,row,col);
+            
+            std::vector< boost::array< float64,3> > merged_palette;
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                if(costs[ii][row[ii]]!=0) //Centroid ii from palette 1 has been matched with centroid row[ii] from palette 2
+                {
+                    boost::array<float64, 3> centroid;
+                    for(uint8 jj=0; jj<3; jj++)
+                    {
+                        centroid[jj]=(percentages_1[ii]*(float64)centroids_yuv_1[ii][jj]+percentages_2[row[ii]]*(float64)centroids_yuv_2[row[ii]][jj])/(percentages_1[ii]+percentages_2[row[ii]]);
+                    }
+                    merged_palette.push_back(centroid);
+                }
+                else //Centroid ii from palette 1 is dismatched
+                {
+                    boost::array<float64, 3> centroid;
+                    for(uint8 jj=0; jj<3; jj++)
+                    {
+                        centroid[jj]=(float64)centroids_yuv_1[ii][jj];
+                    }
+                    merged_palette.push_back(centroid);
+                }
+            }
+            
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                if(costs[ii][col[ii]]==0) //Centroid ii from palette 2 is dismatched
+                {
+                    boost::array<float64, 3> centroid;
+                    for(uint8 jj=0; jj<3; jj++)
+                    {
+                        centroid[jj]=(float64)centroids_yuv_2[ii][jj];
+                    }
+                    merged_palette.push_back(centroid);
+                }
+            }
+            
+            //Merged Palette have been created
+            std::vector<float64> new_perc1;
+            uint8 size_merged = merged_palette.size();
+            new_perc1.resize(size_merged);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                float64 min_dist = 1000000;
+                uint8 pos_min = 0;
+                for(uint8 jj=0; jj<size_merged; jj++)
+                {
+                    float64 dist_aux;
+                    dist_aux = (centroids_yuv_1[ii][0]-merged_palette[jj][0])*(centroids_yuv_1[ii][0]-merged_palette[jj][0])+(centroids_yuv_1[ii][1]-merged_palette[jj][1])*(centroids_yuv_1[ii][1]-merged_palette[jj][1])+(centroids_yuv_1[ii][2]-merged_palette[jj][2])*(centroids_yuv_1[ii][2]-merged_palette[jj][2]);
+                    if(dist_aux<min_dist)
+                    {
+                        min_dist = dist_aux;
+                        pos_min = jj;
+                        
+                    }
+                }
+                new_perc1[pos_min] +=percentages_1[ii];
+            }
+            
+            std::vector<float64> new_perc2;
+            new_perc2.resize(size_merged);
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                float64 min_dist = 1000000;
+                uint8 pos_min = 0;
+                for(uint8 jj=0; jj<size_merged; jj++)
+                {
+                    float64 dist_aux;
+                    dist_aux = (centroids_yuv_2[ii][0]-merged_palette[jj][0])*(centroids_yuv_2[ii][0]-merged_palette[jj][0])+(centroids_yuv_2[ii][1]-merged_palette[jj][1])*(centroids_yuv_2[ii][1]-merged_palette[jj][1])+(centroids_yuv_2[ii][2]-merged_palette[jj][2])*(centroids_yuv_2[ii][2]-merged_palette[jj][2]);
+                    if(dist_aux<min_dist)
+                    {
+                        min_dist = dist_aux;
+                        pos_min = jj;
+                        
+                    }
+                }
+                new_perc2[pos_min] +=percentages_2[ii];
+            }
+            
+            for(uint8 ii=0; ii<size_merged; ii++)
+            {
+                if(new_perc1[ii]<new_perc2[ii])
+                {
+                    dist += new_perc1[ii];
+                }
+                else
+                {
+                    dist += new_perc2[ii];
+                }
+            }
+            dist = 1-dist;
+
+            return dist;
+
+        }
+        
+        
+        //! \brief Similarity matching without considering neither spatial coherency nor color variance.
+        //!
+        //! \param[in] centroids_1: Dominant color values in RGB color space of the first descriptor
+        //! \param[in] centroids_2: Dominant color values in RGB color space of the second descriptor
+        //! \param[in] percentages_1  : Quantized percentages values of the first descriptor
+        //! \param[in] percentages_2  : Quantized percentages values of the second descriptor
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dominant_color( const std::vector< boost::array< uint32,3> >& centroids_1,const std::vector< boost::array< uint32,3> >& centroids_2,const std::vector< uint32>& percentages_1,const std::vector< uint32>& percentages_2)
+        {
+            float64 dist = 0.0;
+            bool no_similarity = true;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            std::vector<float64> percentages_1f;
+            std::vector<float64> percentages_2f;
+            percentages_1f.resize(size_1);
+            percentages_2f.resize(size_2);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+            	percentages_1f[ii]=(float64)percentages_1[ii]/31.0;
+            }
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+            	percentages_2f[ii]=(float64)percentages_2[ii]/31.0;
+            }
+            //Convert centroids to YUV color space
+             std::vector< boost::array< uint32,3> > centroids_yuv_1;
+             centroids_yuv_1.resize(size_1);
+             ImageRGB<uint8> centroids_rgb1(size_1,1);
+             for(uint8 i = 0; i < size_1; i++)
+             {
+                 centroids_rgb1(0)[i][0] = centroids_1[i][0];
+                 centroids_rgb1(1)[i][0] = centroids_1[i][1];
+                 centroids_rgb1(2)[i][0] = centroids_1[i][2];
+             }
+             ImageYUV<uint8> centroids_yuv1 = to_yuv(centroids_rgb1);
+             for(uint8 i = 0; i < size_1; i++)
+             {
+                 centroids_yuv_1[i][0] = centroids_yuv1(0)[i][0];
+                 centroids_yuv_1[i][1] = centroids_yuv1(1)[i][0];
+                 centroids_yuv_1[i][2] = centroids_yuv1(2)[i][0];
+             }
+             std::vector< boost::array< uint32,3> > centroids_yuv_2;
+             centroids_yuv_2.resize(size_2);
+             ImageRGB<uint8> centroids_rgb2(size_2,1);
+             for(uint8 i = 0; i < size_2; i++)
+             {
+                 centroids_rgb2(0)[i][0] = centroids_2[i][0];
+                 centroids_rgb2(1)[i][0] = centroids_2[i][1];
+                 centroids_rgb2(2)[i][0] = centroids_2[i][2];
+             }
+             ImageYUV<uint8> centroids_yuv2 = to_yuv(centroids_rgb2);
+             for(uint8 i = 0; i < size_2; i++)
+             {
+                 centroids_yuv_2[i][0] = centroids_yuv2(0)[i][0];
+                 centroids_yuv_2[i][1] = centroids_yuv2(1)[i][0];
+                 centroids_yuv_2[i][2] = centroids_yuv2(2)[i][0];
+             }
+            
+            for(uint8 jj = 0; jj < percentages_1.size(); jj++)
+            {
+                dist = dist + percentages_1f[jj]*percentages_1f[jj]; 
+                for(uint8 kk = 0; kk < percentages_2.size(); kk++)
+                {
+                    if((percentages_1f[jj]!=0)&&(percentages_2f[kk]!=0))
+                    {
+                        float64 d_jk = (centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                        if (d_jk <= 255.0)
+                        {
+                            dist = dist - (1-std::sqrt(d_jk/255.0))*2.0*percentages_1f[jj]*percentages_2f[kk];
+                            no_similarity = false;
+                        }
+                    }
+                }
+            }
+            if(no_similarity)
+            {
+                dist=2.0;
+            }
+            else
+            {
+                for(uint8 kk=0; kk<percentages_2.size(); kk++)
+                {
+                    dist = dist + percentages_2f[kk]*percentages_2f[kk];
+                }
+                if(dist < 1e-15) // This distance is result of an error quantization and must be zero
+                {
+                    dist = 0;
+                } 
+            }
+            
+            return std::sqrt(dist);
+        }
+        
+        
+        
+        //! \brief Similarity matching consisting in guaranteeing a minimum percentage of pixels for both
+        //! images represented by dominant color values matched. This method is used when the descriptors are
+        //! extracted from an XML file.
+        //!
+        //! \param[in] threshold      : Minimum percentage of pixels represented by common dominant color values.
+        //! \param[in] centroids_1: Dominant color values of the first descriptor extracted from an XML file
+        //! \param[in] centroids_2: Dominant color values of the second descriptor extracted from an XML file
+        //! \param[in] percentages_1  : Percentages values of the first descriptor extracted from an XML file
+        //! \param[in] percentages_2  : Percentages values of the second descriptor extracted from an XML file
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dcd_percentage(float64 threshold, const std::vector< boost::array< uint32,3> >& centroids_1,const std::vector< boost::array< uint32,3> >& centroids_2,const std::vector< uint32>& percentages_1,const std::vector< uint32>& percentages_2)
+        {
+        	
+        	float64 dist = 0.0;
+            bool no_similarity = true;
+            float64 acum_perc_1 = 0.0;
+            float64 acum_perc_2 = 0.0;
+            std::vector<bool> centroids_matched_1;
+            std::vector<bool> centroids_matched_2;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            std::vector<float64> percentages_1f;
+            std::vector<float64> percentages_2f;
+            percentages_1f.resize(size_1);
+            percentages_2f.resize(size_2);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+            	percentages_1f[ii]=(float64)percentages_1[ii]/31.0;
+            }
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+            	percentages_2f[ii]=(float64)percentages_2[ii]/31.0;
+            }
+            centroids_matched_1.resize(size_1);
+            centroids_matched_2.resize(size_2);
+            
+            
+            //Convert centroids to YUV color space
+            std::vector< boost::array< uint32,3> > centroids_yuv_1;
+            centroids_yuv_1.resize(size_1);
+            ImageRGB<uint8> centroids_rgb1(size_1,1);
+            for(uint8 i = 0; i < size_1; i++)
+            {
+                centroids_rgb1(0)[i][0] = centroids_1[i][0];
+                centroids_rgb1(1)[i][0] = centroids_1[i][1];
+                centroids_rgb1(2)[i][0] = centroids_1[i][2];
+            }
+            ImageYUV<uint8> centroids_yuv1 = to_yuv(centroids_rgb1);
+            for(uint8 i = 0; i < size_1; i++)
+            {
+                centroids_yuv_1[i][0] = centroids_yuv1(0)[i][0];
+                centroids_yuv_1[i][1] = centroids_yuv1(1)[i][0];
+                centroids_yuv_1[i][2] = centroids_yuv1(2)[i][0];
+            }
+            std::vector< boost::array< uint32,3> > centroids_yuv_2;
+            centroids_yuv_2.resize(size_2);
+            ImageRGB<uint8> centroids_rgb2(size_2,1);
+            for(uint8 i = 0; i < size_2; i++)
+            {
+                centroids_rgb2(0)[i][0] = centroids_2[i][0];
+                centroids_rgb2(1)[i][0] = centroids_2[i][1];
+                centroids_rgb2(2)[i][0] = centroids_2[i][2];
+            }
+            ImageYUV<uint8> centroids_yuv2 = to_yuv(centroids_rgb2);
+            for(uint8 i = 0; i < size_2; i++)
+            {
+                centroids_yuv_2[i][0] = centroids_yuv2(0)[i][0];
+                centroids_yuv_2[i][1] = centroids_yuv2(1)[i][0];
+                centroids_yuv_2[i][2] = centroids_yuv2(2)[i][0];
+            }
+            
+            
+            
+            for(uint8 jj = 0; jj < size_1; jj++)
+            {
+                dist = dist + percentages_1f[jj]*percentages_1f[jj]; 
+                for(uint8 kk = 0; kk < size_2; kk++)
+                {
+                    float64 d_jk = (centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                    if (d_jk <= 255.0)
+                    {
+                        dist = dist - (1-std::sqrt(d_jk/255.0))*2.0*percentages_1f[jj]*percentages_2f[kk];
+                        no_similarity = false;
+                        centroids_matched_1[jj]=true;
+                        centroids_matched_2[kk]=true;
+                    }
+                }
+            }
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                if(centroids_matched_1[ii])
+                {
+                    acum_perc_1 += percentages_1f[ii];
+                }
+            }
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                if(centroids_matched_2[ii])
+                {
+                    acum_perc_2 += percentages_2f[ii];
+                }
+            }
+            if((acum_perc_1 < threshold)||(acum_perc_2 < threshold))
+            {
+                no_similarity = true;
+            }
+            for(uint8 kk=0; kk<percentages_2.size(); kk++)
+            {
+                dist = dist + percentages_2f[kk]*percentages_2f[kk];
+            }
+            if(dist < 1e-15) // This distance is result of a error quantization and must be zero
+            {
+                dist = 0;
+            } 
+            if(no_similarity)
+            {
+            	dist = dist + 4.0;
+            }
+            return std::sqrt(dist);
+        }
+        
+        
+        
+        //! \brief Similarity matching consisting in a technique called Merged Palette Histogram Similarity
+        //! Matching (MPHSM). In this, a common palette is created using common and non-common colors for 
+        //! each descriptor and obtaining two new histograms that are compared by Histogram Intersection. This
+        //! method is used when the descriptors are extracted from an XML file.
+        //!
+        //! \param[in] centroids_1: Dominant color values of the first descriptor extracted from an XML file
+        //! \param[in] centroids_2: Dominant color values of the second descriptor extracted from an XML file
+        //! \param[in] percentages_1  : Percentages values of the first descriptor extracted from an XML file
+        //! \param[in] percentages_2  : Percentages values of the second descriptor extracted from an XML file
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dcd_mphsm(const std::vector< boost::array< uint32,3> >& centroids_1,const std::vector< boost::array< uint32,3> >& centroids_2,const std::vector< uint32>& percentages_1,const std::vector< uint32>& percentages_2)
+        {
+            float64 dist = 0.0;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            std::vector<float64> percentages_1f;
+            std::vector<float64> percentages_2f;
+            percentages_1f.resize(size_1);
+            percentages_2f.resize(size_2);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+            	percentages_1f[ii]=(float64)percentages_1[ii]/31.0;
+            }
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+            	percentages_2f[ii]=(float64)percentages_2[ii]/31.0;
+            }
+            
+            //Convert centroids to YUV color space
+             std::vector< boost::array< uint32,3> > centroids_yuv_1;
+             centroids_yuv_1.resize(size_1);
+             ImageRGB<uint8> centroids_rgb1(size_1,1);
+             for(uint8 i = 0; i < size_1; i++)
+             {
+                 centroids_rgb1(0)[i][0] = centroids_1[i][0];
+                 centroids_rgb1(1)[i][0] = centroids_1[i][1];
+                 centroids_rgb1(2)[i][0] = centroids_1[i][2];
+             }
+             ImageYUV<uint8> centroids_yuv1 = to_yuv(centroids_rgb1);
+             for(uint8 i = 0; i < size_1; i++)
+             {
+                 centroids_yuv_1[i][0] = centroids_yuv1(0)[i][0];
+                 centroids_yuv_1[i][1] = centroids_yuv1(1)[i][0];
+                 centroids_yuv_1[i][2] = centroids_yuv1(2)[i][0];
+             }
+             std::vector< boost::array< uint32,3> > centroids_yuv_2;
+             centroids_yuv_2.resize(size_2);
+             ImageRGB<uint8> centroids_rgb2(size_2,1);
+             for(uint8 i = 0; i < size_2; i++)
+             {
+                 centroids_rgb2(0)[i][0] = centroids_2[i][0];
+                 centroids_rgb2(1)[i][0] = centroids_2[i][1];
+                 centroids_rgb2(2)[i][0] = centroids_2[i][2];
+             }
+             ImageYUV<uint8> centroids_yuv2 = to_yuv(centroids_rgb2);
+             for(uint8 i = 0; i < size_2; i++)
+             {
+                 centroids_yuv_2[i][0] = centroids_yuv2(0)[i][0];
+                 centroids_yuv_2[i][1] = centroids_yuv2(1)[i][0];
+                 centroids_yuv_2[i][2] = centroids_yuv2(2)[i][0];
+             }
+             
+            std::vector<float64> perc1;
+            perc1.resize(size_1);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                perc1[ii]=percentages_1f[ii];
+            }
+            std::vector<float64> perc2;
+            perc2.resize(size_2);
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                perc2[ii]=percentages_2f[ii];
+            }
+            std::vector< boost::array< uint8,3> > centroids1;
+            centroids1.resize(size_1);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                for(uint8 jj=0; jj<3; jj++)
+                {
+                    centroids1[ii][jj]=centroids_yuv_1[ii][jj];
+                }
+            }
+            std::vector< boost::array< uint8,3> > centroids2;
+            centroids2.resize(size_2);
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                for(uint8 jj=0; jj<3; jj++)
+                {
+                    centroids2[ii][jj]=centroids_yuv_2[ii][jj];
+                }
+            }
+            
+            std::vector< std::vector<float64> > distances;
+            distances.resize(size_1);
+            std::vector< boost::array< float64,3> > centroids_merged_palette;
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                distances[ii].resize(size_2);
+            }
+            
+            for(uint8 jj=0; jj<size_1; jj++)
+            {
+                for(uint8 kk=0; kk<size_2; kk++)
+                {
+                    distances[jj][kk]=(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                }
+            }
+            
+            bool end = false;
+            while(!end)
+            {
+                float64 min = 1000.0;
+                uint8 index_min_1=0;
+                uint8 index_min_2=0;
+                size_1 = perc1.size();
+                size_2 = perc2.size();
+                for(std::size_t jj=0; jj<size_1; jj++)
+                {
+                    for(uint8 kk=0; kk<size_2; kk++)
+                    {
+                        if(distances[jj][kk]<min)
+                        {
+                            min = distances[jj][kk];
+                            index_min_1 = jj;
+                            index_min_2 = kk;
+                        }
+                    }
+                }
+                if(min<255.0)
+                {
+                    boost::array< float64,3> centroid;
+                    centroid[0]=(perc1[index_min_1]*(float64)(centroids1[index_min_1][0])+perc2[index_min_2]*(float64)(centroids2[index_min_2][0]))/(perc1[index_min_1]+perc2[index_min_2]);
+                    centroid[1]=(perc1[index_min_1]*(float64)(centroids1[index_min_1][1])+perc2[index_min_2]*(float64)(centroids2[index_min_2][1]))/(perc1[index_min_1]+perc2[index_min_2]);
+                    centroid[2]=(perc1[index_min_1]*(float64)(centroids1[index_min_1][2])+perc2[index_min_2]*(float64)(centroids2[index_min_2][2]))/(perc1[index_min_1]+perc2[index_min_2]);
+                    centroids_merged_palette.push_back(centroid);
+                    centroids1.erase(centroids1.begin()+index_min_1);
+                    centroids2.erase(centroids2.begin()+index_min_2);
+                    perc1.erase(perc1.begin()+index_min_1);
+                    perc2.erase(perc2.begin()+index_min_2);
+                }
+                else
+                {
+                    end = true;
+                }
+            }
+            size_1 = perc1.size();
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                boost::array< float64,3> centroid;
+                centroid[0]=(float64)(centroids1[ii][0]);
+                centroid[1]=(float64)(centroids1[ii][1]);
+                centroid[2]=(float64)(centroids1[ii][2]);
+                centroids_merged_palette.push_back(centroid);
+            }
+            size_2 = perc2.size();
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                boost::array< float64,3> centroid;
+                centroid[0]=(float64)(centroids2[ii][0]);
+                centroid[1]=(float64)(centroids2[ii][1]);
+                centroid[2]=(float64)(centroids2[ii][2]);
+                centroids_merged_palette.push_back(centroid);
+            }
+            
+            uint8 new_size = centroids_merged_palette.size();
+            std::vector<float64> new_perc1;
+            new_perc1.resize(new_size);
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                for(uint8 jj=0; jj<percentages_1.size(); jj++)
+                {
+                    float64 dist_aux = (centroids_merged_palette[ii][0]-centroids_yuv_1[jj][0])*(centroids_merged_palette[ii][0]-centroids_yuv_1[jj][0])+(centroids_merged_palette[ii][1]-centroids_yuv_1[jj][1])*(centroids_merged_palette[ii][1]-centroids_yuv_1[jj][1])+(centroids_merged_palette[ii][2]-centroids_yuv_1[jj][2])*(centroids_merged_palette[ii][2]-centroids_yuv_1[jj][2]);
+                    if(dist_aux < 255.0)
+                    {
+                        new_perc1[ii]=new_perc1[ii]+percentages_1f[jj];
+                    }
+                }
+            }
+            float64 sum_perc1=0;
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                sum_perc1 += new_perc1[ii];
+            }
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                new_perc1[ii] = new_perc1[ii]/sum_perc1;
+            }
+            
+            std::vector<float64> new_perc2;
+            new_perc2.resize(new_size);
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                for(uint8 jj=0; jj<percentages_2.size(); jj++)
+                {
+                    float64 dist_aux = (centroids_merged_palette[ii][0]-centroids_yuv_2[jj][0])*(centroids_merged_palette[ii][0]-centroids_yuv_2[jj][0])+(centroids_merged_palette[ii][1]-centroids_yuv_2[jj][1])*(centroids_merged_palette[ii][1]-centroids_yuv_2[jj][1])+(centroids_merged_palette[ii][2]-centroids_yuv_2[jj][2])*(centroids_merged_palette[ii][2]-centroids_yuv_2[jj][2]);
+                    if(dist_aux < 255.0)
+                    {
+                        new_perc2[ii]=new_perc2[ii]+percentages_2f[jj];
+                    }
+                }
+            }
+            float64 sum_perc2=0;
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                sum_perc2 += new_perc2[ii];
+            }
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                new_perc2[ii] = new_perc2[ii]/sum_perc2;
+            }
+            
+            for(uint8 ii=0; ii<new_size; ii++)
+            {
+                if(new_perc1[ii]<new_perc2[ii])
+                {
+                    dist += new_perc1[ii];
+                }
+                else
+                {
+                    dist += new_perc2[ii];
+                }
+            }
+            
+            dist = 1 - dist;
+            return dist;
+
+        }
+        
+        
+        //! \brief Similarity matching consisting in a technique called Merged Palette Histogram Similarity
+        //! Matching (MPHSM). In this, a common palette is created using common and non-common colors for 
+        //! each descriptor and obtaining two new histograms that are compared by Histogram Intersection.
+        //! In the process of creating the common palette a variation is introduced that consists in obtained
+        //! this palette by applying the Hungarian Algorithm. This method is used when the descriptors are
+        //! extracted from an XML file.
+        //!
+        //! \param[in] centroids_1: Dominant color values of the first descriptor extracted from an XML file
+        //! \param[in] centroids_2: Dominant color values of the second descriptor extracted from an XML file
+        //! \param[in] percentages_1  : Percentages values of the first descriptor extracted from an XML file
+        //! \param[in] percentages_2  : Percentages values of the second descriptor extracted from an XML file
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dcd_mphsm_hungarian(const std::vector< boost::array< uint32,3> >& centroids_1,const std::vector< boost::array< uint32,3> >& centroids_2,const std::vector< uint32>& percentages_1,const std::vector< uint32>& percentages_2)
+        {
+            float64 dist = 0.0;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            std::vector<float64> percentages_1f;
+            std::vector<float64> percentages_2f;
+            percentages_1f.resize(size_1);
+            percentages_2f.resize(size_2);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+            	percentages_1f[ii]=(float64)percentages_1[ii]/31.0;
+            }
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+            	percentages_2f[ii]=(float64)percentages_2[ii]/31.0;
+            }
+            uint8 size_max = std::max(size_1, size_2);
+            
+            //Convert centroids to YUV color space
+            std::vector< boost::array< uint32,3> > centroids_yuv_1;
+            centroids_yuv_1.resize(size_1);
+            ImageRGB<uint8> centroids_rgb1(size_1,1);
+            for(uint8 i = 0; i < size_1; i++)
+            {
+                centroids_rgb1(0)[i][0] = centroids_1[i][0];
+                centroids_rgb1(1)[i][0] = centroids_1[i][1];
+                centroids_rgb1(2)[i][0] = centroids_1[i][2];
+            }
+            ImageYUV<uint8> centroids_yuv1 = to_yuv(centroids_rgb1);
+            for(uint8 i = 0; i < size_1; i++)
+            {
+                centroids_yuv_1[i][0] = centroids_yuv1(0)[i][0];
+                centroids_yuv_1[i][1] = centroids_yuv1(1)[i][0];
+                centroids_yuv_1[i][2] = centroids_yuv1(2)[i][0];
+            }
+            std::vector< boost::array< uint32,3> > centroids_yuv_2;
+            centroids_yuv_2.resize(size_2);
+            ImageRGB<uint8> centroids_rgb2(size_2,1);
+            for(uint8 i = 0; i < size_2; i++)
+            {
+                centroids_rgb2(0)[i][0] = centroids_2[i][0];
+                centroids_rgb2(1)[i][0] = centroids_2[i][1];
+                centroids_rgb2(2)[i][0] = centroids_2[i][2];
+            }
+            ImageYUV<uint8> centroids_yuv2 = to_yuv(centroids_rgb2);
+            for(uint8 i = 0; i < size_2; i++)
+            {
+                centroids_yuv_2[i][0] = centroids_yuv2(0)[i][0];
+                centroids_yuv_2[i][1] = centroids_yuv2(1)[i][0];
+                centroids_yuv_2[i][2] = centroids_yuv2(2)[i][0];
+            }
+            
+            MultiArray<float32,2> costs(size_max,size_max);
+            costs = 0;
+            for(uint8 jj=0; jj<size_1; jj++)
+            {
+                for(uint8 kk=0; kk<size_2; kk++)
+                {
+                    float32 cost_tmp;
+                    cost_tmp=(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])*(centroids_yuv_1[jj][0]-centroids_yuv_2[kk][0])+(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])*(centroids_yuv_1[jj][1]-centroids_yuv_2[kk][1])+(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2])*(centroids_yuv_1[jj][2]-centroids_yuv_2[kk][2]);
+                    if(cost_tmp<255.0)
+                    {
+                        costs[kk][jj]=cost_tmp-255.0;
+                    }
+                }
+            }
+            std::vector<int32> row;
+            std::vector<int32> col;
+            math::graphs::hungarian(costs,row,col);
+            
+            std::vector< boost::array< float64,3> > merged_palette;
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                if(costs[ii][row[ii]]!=0) //Centroid ii from palette 1 has been matched with centroid row[ii] from palette 2
+                {
+                    boost::array<float64, 3> centroid;
+                    for(uint8 jj=0; jj<3; jj++)
+                    {
+                        centroid[jj]=(percentages_1f[ii]*(float64)centroids_yuv_1[ii][jj]+percentages_2f[row[ii]]*(float64)centroids_yuv_2[row[ii]][jj])/(percentages_1f[ii]+percentages_2f[row[ii]]);
+                    }
+                    merged_palette.push_back(centroid);
+                }
+                else //Centroid ii from palette 1 is dismatched
+                {
+                    boost::array<float64, 3> centroid;
+                    for(uint8 jj=0; jj<3; jj++)
+                    {
+                        centroid[jj]=(float64)centroids_yuv_1[ii][jj];
+                    }
+                    merged_palette.push_back(centroid);
+                }
+            }
+            
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                if(costs[ii][col[ii]]==0) //Centroid ii from palette 2 is dismatched
+                {
+                    boost::array<float64, 3> centroid;
+                    for(uint8 jj=0; jj<3; jj++)
+                    {
+                        centroid[jj]=(float64)centroids_yuv_2[ii][jj];
+                    }
+                    merged_palette.push_back(centroid);
+                }
+            }
+            
+            //Merged Palette have been created
+            std::vector<float64> new_perc1;
+            uint8 size_merged = merged_palette.size();
+            new_perc1.resize(size_merged);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                float64 min_dist = 1000000;
+                uint8 pos_min = 0;
+                for(uint8 jj=0; jj<size_merged; jj++)
+                {
+                    float64 dist_aux;
+                    dist_aux = (centroids_yuv_1[ii][0]-merged_palette[jj][0])*(centroids_yuv_1[ii][0]-merged_palette[jj][0])+(centroids_yuv_1[ii][1]-merged_palette[jj][1])*(centroids_yuv_1[ii][1]-merged_palette[jj][1])+(centroids_yuv_1[ii][2]-merged_palette[jj][2])*(centroids_yuv_1[ii][2]-merged_palette[jj][2]);
+                    if(dist_aux<min_dist)
+                    {
+                        min_dist = dist_aux;
+                        pos_min = jj;
+                        
+                    }
+                }
+                new_perc1[pos_min] +=percentages_1f[ii];
+            }
+            
+            std::vector<float64> new_perc2;
+            new_perc2.resize(size_merged);
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                float64 min_dist = 1000000;
+                uint8 pos_min = 0;
+                for(uint8 jj=0; jj<size_merged; jj++)
+                {
+                    float64 dist_aux;
+                    dist_aux = (centroids_yuv_2[ii][0]-merged_palette[jj][0])*(centroids_yuv_2[ii][0]-merged_palette[jj][0])+(centroids_yuv_2[ii][1]-merged_palette[jj][1])*(centroids_yuv_2[ii][1]-merged_palette[jj][1])+(centroids_yuv_2[ii][2]-merged_palette[jj][2])*(centroids_yuv_2[ii][2]-merged_palette[jj][2]);
+                    if(dist_aux<min_dist)
+                    {
+                        min_dist = dist_aux;
+                        pos_min = jj;
+                        
+                    }
+                }
+                new_perc2[pos_min] +=percentages_2f[ii];
+            }
+            
+            for(uint8 ii=0; ii<size_merged; ii++)
+            {
+                if(new_perc1[ii]<new_perc2[ii])
+                {
+                    dist += new_perc1[ii];
+                }
+                else
+                {
+                    dist += new_perc2[ii];
+                }
+            }
+            dist = 1-dist;
+            return dist;
+
+        }
+        
+        
+        
+        //! \brief Similarity matching consisting in guaranteeing a minimum percentage of pixels for both
+        //! images represented by dominant color values matched. This method is used when the descriptors are
+        //! extracted from an XML file. This is for VDDominantColorCIELab
+        //!
+        //! \param[in] threshold      : Minimum percentage of pixels represented by common dominant color values.
+        //! \param[in] centroids_1: Dominant color values of the first descriptor extracted from an XML file
+        //! \param[in] centroids_2: Dominant color values of the second descriptor extracted from an XML file
+        //! \param[in] percentages_1  : Percentages values of the first descriptor extracted from an XML file
+        //! \param[in] percentages_2  : Percentages values of the second descriptor extracted from an XML file
+        //!
+        //! \return A float representing the similarity matching of these two descriptors ( 0 represents they are identical )
+        float64 dist_dcdcielab_percentage(float64 threshold, const std::vector< boost::array< uint32,3> >& centroids_1,const std::vector< boost::array< uint32,3> >& centroids_2,const std::vector< uint32>& percentages_1,const std::vector< uint32>& percentages_2)
+        {
+        	
+        	float64 dist = 0.0;
+            bool no_similarity = true;
+            float64 acum_perc_1 = 0.0;
+            float64 acum_perc_2 = 0.0;
+            std::vector<bool> centroids_matched_1;
+            std::vector<bool> centroids_matched_2;
+            uint8 size_1 = percentages_1.size();
+            uint8 size_2 = percentages_2.size();
+            std::vector<float64> percentages_1f;
+            std::vector<float64> percentages_2f;
+            percentages_1f.resize(size_1);
+            percentages_2f.resize(size_2);
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+            	percentages_1f[ii]=(float64)percentages_1[ii]/31.0;
+            }
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+            	percentages_2f[ii]=(float64)percentages_2[ii]/31.0;
+            }
+            centroids_matched_1.resize(size_1);
+            centroids_matched_2.resize(size_2);
+            
+            
+            //Convert centroids to CIE Lab color space
+            std::vector< boost::array< uint32,3> > centroids_lab_1;
+            centroids_lab_1.resize(size_1);
+            ImageRGB<uint8> centroids_rgb1(size_1,1);
+            for(uint8 i = 0; i < size_1; i++)
+            {
+                centroids_rgb1(0)[i][0] = centroids_1[i][0];
+                centroids_rgb1(1)[i][0] = centroids_1[i][1];
+                centroids_rgb1(2)[i][0] = centroids_1[i][2];
+            }
+            ImageYUV<uint8> centroids_lab1 = to_cielab(centroids_rgb1);
+            for(uint8 i = 0; i < size_1; i++)
+            {
+                centroids_lab_1[i][0] = centroids_lab1(0)[i][0];
+                centroids_lab_1[i][1] = centroids_lab1(1)[i][0];
+                centroids_lab_1[i][2] = centroids_lab1(2)[i][0];
+            }
+            std::vector< boost::array< uint32,3> > centroids_lab_2;
+            centroids_lab_2.resize(size_2);
+            ImageRGB<uint8> centroids_rgb2(size_2,1);
+            for(uint8 i = 0; i < size_2; i++)
+            {
+                centroids_rgb2(0)[i][0] = centroids_2[i][0];
+                centroids_rgb2(1)[i][0] = centroids_2[i][1];
+                centroids_rgb2(2)[i][0] = centroids_2[i][2];
+            }
+            ImageYUV<uint8> centroids_lab2 = to_cielab(centroids_rgb2);
+            for(uint8 i = 0; i < size_2; i++)
+            {
+                centroids_lab_2[i][0] = centroids_lab2(0)[i][0];
+                centroids_lab_2[i][1] = centroids_lab2(1)[i][0];
+                centroids_lab_2[i][2] = centroids_lab2(2)[i][0];
+            }
+            
+            
+            
+            for(uint8 jj = 0; jj < size_1; jj++)
+            {
+                dist = dist + percentages_1f[jj]*percentages_1f[jj]; 
+                for(uint8 kk = 0; kk < size_2; kk++)
+                {
+                    float64 d_jk = (centroids_lab_1[jj][0]-centroids_lab_2[kk][0])*(centroids_lab_1[jj][0]-centroids_lab_2[kk][0])+(centroids_lab_1[jj][1]-centroids_lab_2[kk][1])*(centroids_lab_1[jj][1]-centroids_lab_2[kk][1])+(centroids_lab_1[jj][2]-centroids_lab_2[kk][2])*(centroids_lab_1[jj][2]-centroids_lab_2[kk][2]);
+                    if (d_jk <= 255.0)
+                    {
+                        dist = dist - (1-std::sqrt(d_jk/255.0))*2.0*percentages_1f[jj]*percentages_2f[kk];
+                        no_similarity = false;
+                        centroids_matched_1[jj]=true;
+                        centroids_matched_2[kk]=true;
+                    }
+                }
+            }
+            for(uint8 ii=0; ii<size_1; ii++)
+            {
+                if(centroids_matched_1[ii])
+                {
+                    acum_perc_1 += percentages_1f[ii];
+                }
+            }
+            for(uint8 ii=0; ii<size_2; ii++)
+            {
+                if(centroids_matched_2[ii])
+                {
+                    acum_perc_2 += percentages_2f[ii];
+                }
+            }
+            if((acum_perc_1 < threshold)||(acum_perc_2 < threshold))
+            {
+                no_similarity = true;
+            }
+            for(uint8 kk=0; kk<percentages_2.size(); kk++)
+            {
+                dist = dist + percentages_2f[kk]*percentages_2f[kk];
+            }
+            if(dist < 1e-15) // This distance is result of a error quantization and must be zero
+            {
+                dist = 0;
+            } 
+            if(no_similarity)
+            {
+            	dist = dist + 4.0;
+            }
+            return std::sqrt(dist);
+        }
+        
+        
+        
+        
+        
+        //! \brief Returns an image that represents the percentatges of each dominant color for VDDominantColor
+        //!
+        //! \param[in] centroids  : Dominant color values of the descriptor
+        //! \param[in] percentage: Percentages values of the descriptor
+        //!
+        //! \return An image that represents the percentatges of each dominant color
+        ImageRGB<uint8> paint_results(const std::vector< boost::array< uint8,3> >& centroids, const std::vector<float64>& percentage)
+        {
+            std::size_t curr_percent=0;
+            std::size_t width=100;
+            std::size_t height=20;
+            ImageRGB<uint8> my_output(width,height);
+            for(std::size_t ii=0; ii<percentage.size(); ii++)
+            {
+                std::size_t new_percent;
+                if (ii==(percentage.size()-1))
+                {
+                    new_percent=width;
+                }
+                else
+                {
+                    new_percent=curr_percent+(std::size_t)std::round(percentage[ii]*width);
+                }
+                for(std::size_t jj=curr_percent; jj<new_percent; jj++)
+                {
+                    for(std::size_t kk=0; kk<height; kk++)
+                    {
+                        my_output(0)[jj][kk] = centroids[ii][0];
+                        my_output(1)[jj][kk] = centroids[ii][1];
+                        my_output(2)[jj][kk] = centroids[ii][2];
+                    }
+                }
+                curr_percent = new_percent;
+            }
+            return my_output;
+        }
+        
+        //! \brief Returns an image that represents the percentatges of each dominant color for VDDominantColor
+        //!
+        //! \param[in] centroids  : Dominant color values of the descriptor extracted from an XML file
+        //! \param[in] percentages: Percentages values of the descriptor extracted from an XML file
+        //!
+        //! \return An image that represents the percentatges of each dominant color
+        ImageRGB<uint8> paint_results(const std::vector< boost::array< uint32,3> >& centroids, const std::vector< uint32>& percentages) 
+        {
+            std::size_t curr_percent=0;
+            std::size_t width=100;
+            std::size_t height=20;
+            ImageRGB<uint8> my_output(width,height);
+            std::size_t size = percentages.size();
+            std::vector<float64> percentage;
+            percentage.resize(size);
+            for(uint8 ii=0; ii<size; ii++)
+            {
+            	percentage[ii]=(float64)percentages[ii]/31.0;
+            }
+            for(std::size_t ii=0; ii<size; ii++)
+            {
+                std::size_t new_percent;
+                if (ii==(size-1))
+                {
+                    new_percent=width;
+                }
+                else
+                {
+                    new_percent=curr_percent+(std::size_t)std::round(percentage[ii]*width);
+                }
+                for(std::size_t jj=curr_percent; jj<new_percent; jj++)
+                {
+                    for(std::size_t kk=0; kk<height; kk++)
+                    {
+                        my_output(0)[jj][kk] = centroids[ii][0];
+                        my_output(1)[jj][kk] = centroids[ii][1];
+                        my_output(2)[jj][kk] = centroids[ii][2];
+                    }
+                }
+                curr_percent = new_percent;
+            }
+            return my_output;
+        }
+        
+
+        
+        //! \brief Returns an image that represents the percentatges of each dominant color for VDDominantColor8
+        //!
+        //! \param[in] centroids  : Dominant color values of the descriptor
+        //! \param[in] percentage: Percentages values of the descriptor
+        //!
+        //! \return An image that represents the percentatges of each dominant color
+        ImageRGB<uint8> paint_results(const boost::array< boost::array< uint8,3>,8 >& centroids, const boost::array<float64,8>& percentage)
+        {
+            std::size_t curr_percent=0;
+            std::size_t width=100;
+            std::size_t height=20;
+            ImageRGB<uint8> my_output(width,height);
+            for(std::size_t ii=0; ii<8; ii++)
+            {
+                std::size_t new_percent;
+                if (ii==7)
+                {
+                    new_percent=width;
+                }
+                else
+                {
+                    new_percent=curr_percent+(std::size_t)std::round(percentage[ii]*width);
+                }
+                for(std::size_t jj=curr_percent; jj<new_percent; jj++)
+                {
+                    for(std::size_t kk=0; kk<height; kk++)
+                    {
+                        my_output(0)[jj][kk] = centroids[ii][0];
+                        my_output(1)[jj][kk] = centroids[ii][1];
+                        my_output(2)[jj][kk] = centroids[ii][2];
+                    }
+                }
+                curr_percent = new_percent;
+            }
+            return my_output;
+        }
+        
+        //! \brief Returns the original image in which each color pixel has been assigned to the nearest dominant color value.
+        //! Used for VDDominantColor.
+        //!
+        //! \param[in] image_in   : Original image
+        //! \param[in] centroids  : Dominant color values of the descriptor
+        //!
+        //! \return The original image in which each color pixel has been assigned to the nearest dominant color value.
+        ImageRGB<uint8> paint_image(const ImageRGB<uint8>& image_in, const std::vector< boost::array<uint8,3> >& centroids) 
+        {
+        	ImageRGB<uint8>::const_iterator<> it_in = image_in.colors_begin();
+        	ImageRGB<uint8> im_out(image_in.size_x(),image_in.size_y());
+        	ImageRGB<uint8>::iterator<> it_out = im_out.colors_begin();
+        	for(;it_in!=image_in.colors_end();++it_in,++it_out)
+        	{
+        		float64 dist = ((*it_in).value(0)-centroids[0][0])*((*it_in).value(0)-centroids[0][0])+((*it_in).value(1)-centroids[0][1])*((*it_in).value(1)-centroids[0][1])+((*it_in).value(2)-centroids[0][2])*((*it_in).value(2)-centroids[0][2]);
+        		uint8 min = 0;
+        		for(uint8 ii=1; ii<centroids.size(); ii++)
+        		{
+        			float64 aux = ((*it_in).value(0)-centroids[ii][0])*((*it_in).value(0)-centroids[ii][0])+((*it_in).value(1)-centroids[ii][1])*((*it_in).value(1)-centroids[ii][1])+((*it_in).value(2)-centroids[ii][2])*((*it_in).value(2)-centroids[ii][2]);
+        			if(aux<dist)
+        			{
+        				dist=aux;
+        				min=ii;
+        			}
+        		}
+        		(*it_out).value(0) = centroids[min][0];
+        		(*it_out).value(1) = centroids[min][1];
+        		(*it_out).value(2) = centroids[min][2];
+        	}
+        	return im_out;
+        }
+        
+        //! \brief Returns the original image in which each color pixel has been assigned to the nearest dominant color value.
+        //! Used for VDDominantColor8.
+        //!
+        //! \param[in] image_in   : Original image
+        //! \param[in] centroids  : Dominant color values of the descriptor
+        //!
+        //! \return The original image in which each color pixel has been assigned to the nearest dominant color value.
+        ImageRGB<uint8> paint_image(const ImageRGB<uint8>& image_in, const boost::array< boost::array<uint8,3>, 8 >& centroids) 
+        {
+        	ImageRGB<uint8>::const_iterator<> it_in = image_in.colors_begin();
+        	ImageRGB<uint8> im_out(image_in.size_x(),image_in.size_y());
+        	ImageRGB<uint8>::iterator<> it_out = im_out.colors_begin();
+        	boost::array<float64,8> percentage;
+        	for(uint8 ii=0; ii<8; ii++)
+        	{
+        		percentage[ii]=0;
+        	}
+        	uint64 area=0;
+        	
+        	for(;it_in!=image_in.colors_end();++it_in,++it_out)
+        	{
+        		float64 dist = ((*it_in).value(0)-centroids[0][0])*((*it_in).value(0)-centroids[0][0])+((*it_in).value(1)-centroids[0][1])*((*it_in).value(1)-centroids[0][1])+((*it_in).value(2)-centroids[0][2])*((*it_in).value(2)-centroids[0][2]);
+        		uint8 min = 0;
+        		for(uint8 ii=1; ii<8; ii++)
+        		{
+        			float64 aux = ((*it_in).value(0)-centroids[ii][0])*((*it_in).value(0)-centroids[ii][0])+((*it_in).value(1)-centroids[ii][1])*((*it_in).value(1)-centroids[ii][1])+((*it_in).value(2)-centroids[ii][2])*((*it_in).value(2)-centroids[ii][2]);
+        			if(aux<dist)
+        			{
+        				dist=aux;
+        				min=ii;
+        			}
+        		}
+        		percentage[min]++;
+        		area++;
+        		(*it_out).value(0) = centroids[min][0];
+        		(*it_out).value(1) = centroids[min][1];
+        		(*it_out).value(2) = centroids[min][2];
+        	}
+        	for(uint8 ii=0; ii<8; ii++)
+        	{
+        		percentage[ii] = percentage[ii] / (float64)area;
+        	}
+        	return im_out;
+        }
+    }
+}
+
+#endif

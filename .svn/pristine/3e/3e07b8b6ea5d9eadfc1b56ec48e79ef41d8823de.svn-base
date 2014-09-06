@@ -1,0 +1,644 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file async_sender.cpp
+ *
+ * \author Albert Gil
+ */
+
+#define IMAGEPLUS_CLIENT_CONFIG_NAME  async_sender
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC
+#include <imageplus/toolbox/client_config.hpp>
+
+#include <imageplus/core.hpp>
+
+/*
+ * Std+Boost headers
+ */
+#include <boost/circular_buffer.hpp>
+
+/*
+ * namespaces config
+ */
+using namespace imageplus;
+using namespace imageplus::toolbox;
+using namespace std;
+
+class CircularFlowBase : public boost::circular_buffer<Timestamp>
+{
+public:
+    typedef boost::circular_buffer<Timestamp>::size_type index_type;
+    typedef std::string id_type;
+
+//    CircularFlowBase(std::size_t capacity)
+//    :   boost::circular_buffer<Timestamp>(capacity) // _cbtime( capacity )
+//    {}
+
+    void add( const Timestamp& ts )
+    {
+        //_cbtime.push_front(ts);
+        this->push_front(ts);
+    }
+
+    void id(const id_type& id)
+    {
+        _id = id;
+    }
+
+    const id_type& id() const
+    {
+        return _id;
+    }
+
+protected:
+    //boost::circular_buffer<Timestamp> _cbtime;
+    id_type                       _id;
+};
+
+class CircularFlowSinchronizer
+{
+    typedef CircularFlowBase::index_type index_type;
+    typedef CircularFlowBase::id_type    id_type;
+
+public:
+    CircularFlowSinchronizer()
+    {}
+
+    void add( CircularFlowBase* flow_ptr )
+    {
+        _cbs [flow_ptr->id()] = flow_ptr;
+        _idxs[flow_ptr->id()] = 0;
+    }
+
+    void last()
+    {
+        for(std::map<id_type, index_type>::iterator it=_idxs.begin(); it != _idxs.end(); ++it) it->second = 0;
+    }
+
+    bool sync( const Timestamp& max_dist )
+    {
+        Timestamp first_oldest = (*(_cbs.begin()->second))[0];
+
+        for(std::map<id_type, CircularFlowBase*>::iterator it=_cbs.begin(); it != _cbs.end(); ++it)
+        {
+            if( first_oldest > (*(it->second))[0]  ) first_oldest = (*(it->second))[0];
+        }
+
+        for(std::map<id_type, index_type>::iterator it=_idxs.begin(); it != _idxs.end(); ++it)
+        {
+            bool found = false;
+            const id_type& id = it->first;
+
+            for( _idxs[id]=0; _idxs[id] < _cbs[id]->size(); ++_idxs[id])
+            {
+                if( are_similars( first_oldest, (*_cbs[id])[_idxs[id]], max_dist) )
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if(!found)
+            {
+                _idxs[id] = _cbs[id]->size() -1; //just to avoid a bad idxs when returning
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    index_type get_sync(CircularFlowBase* flow_ptr)
+    {
+        return _idxs[flow_ptr->id()];
+    }
+
+private:
+
+    std::map< id_type, CircularFlowBase* > _cbs;
+    std::map< id_type, index_type        > _idxs;
+};
+
+template< class DataType >
+class CircularFlow : public CircularFlowBase
+{
+public:
+    typedef CircularFlowBase::index_type index_type;
+    typedef CircularFlowBase::id_type    id_type;
+
+//    CircularFlow(std::size_t capacity)
+//    :   CircularFlowBase( capacity ),
+//        _cbdata         ( capacity )
+//    {}
+
+    void add( const DataType& data, const Timestamp& time )
+    {
+        _cbdata.push_front(data);
+        //_cbtime.push_front(time);
+        this->push_front(time);
+    }
+
+
+    DataType& data(CircularFlowSinchronizer& sync)
+    {
+        return _cbdata[sync.get_sync(this)];
+    }
+
+    Timestamp& time(CircularFlowSinchronizer& sync)
+    {
+        //return _cbtime[sync.get_sync(this)];
+        return (*this)[sync.get_sync(this)];
+    }
+
+    void capacity(std::size_t capacity)
+    {
+        CircularFlowBase::set_capacity(capacity);
+        _cbdata          .set_capacity(capacity);
+    }
+
+private:
+    boost::circular_buffer<DataType> _cbdata;
+};
+
+
+template< class FlowPtrType, class DataType, class ConstDataPtrType = const DataType* >
+class CircularFlowSF : public CircularFlow<DataType>
+{
+private:
+    FlowPtrType      _flow;
+    ConstDataPtrType _data;
+    Timestamp        _time;
+
+public:
+
+    void flow(FlowPtrType flow)
+    {
+        _flow = flow;
+    }
+
+    void receive()
+    {
+        /*
+         * Getting the input buffer/pointer from the flow (blocking function)
+         */
+        _time = _flow->get_buffer(_data);
+    }
+
+    void save(const DataType& data, Timestamp& time)
+    {
+        this->add(data, time);
+    }
+
+    /*const*/ Timestamp& flow_time()
+    {
+        return _time;
+    }
+
+    ConstDataPtrType flow_data()
+    {
+        return _data;
+    }
+};
+
+
+void func_test()
+{
+    CircularFlow<int32> flow1;//(10);
+    CircularFlow<int64> flow2;//(10);
+    CircularFlow<int16> flow3;//(10);
+
+    flow1.capacity(10);
+    flow2.capacity(10);
+    flow3.capacity(10);
+
+    flow1.id("flow1");
+    flow2.id("flow2");
+    flow3.id("flow3");
+
+    CircularFlowSinchronizer sync;
+
+    sync.add(&flow1);
+    sync.add(&flow2);
+    sync.add(&flow3);
+
+    /*
+     * flows receive data...
+     */
+    Timestamp ts = 100.0;//clock_ts();
+    flow1.add(10, ts);
+    flow1.add(11, ts + 1);
+    flow1.add(12, ts + 2);
+    flow1.add(13, ts + 3);
+
+    flow2.add(20, ts);
+    flow2.add(21, ts + 2);
+
+    flow3.add(30, ts);
+
+
+    if( !sync.sync( 0.5 ) ) std::cout << "SYNC ERROR!!!" << std::endl;
+
+    int32& data1 = flow1.data(sync);
+    int64& data2 = flow2.data(sync);
+    int16& data3 = flow3.data(sync);
+
+    Timestamp& time1 = flow1.time(sync);
+    Timestamp& time2 = flow2.time(sync);
+    Timestamp& time3 = flow3.time(sync);
+
+    std::cout << "FLOW1 - TS: " << time1 << " - DATA: " << data1 << std::endl;
+    std::cout << "FLOW2 - TS: " << time2 << " - DATA: " << data2 << std::endl;
+    std::cout << "FLOW3 - TS: " << time3 << " - DATA: " << data3 << std::endl;
+
+    flow1.add(14, ts + 4);
+    flow1.add(15, ts + 5);
+    flow1.add(16, ts + 6);
+
+    flow2.add(22, ts + 4);
+    flow2.add(23, ts + 6);
+
+    flow3.add(31, ts + 4);
+
+
+    if( !sync.sync( 0.5 ) ) std::cout << "SYNC ERROR!!!" << std::endl;
+
+    int32& data11 = flow1.data(sync);
+    int64& data22 = flow2.data(sync);
+    int16& data33 = flow3.data(sync);
+
+
+    Timestamp& time11 = flow1.time(sync);
+    Timestamp& time22 = flow2.time(sync);
+    Timestamp& time33 = flow3.time(sync);
+
+    std::cout << "FLOW1 - TS: " << time11 << " - DATA: " << data11 << std::endl;
+    std::cout << "FLOW2 - TS: " << time22 << " - DATA: " << data22 << std::endl;
+    std::cout << "FLOW3 - TS: " << time33 << " - DATA: " << data33 << std::endl;
+}
+
+IMAGEPLUS_CLIENT_CONFIG_BRIEF()
+
+    "This client is just and example about how to send multiple flows asynchronously\n";
+
+IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()
+
+    "This client is just and example about how to send multiple flows asynchronously\n";
+
+IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()
+
+    // options
+
+    // flags
+
+    // arguments
+
+    // flows
+    DataInputFlow  in1;
+    DataInputFlow  in2;
+
+    DataOutputFlow out1;
+    DataOutputFlow out2;
+
+
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_VARIABLES()
+
+    /*
+     * Shared circular flows
+     */
+    CircularFlowSF<DataInputFlow, int32> cb1;
+    CircularFlowSF<DataInputFlow, int32> cb2;
+
+    /*
+     * Threads and sync variables
+     */
+    boost::shared_mutex           mutex;
+    boost::condition_variable_any cond_all_flow;
+    boost::condition_variable_any cond_any_flow;
+
+    /*
+     * State machine variables to control conditions
+     */
+    volatile bool data1_received;
+    volatile bool data2_received;
+
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_DEFAULT_VALUES()
+{
+    data1_received = false;
+    data2_received = false;
+
+    std::size_t cbuff_capacity = 10;
+
+    cb1.capacity(cbuff_capacity);
+    cb2.capacity(cbuff_capacity);
+
+    cb1.id("cb1");
+    cb2.id("cb2");
+
+    cb1.flow(cfg.in1);
+    cb2.flow(cfg.in2);
+}
+
+//IMAGEPLUS_CLIENT_CONFIG_APP_DESTRUCTOR()
+//{}
+
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREADS_LIST()
+{
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( flow_receiver1   );
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( flow_receiver2   );
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( flow_addition    );
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( flow_subtraction );
+}
+
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREADS_IMPLEMENTATION()
+
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( flow_receiver1 )
+    {
+        flow_receiver( cfg.in1, &data1_received, &cb1, "flow1" );
+    }
+
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( flow_receiver2 )
+    {
+        flow_receiver( cfg.in2, &data2_received, &cb2,"flow2" );
+    }
+
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( flow_addition )
+    {
+        /*
+         * Output flow variables
+         */
+        int32*    data_out;
+        Timestamp time_out;
+
+        /*
+         * To syncronize data in circular flows
+         */
+        CircularFlowSinchronizer sync;
+        sync.add(&cb1);
+        sync.add(&cb2);
+
+        /*
+         * Just to wait for the first data available from all flows
+         */
+        boost::shared_lock<boost::shared_mutex> first_lock(mutex);
+        cond_all_flow.wait(first_lock);
+        first_lock.unlock();
+
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the output buffer
+             */
+            cfg.out1->get_buffer(data_out);
+
+            /*
+             * Shared lock to read the shared variables
+             */
+            boost::shared_lock<boost::shared_mutex> lock(mutex);
+            cond_any_flow.wait(lock);
+
+            /*
+             * Getting the last data in all circular buffers to be processed
+             */
+            sync.last();
+
+            Timestamp& time1 = cb1.time(sync);
+            Timestamp& time2 = cb2.time(sync);
+
+            int32&     data1 = cb1.data(sync);
+            int32&     data2 = cb2.data(sync);
+
+            std::cout << "Processing Addition: "<< std::endl;
+            std::cout << "Timestamp 1: " << time1 << " - Data 1: " << data1 << std::endl;
+            std::cout << "Timestamp 2: " << time2 << " - Data 2: " << data2 << std::endl;
+
+            *data_out = data1 + data2;
+             time_out = time1; // using ts1 as the representant ts (we can do a median betweeen ts1 and ts2)
+
+            std::cout << "Timestamp S: " << time_out << " - Data S: " << *data_out << std::endl;
+
+            /*
+             * Shared unlock
+             */
+            lock.unlock();
+
+            /*
+             * Send and release the output buffer
+             */
+            send_buffer(cfg.out1, time_out);
+        }
+    }
+
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( flow_subtraction )
+    {
+        /*
+         * Output flow variables
+         */
+        int32*    data_out;
+        Timestamp time_out;
+
+        /*
+         * To syncronize data in circular flows
+         */
+        CircularFlowSinchronizer sync;
+        sync.add(&cb1);
+        sync.add(&cb2);
+
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the output buffer
+             */
+            cfg.out2->get_buffer(data_out);
+
+            /*
+             * Shared lock to read the shared variables
+             */
+            boost::shared_lock<boost::shared_mutex> lock(mutex);
+            cond_all_flow.wait(lock);
+
+            /*
+             * Getting the last but sync data to be processed
+             */
+            if ( ! sync.sync( 0.5 ) )
+            {
+                std::cout << "SYNC ERROR - NO DATA IS PROCESSED!!!"<< std::endl;
+            }
+            else
+            {
+                Timestamp& time1 = cb1.time(sync);
+                Timestamp& time2 = cb2.time(sync);
+
+                int32&     data1 = cb1.data(sync);
+                int32&     data2 = cb2.data(sync);
+
+                std::cout << "Processing Subtraction: "<< std::endl;
+                std::cout << "Timestamp 1: " << time1 << " - Data 1: " << data1 << std::endl;
+                std::cout << "Timestamp 2: " << time2 << " - Data 2: " << data2 << std::endl;
+
+                /*
+                 * Process the input data and create the output data
+                 */
+                *data_out = data1 - data2;
+                 time_out = time1; // using ts1 as the representant ts (we can do a median betweeen ts1 and ts2)
+
+
+                std::cout << "Timestamp S: " << time1 << " - Data S: " << *data_out << std::endl;
+
+//                /*
+//                 * Removing old data NOT HERE!! IS A READER THREAD!!!!
+//                 */
+//                cb1.erase(in1,cb1.end());
+//                cb2.erase(in2,cb2.end());
+//                std::cout << "Buffer Space 1: " << cb1.capacity() - cb1.size() << std::endl;
+//                std::cout << "Buffer Space 2: " << cb2.capacity() - cb2.size() << std::endl;
+            }
+
+            /*
+             * Shared unlock
+             */
+            lock.unlock();
+
+            /*
+             * Send and release the output buffer
+             */
+            send_buffer(cfg.out2, time_out);
+        }
+    }
+
+    void flow_receiver( DataInputFlow&       flow,
+                        volatile bool*       data_received,
+                        CircularFlowSF<DataInputFlow, int32>* cb,
+                        std::string          id )
+    {
+        /*
+         * Flow variables
+         */
+//        const int32*  data_in;
+//        Timestamp     time_in;
+
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the input buffer/pointer from the flow (blocking function)
+             */
+            //time_in = flow->get_buffer(data_in);
+            cb->receive();
+            std::cout << "Received " << id << ":" << std::endl;
+            std::cout << "Timestamp: " << cb->flow_time() << " - Data: " << *(cb->flow_data()) << std::endl;
+
+            /*
+             * Lock to write to the shared variables
+             */
+            boost::unique_lock<boost::shared_mutex> lock(mutex);
+
+            /*
+             * Saving data to the circular flow
+             */
+            //cb->add( *data_in, time_in );
+            cb->save( *(cb->flow_data()), cb->flow_time() );
+
+            /*
+             * Updating the state machine variable/event
+             */
+            *data_received = true;
+
+            /*
+             * control the processes to be done
+             */
+            if( data1_received || data2_received ) //this condition is always true!
+            {
+                cond_any_flow.notify_all();
+            }
+            if( data1_received && data2_received )
+            {
+                cond_all_flow.notify_all();
+
+                data1_received = false;
+                data2_received = false;
+            }
+
+            /*
+             * UnLock to write to the shared variables
+             */
+            lock.unlock();
+        }
+    }
+
+IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description.
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLOWS()
+
+    //
+    // Here you have to define your FLOWS
+    //
+    CLIENT_CONFIG_DATA_IN( in1, int32 );
+    CLIENT_CONFIG_DATA_IN( in2, int32 );
+
+    CLIENT_CONFIG_DATA_OUT( out1, int32 );
+    CLIENT_CONFIG_DATA_OUT( out2, int32 );
+
+IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_METADATAS()
+
+    //
+    // Here you can get the metadatas from the input flows
+    // And you MUST set the metadata of your output flows
+    //
+    // Note that from now on you can access to the previously
+    // defined config parameters with the "cfg" object.
+    //
+
+//
+// This is the "main" function of your client.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the client with "--help" to see your configuration.
+//
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_START()
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_CLIENT_CONFIG_END()

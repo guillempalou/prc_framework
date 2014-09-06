@@ -1,0 +1,91 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file threshold.hpp
+//!
+//!  Interface for threshold operations on MultiArray and ImageGray objects
+//!
+
+#ifndef IMAGEPLUS_CORE_THRESHOLD_HPP
+#define IMAGEPLUS_CORE_THRESHOLD_HPP
+
+#include <imageplus/core/exceptions.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+#include <imageplus/core/imavol.hpp>
+#include <imageplus/core/filter.hpp>
+
+
+namespace imageplus
+{
+    //!
+    //! \brief Thresholding: Pixels between 'lo' and 'hi' (lo <= pixel <= hi) are set to true, otherwise false
+    //!
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 23-1-2008
+    //!
+    //!
+    //! \code
+    //!    // Binarize image g1 using threshold 128.
+    //!    ImageGray<uint8> g1(100,100);
+    //!    ...
+    //!    Threshold thr(0,128);
+    //!    g2 = thr.filter(g1);
+    //! \endcode
+    //!
+    //!
+    class Threshold : public Filter<Threshold>
+    {
+        public:
+
+            //!
+            //! \brief Default constructor
+            //!
+            Threshold( );
+
+            //!
+            //! \brief Constructor
+            //!
+            //! \param[in] lo    : Lower threshold
+            //! \param[in] hi    : Higher threshold
+            //!
+            Threshold(float64 lo, float64 hi) throw (ImagePlusError);
+
+            //!
+            //! \brief Overloading of method implementation() for a MultiArray object
+            //!
+            //! WARNING!: Never use this method. Use filter() instead.
+            //!
+            //! \param[in] m: MultiArray object to be filtered
+            //!
+            //! \return Filtered object
+            //!
+            template<typename T>
+            MultiArray<bool,2> implementation(const MultiArray<T,2>& m) throw (ImagePlusError);
+
+            //!
+            //! \brief Overloading of method implementation() for an ImaVol object (and derived classes)
+            //!
+            //! WARNING!: Never use this method. Use filter() instead.
+            //!
+            //! \param[in] iv: ImaVol object to be filtered
+            //!
+            //! \return Filtered object
+            //!
+            template<typename T, std::size_t N, std::size_t D>
+            ImaVol<bool,N,D> implementation(const ImaVol<T,N,D>& iv) throw (ImagePlusError);
+
+        private:
+            //! Lower threshold
+            float64 _lo;
+            //! Upper threshold
+            float64 _hi;
+    };
+}
+
+
+#endif

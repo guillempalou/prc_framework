@@ -1,0 +1,82 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file multiview_auxiliar.hpp
+//!
+//!
+//!
+
+#ifndef IMAGEPLUS_MULTIVIEW_AUXILIAR_HPP
+#define IMAGEPLUS_MULTIVIEW_AUXILIAR_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/multiview/camera_implementations.hpp>
+#include <imageplus/multiview.hpp>
+
+
+namespace imageplus
+{
+    namespace multiview
+    {
+        //! \brief Maximum error for 3d projected ray triangulation.
+        static const float64 MAX3DRAYERROR=50.0;
+
+        //! \brief Computes the world point with minimum error distance between a set of projected rays, given by the corresponding
+        //! set of image points.
+        //!
+        //! \param[in] ray_points : Base points of every backprojected ray.
+        //! \param[in] director_vectors : Set of vectors that, along with every ray_point, characterize the bakcprojected rays.
+        //! \param[in] x : World point which error with respect the back projected rays is going to be evaluated   
+        //!
+        //! \return MultiView object with the distance error for every given ray / camera
+        //!
+        //! \author Oscar Garcia
+        //! \author Adolfo López <alopez@gps.tsc.upc.edu>
+        //!
+        //! \date 19-02-2008
+        //!
+        MultiView<float64> eval_ray_distance_error(const MultiView<Point3D>& ray_points, const MultiView<Point3D >& director_vectors, const Point3D& x);
+
+        //!
+        //! \brief Computes the world point with minimum error distance between a set of projected rays, given by the corresponding
+        //! set of image points.
+        //!
+        //! \param[in] mv_points : A Point2D in every camera.
+        //! \param[in] is_object_in_cam : A MultiView object indicating if the world point is seen by each camera.
+        //!
+        //! \return Point3D as the world coordinate with minimum error.
+        //!
+        //! \author Oscar Garcia
+        //! \author Adolfo López <alopez@gps.tsc.upc.edu>
+        //!
+        //! \date 12-02-2008
+        //!
+        Point3D min_ray_distance_error_3d_point(const MultiView<Point2D>& mv_points, const MultiView<uint8>& is_object_in_cam);
+        
+        //!
+        //! \brief Computes the world point with minimum error distance between a set of projected rays, given by the corresponding
+        //! set of image points. Outlier rejection applied.
+        //!
+        //! \param[in] mv_points : A Point2D in every camera.
+        //! \param[in] is_object_in_cam : A MultiView object indicating if the world point is seen by each camera.
+        //! \param[in] alpha : Mean point outlier rejection factor.
+        //!
+        //! \return Point3D as the world coordinate with minimum error.
+        //!
+        //! \author Oscar Garcia
+        //! \author Adolfo López <alopez@gps.tsc.upc.edu>
+        //!
+        //! \date 12-02-2008
+        //!
+        Point3D min_ray_distance_error_3d_point_outlier_rej(const MultiView<Point2D>& mv_points, const MultiView<uint8>& is_object_in_cam, const float64& alpha);
+
+
+    }//namespace multiview
+
+} //namespace imageplus
+
+#endif
+

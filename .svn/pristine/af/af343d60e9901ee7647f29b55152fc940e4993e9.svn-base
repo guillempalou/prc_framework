@@ -1,0 +1,207 @@
+/*
+ * model_flow_pruning.cpp
+ *
+ *  Created on: Feb 12, 2013
+ *      Author: gpalou
+ */
+
+/*
+ * video_relative_depth.cpp
+ *
+ *  Created on: Dec 17, 2012
+ *      Author: gpalou
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/partition/hierarchical_region_partition.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/math/graphs/graph.hpp>
+
+#include <imageplus/optical_flow/flow_io.hpp>
+#include <imageplus/optical_flow/trajectory_tracking.hpp>
+#include <imageplus/optical_flow/occlusions/boundary_owner.hpp>
+#include <imageplus/optical_flow/occlusions/bijective_error.hpp>
+#include <imageplus/optical_flow/occlusions/region_occlusion_error.hpp>
+#include <imageplus/optical_flow/occlusions/detect_occlusion_relations.hpp>
+
+#include <imageplus/bpt/energy_minimization/binary_pruner.hpp>
+#include <imageplus/bpt/pruning/merging_sequence_pruner.hpp>
+#include <imageplus/bpt/pruning/min_area_pruner.hpp>
+
+#include <imageplus/video_segmentation/trajectory_bpt/trajectory.hpp>
+#include <imageplus/video_segmentation/trajectory_bpt/motion_color_distance.hpp>
+#include <imageplus/video_segmentation/optical_flow_fitting/occlusion_cost.hpp>
+#include <imageplus/video_segmentation/optical_flow_fitting/bidirectional_projective_cost.hpp>
+#include <imageplus/video_segmentation/optical_flow_fitting/bidirectional_affine_cost.hpp>
+#include <imageplus/video_segmentation/optical_flow_fitting/model_optical_flow.hpp>
+
+#include <boost/filesystem.hpp>
+#include <iomanip>
+#include <iostream>
+
+using namespace imageplus;
+
+#define uint64 imageplus::uint64
+#define int64 imageplus::int64
+
+typedef VideoSignal<float64,3> 																		VideoType;
+typedef VideoSignal<float64,2>																		OpticalFlowType;
+typedef VideoSignal<uint64,1>																		PartitionIndexType;
+typedef VideoSignal<float64,1>																		ConfidenceMapType;
+
+typedef VideoType::ImageType																		FrameType;
+typedef OpticalFlowType::ImageType																	OpticalFlowFrame;
+typedef PartitionIndexType::ImageType																PartitionIndexFrame;
+typedef ConfidenceMapType::ImageType																ConfidenceMapFrame;
+
+typedef FrameType::coord_type																		coord2d;
+typedef VideoType::coord_type																		coord3d;
+typedef VideoType::value_type																		rgb_type;
+
+typedef HierarchicalRegion<coord3d>																	Region3D;
+typedef video_segmentation::Trajectory<VideoType>													TrajectoryType;
+typedef segmentation::HierarchicalRegionPartition<TrajectoryType>									BPT;
+typedef BPT::PartitionType																			PartitionType;
+
+typedef math::graphs::BoostGraph<math::graphs::kGraphBidirectional, math::graphs::NodeMaxFlowProperties, math::graphs::EdgeMaxFlowProperties>  DOG;
+
+//typedef MeanColorDistanceModel<VideoType, TrajectoryType>	 DistanceModelType;
+typedef video_segmentation::MotionColorDistanceModel<VideoType, TrajectoryType, OpticalFlowType> 	DistanceModelType;
+
+FrameType convert_map_to_image(ConfidenceMapFrame& s) {
+	typedef ConfidenceMapFrame::coord_type 	coord2d;
+	FrameType res(s.sizes());
+	for (ConfidenceMapFrame::iterator p = s.begin(); p!=s.end(); ++p) {
+		coord2d pos = p.pos();
+		float64 value = (*p)(0); if (value < 0) value=0;
+		res(pos) = value*rgb_type(255,255,255);
+	}
+	return res;
+}
+
+int main(int argc, char *argv[]) {
+
+	std::string path 		= argv[1];
+	std::string segm_path 	= argv[2];
+	std::string result_path = argv[3];
+
+	uint64 type 			= atoi(argv[4]);
+
+	std::vector<float64> list;
+
+	for (int64 i = 5; i < argc; i++) {
+		std::string a = argv[i];
+		std::cout << a << " ";
+		std::istringstream is(a);
+		float64 n;
+		is >> n;
+		list.push_back(n);
+	}
+
+	std::string video_path = path + "/frames";
+	std::string flows_path = path + "/flows";
+	std::string partition_path = segm_path + "/leaves.sgm";
+	std::string mergings_path  = segm_path + "/mergings.txt";
+
+	// create the necessary paths
+	boost::filesystem::path result_path_p(result_path);
+	boost::filesystem::create_directories(result_path_p / "segmentations_projective_of");
+
+	std::cout << "Reading tree" << std::endl;
+	BPT bpt;
+	bpt.load_from_files(partition_path, mergings_path);
+	coord3d sizes = bpt.leaves_partition().sizes();
+
+	uint64 Nframes = sizes(2);
+
+	OpticalFlowType forward_flows(sizes);
+	OpticalFlowType backward_flows(sizes);
+
+	std::cout << "There are " << Nframes << " frames - " << sizes.transpose() << std::endl;
+	// Read forward optical flows
+	std::cout << "Reading forward flow" << std::endl;
+	for (uint64 k = 0; k < Nframes-1; k++) {
+		std::ostringstream os;
+		//std::cout << k << std::endl;
+		os << flows_path << "/flow_" << k << "_" << k+1 << ".flo";
+		OpticalFlowFrame flow = forward_flows.frame(k);
+		optical_flow::read_optical_flow(flow, os.str());  // read flow k,k+1 and put it to the position k of the current block
+	}
+
+	// Read backward optical flows
+	std::cout << "Reading backward flow" << std::endl;
+	for (uint64 k = 1; k < Nframes; k++) {
+		std::ostringstream os;
+		os << flows_path << "/flow_" << k << "_" << k-1 << ".flo";
+		OpticalFlowFrame flow = backward_flows.frame(k);
+		optical_flow::read_optical_flow(flow, os.str()); // read flow k,k-1 and put it to the position k of the current block
+	}
+
+	std::cout << "Estimating flow models" << std::endl;
+
+	descriptors::DescriptorManager manager;
+	// estimate flow models (too costly)
+	typedef bpt::BidirectionalProjectiveCost<BPT,OpticalFlowType> 				OpticalFlowCostFunction;
+	typedef bpt::BinaryPruner<BPT,OpticalFlowType,OpticalFlowCostFunction>		FlowPruner;
+	//typedef bpt::OptimalPruner<BPT,OpticalFlowType,OpticalFlowCostFunction>		FlowPruner;
+
+	//descriptors::DescriptorManager manager;
+
+	std::set<uint64> regs;
+
+	OpticalFlowCostFunction projective_flow_cost(manager, bpt.max_label(),0);
+	FlowPruner optical_flow_pruner(projective_flow_cost,false);
+
+	projective_flow_cost.set_flows(forward_flows, backward_flows);
+
+	PartitionType partition(sizes);
+
+	sort(list.begin(), list.end());
+
+	int64 start = (type == 0) ? 0 : list.size()-1;
+	int64 end = (type == 0) ? list.size() : -1;
+	int64 increment = (type == 0) ? 1 : -1;
+
+	float64 root_cost = projective_flow_cost.region_cost(bpt,forward_flows,bpt.max_label());
+
+	for (int64 i = start; i != end; i+=increment) {
+
+		std::cout << "Pruning with " << list[i] << " regularizer " << std::endl;
+
+		projective_flow_cost.set_lambda(list[i]*root_cost);
+		regs = optical_flow_pruner.find_pruned_regions(bpt, forward_flows, bpt.max_label()); //regularizer acts as the number of regions
+		//std::set<uint64> regs = optical_flow_pruner.find_exact_regions(bpt,forward_flows,list[i]);
+
+		//std::set<uint64> regs = optical_flow_pruner.regions(); //optical_flow_pruner.regions();
+		for (std::set<uint64>::iterator r = regs.begin(); r != regs.end(); ++r) {
+			for (BPT::RegionType::iterator p = bpt(*r).begin(); p != bpt(*r).end(); ++p) {
+				partition(*p)(0) = *r;
+			}
+		}
+
+		std::ostringstream os; os << i;
+
+		std::string path_seg;
+
+		path_seg = "segmentations_projective_of";
+
+		boost::filesystem::create_directories(result_path_p / path_seg / os.str());
+
+		VideoType segmentation = segmentation::to_false_color<VideoType>(partition);
+
+		// print segmentation
+		partition.write_partition(result_path + "/" + path_seg + "/" + os.str() + "/partition.sgm");
+		for (uint64 k = 0; k < Nframes; k++) {
+			std::ostringstream os2;
+			os2 << result_path << "/" << path_seg << "/" << os.str() << "/" << std::setw(5) << std::setfill('0') << k << ".png";
+			FrameType frame = segmentation.frame(k);
+			frame.write(os2.str());
+		}
+
+	}
+}

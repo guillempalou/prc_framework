@@ -1,0 +1,304 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imavolmask.hpp
+//!
+//!  Interface for ImageMask class
+//!
+
+#ifndef IMAGEPLUS_CORE_IMAVOLMASK_HPP
+#define IMAGEPLUS_CORE_IMAVOLMASK_HPP
+
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/image.hpp>
+#include <imageplus/core/volume.hpp>
+#include <imageplus/core/region_concept.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \brief Base class to mask images and volumes
+    //!
+    //! See the \ref iterators_example.cpp "iterators and colors example" to know how to use it.
+    //!
+    //! Note that ImaVolMask can be seen as an ImaVol of bools, or also as a RegionModel.
+    //! In the \ref iterators_example.cpp "iterators and colors example" you will see how to use as a Region.
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //! \author Josep Ramon Morros  <morros@gps.tsc.upc.edu>
+    //! \author Albert Gil Moreno   <albert.gil@upc.edu>
+    //!
+    //! \date 7-2-2008
+    //!
+    template< std::size_t D>
+    class ImaVolMask : public ImaVol<bool,1,D>,
+                       public RegionConcept<ImaVolMask<D> >
+    {
+        /*!
+         * \cond SKIP_DOC
+         */
+        private:
+            typedef typename ImaVol<bool,1,D>::RegionIterator reg_it_base;
+        /*! \endcond */
+            
+        public:
+            typedef typename ImaVol<bool,1,D>::CoordType CoordType;   //! Type of coordinates
+            typedef ImaVolMask* RegionPointer; //! Type for the region concept
+            
+            /*!
+             * \cond SKIP_DOC
+             * 
+             * Internal class to conform with RegionConcept
+             */
+            class ImaVolMaskIterator : public reg_it_base
+            {   
+              
+                
+                const ImaVolMask*  _data;
+                CoordType _end;
+                
+            protected:
+                ImaVolMaskIterator(const ImaVolMask* p, CoordType pos)
+                        : reg_it_base(pos, (*p)(0).dims(), (*p)(0).bases()), _data(p)
+                {
+                    for(std::size_t dd=0; dd<D-1; ++dd)
+                        _end[dd] = (*_data)(0).bases()[dd];
+                    _end[D-1] = (*_data)(0).dims()[D-1] + (*_data)(0).bases()[D-1];
+
+                    if(this->_pos!=_end)
+                    {
+                        while( ((*_data)(this->_pos))[0]!=true )
+                        {
+                            reg_it_base::operator++();
+                            if(this->_pos==_end)
+                                break;
+                        }
+                    }
+                }
+                
+            public:
+                
+                //iterator traits
+                typedef std::forward_iterator_tag    iterator_category;
+                typedef DataIndex                  value_type;
+                typedef int32                      difference_type; //TODO: is this correct????
+                typedef value_type*                pointer;
+                typedef value_type&                reference;
+
+                ImaVolMaskIterator()
+                {}
+                
+                ImaVolMaskIterator& operator++() 
+                {
+                    do
+                    {
+                        reg_it_base::operator++();
+                        if(this->_pos==_end)
+                            return *this;
+                    } while( ((*_data)(this->_pos))[0]!=true );
+                    
+                    return *this;
+                }
+                
+                friend class ImaVolMask;
+            };
+            /*!
+             * \endcond
+             */
+
+            
+            typedef ImaVolMaskIterator             position_iterator; /*!< Positions iterator type */
+            typedef ImaVolMaskIterator       const_position_iterator; /*!< Positions iterator type */
+            
+            /*!
+             * \returns a position_iterator pointing to the first position of the mask
+             */
+            position_iterator begin() 
+            {
+                return position_iterator( this, (*this)(0).bases());
+            }
+
+            /*!
+             * \returns a position_iterator pointing to the last+1 position of the mask
+             * 
+             * \warning The returned position_iterator points to non-valid position.
+             */
+            position_iterator end() 
+            {
+                CoordType end;
+                for(std::size_t dd=0; dd<D-1; ++dd)
+                    end[dd] = (*this)(0).bases()[dd];
+                end[D-1] = (*this)(0).dims()[D-1] + (*this)(0).bases()[D-1];
+                return position_iterator( this, end );
+            }
+
+            /*!
+             * \returns a const_position_iterator pointing to the first position of the mask
+             */
+            const_position_iterator begin() const 
+            {
+                return const_position_iterator( this, (*this)(0).bases());
+            }
+
+            /*!
+             * \returns a const_position_iterator pointing to the last+1 position of the mask
+             * 
+             * \warning the returned position_iterator points to non-valid position.
+             */
+            const_position_iterator end() const 
+            {
+                CoordType end;
+                for(std::size_t dd=0; dd<D-1; ++dd)
+                    end[dd] = (*this)(0).bases()[dd];
+                end[D-1] = (*this)(0).dims()[D-1] + (*this)(0).bases()[D-1];
+                return const_position_iterator( this, end );
+            }
+            
+            //!
+            //! \brief Default constructor
+            //!
+            ImaVolMask()
+                    : ImaVol<bool,1,D>()
+            {
+            }
+            
+            //!
+            //! \brief Constructor for 2 dimensions
+            //!
+            //! \param[in] x : X size of the image
+            //! \param[in] y : Y size of the image
+            //!
+            ImaVolMask(uint64 x, uint64 y)
+                    : ImaVol<bool,1,D>(x,y)
+            {
+            }
+
+
+            //!
+            //! \brief Constructor for 3 dimensions
+            //!
+            //! \param[in] x : X size of the image
+            //! \param[in] y : Y size of the image
+            //! \param[in] z : Z size of the image
+            //!
+            ImaVolMask(uint64 x, uint64 y, uint64 z)
+                    : ImaVol<bool,1,D>(x,y,z)
+            {
+            }
+            
+            
+
+            //!
+            //! \brief Copy constructor for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this imavol
+            //!
+            ImaVolMask(const ImaVol<bool,1,D>& copy)
+                    : ImaVol<bool,1,D>( copy )
+            {
+            }
+            
+            //!
+            //! \brief Copy constructor for Image
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this image
+            //!
+            ImaVolMask(const Image<bool,1>& copy)
+                    : ImaVol<bool,1,D>((const ImaVol<bool,1,D>&) copy )
+            {
+            }
+
+            //!
+            //! \brief Copy constructor for Volume
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this Volume
+            //!
+            ImaVolMask(const Volume<bool,1>& copy)
+                    : ImaVol<bool,1,D>((const ImaVol<bool,1,D>&) copy )
+            {
+            }
+
+#ifdef MSVC
+            //!
+            //! \brief Copy constructor for ImaVolMask
+            //!
+            //! \param[in] copy : Creates a copy (including values) of this imavol
+            //!
+            ImaVolMask(const ImaVolMask& copy)
+            	: ImaVol<bool,1,D>( (const ImaVol<bool,1,D>&) copy )
+            {
+            }
+#endif
+            
+            //!
+            //! \brief Constructor by dims
+            //!
+            //! \param[in] dims : Creates a mask with these dimensions
+            //!
+            template <typename ExtentList>
+            ImaVolMask(const ExtentList& dims)
+                    : ImaVol<bool,1,D>( dims )
+            {
+            }
+
+                        
+            //!
+            //! \brief Destructor
+            //!
+            virtual ~ImaVolMask()
+            {
+            }
+            
+
+            //!
+            //! \brief Assignment operator for ImaVol
+            //!
+            //! \param[in] copy : Creates a copy (size,channels and data) of this imavol
+            //!
+            //! \return Reference to (this) so a = b = c; works.
+            //!
+            const ImaVol<bool,1,D>& operator=( const ImaVol<bool,1,D>& copy )
+            {
+                return ImaVol<bool,1,D>::operator=(copy);
+            }
+            
+            
+            //!
+            //! \brief Assigment operator for values (fills the entire image)
+            //!
+            //! \param[in] val : Value to fill all pixel
+            //!
+            //! \return Reference to value to a = b = true; works
+            //!
+            const bool& operator=( const bool& val )
+            {
+                return ImaVol<bool,1,D>::operator=(val);
+            }
+    };
+    
+    /*!
+     * \brief Boolean Image and/or boolean region for Images
+     * 
+     * See the \ref iterators_example.cpp "iterators and colors example" to know how to use it.
+     * 
+     * This class can be used as a boolean Image, or as a way to describe Region of an Image.
+     * It imlpements the RegionConcept.
+     */
+    typedef ImaVolMask<2> ImageMask;
+    
+    /*!
+     * \brief Boolean Volume and/or boolean region for Volumes
+     * 
+     * See the \ref iterators_example.cpp "iterators and colors example" to know how to use it.
+     * 
+     * This class can be used as a boolean Volume, or as a way to describe Region of a Volume.
+     * It imlpements the RegionConcept.
+     */
+    typedef ImaVolMask<3> VolumeMask;
+}
+
+#endif
+

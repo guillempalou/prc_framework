@@ -1,0 +1,83 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file quantization_auxiliar.hpp
+ */
+
+#ifndef IMAGEPLUS_CODING_TEXTURE_QUANTIZATION_AUXILIAR_HPP
+#define IMAGEPLUS_CODING_TEXTURE_QUANTIZATION_AUXILIAR_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/coding/texture/texture_types.hpp>
+
+namespace imageplus
+{
+namespace coding
+{
+namespace texture
+{
+    //!
+    //! \brief Quantifies the coefficients in A according to a quantization table
+    //!
+    //! Right now, quant represents the number of bits in the quantized coefficients and it is the same for
+    //! all coefficients.
+    //!
+    //! \tparam nchannels : Number of color channels of the region texture
+    //!
+    //! \param[in]   quant : Quantization parameter (bits = 8 - quant)
+    //! \param[in]  Qtable : Quantization table
+    //! \param[in,out]   A : Coefficients to quantize. Is a vector with one MultiArray of coefficients
+    //!                      per color channel
+    //! \param[out] coeffs : Buffers of quantized coeffs (one per color channel)
+    //!
+    template<std::size_t nchannels>
+    void _quantify_coeffs( int32                                       quant,
+                           const std::vector< MultiArray<float64,2> >& Qtable,
+                           std::vector< MultiArray<float64,1> >&       A,
+                           QRegionCoeffs<nchannels>&                   coeffs );
+
+    //!
+    //! \brief De-quantifies the coefficents into matrix A using a quantization table
+    //!
+    //! \tparam nchannels : Number of colour channels of the region texture
+    //!
+    //! \param[in]  coeffs : Buffers of quantized coeffs (one per color channel)
+    //! \param[in]  Qtable : Quantization table
+    //! \param[out]      A : De-quantized coeffs. Is a vector with one MultiArray of coefficients
+    //!                      per color channel
+    //!
+    template<std::size_t nchannels>
+    void _dequantify_coeffs( const QRegionCoeffs<nchannels>&             coeffs,
+                             const std::vector< MultiArray<float64,2> >& Qtable,
+                             std::vector< MultiArray<float64,1> >&       A );
+
+    //!
+    //! \brief Fill the quantization table
+    //!
+    //! The DC coefficient [0][0] is set to qdc and the rest of coefficients are set to qac
+    //!
+    //! \param[in,out] Qtable : Quantization table
+    //! \param[in]        qdc : Value for DC coeffcient
+    //! \param[in]        qac : Value for AC coefficients
+    //!
+    void _fill_qtable( MultiArray<float64,2>& Qtable, float64 qdc, float64 qac );
+
+    //!
+    //! \brief Fill the quantization table
+    //!
+    //! The DC coefficient [0][0] is set to qdc and the rest of coefficients are set to qac
+    //!
+    //! \param[in,out] Qtable : Quantization table
+    //! \param[in]        qdc : Value for DC coeffcient
+    //! \param[in]        qac : Value for AC coefficients
+    //!
+    void _fill_qtable( MultiArray<float64,1>& Qtable, float64 qdc, float64 qac );
+
+} // ns texture
+} // ns coding
+} // ns imageplus
+
+#endif // IMAGEPLUS_CODING_TEXTURE_QUANTIZATION_AUXILIAR_HPP

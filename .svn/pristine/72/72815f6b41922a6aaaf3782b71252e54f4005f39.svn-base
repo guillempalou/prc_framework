@@ -1,0 +1,235 @@
+/*!
+ * \example hello_create_descriptors.cpp
+ *
+ * This is an example of how to create new descriptors
+ * 
+ * See the \ref descriptors "Getting Started Guide" for more information.
+ * 
+ * \cond SKIP_DOC
+ */
+
+#include <imageplus/core.hpp>
+
+//#include <imageplus/descriptors/color_statistics.hpp>
+
+/* The following tutorial is intended at providing insight into how the collaborative descriptors work and
+ * how to create new ones.
+ * 
+ * The tutorial will be based on developing two simple descriptors, which will illustrate their main features.
+ * 
+ * Let us start with the area descriptors, i.e., the number of pixels/voxels of the region we are describing.
+ */
+
+/* First of all we have to define a class inside the namespace we want to work, for instance, descriptors,
+ * although it could be any other.*/ 
+namespace imageplus
+{
+    namespace descriptors
+    {
+        /* We will call our class MyArea. 
+         * (Please note that the class Area provided in the geometrical descriptors is an extension of the one presented in this example) 
+         * 
+         * The first requirement for a descriptor to be stored in a CollaborativeDescriptors set is to:
+         * - Inherit from DescriptorBase.
+         * 
+         * (Technically, this will allow us to store different types of descriptors in the same container.)
+         */
+         class MyArea : public DescriptorBase
+         {
+         private:
+             /* We define a private member that will store the area value */
+             uint64 _area;
+             
+         public:
+             /* Default constructor.
+              * 
+              * The second requirement for a descriptor to work in the ImagePlus environment is to:
+              * - Provide the class DescriptorBase with a unique identifier that will distinguish our descriptors from the others stored.
+              * 
+              * This is done calling the constructor of DescriptorBase. Please refer to the documentation of the class DescriptorBase for 
+              * further details of its features and other constructors.
+              * 
+              * In our case, "MyArea" is a proper identifier.
+              */
+             MyArea(): DescriptorBase("MyArea"), _area()
+             {
+             }
+             
+             /* The third and last mandatory requirement for a descriptor is:
+              *  - Define the following function that receives a pair of iterators that will scan the region to describe
+              */
+             template<class IteratorModel>
+             void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+             {
+                 /* In this case, we just count the number of position we scan */
+                 _area = 0;
+                 for(; first!=last; ++first)
+                     ++_area;
+             }
+             
+             /* The last functionallity needed is a way to access the calculated value.
+              * One approach would be to define a ".value()" function that returns the area.
+              * for simplicity, however, we could define it via the following operator:
+              */
+             operator const uint64()
+             {
+                 return _area;
+             }
+             /* This operator allows us to handle the class MyArea as itself was a uint64, for instance 
+              * we could write:
+              * 
+              * MyArea my_area;
+              * (...)
+              * uint64 region_area = my_area; 
+              */
+         };
+         
+         
+         
+         
+         
+         
+         /* Given the simplicity of the area descriptor, only a part of the CollaborativeDescriptors
+          *  potentiallity is used.
+          * 
+          * In order to show more possibilities, especially the collaboration between descriptors,
+          * let us create the "MyColorMean" descriptor, that computes the color mean of the region.
+          */
+         
+         /* As before, the class has to inherit from DescriptorBase.
+          * We want the container of the descriptor to be a boost::array, and as before, we want the class
+          * to behave like an array, no to return an array using an accessor function.
+          * In this case, we can do this by inheriting from boost::array.
+          * 
+          * You may be wondering: why didn't we inherit also from the descriptor type in the MyArea case?
+          * The reason is that C++ does not allow to inherit from a primitive type (uint64), because in
+          * some sense, they are not classes. The workaround to solve it is to use the "operator const uint64()."
+          * 
+          * Another observation about this descriptor is that its value type depends on the input type.
+          * In particular, depends on the number of channels of the input.
+          * That's the reason why we make this class template of "InputModel", which is the type of data we are describing.
+          */
+         template<class InputModel>
+         class MyColorMean : public DescriptorBase,
+                             public boost::array<float64, InputModel::channels>
+         {
+         public:
+             /* Default constructor.
+              * 
+              * In this case, "MyColorMean" is the identifier, and we call the defeult constructors of the parent classes
+              */
+             MyColorMean(): DescriptorBase("MyColorMean"), boost::array<float64, InputModel::channels>()
+             {
+             }
+             
+             /* We define the mandatory function to calculate */
+             template<class IteratorModel>
+             void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+             {
+                 /* The first ingredient we need is to sum all the colors of the region */
+                 boost::array<uint64, InputModel::channels> color_sum;
+                 for(std::size_t ch=0; ch<InputModel::channels; ++ch)
+                 {
+                     color_sum[ch] = 0;
+                 }
+
+                 /* When a color iterator is dereferenced (*), it return a Color (InputType::Color), which is
+                  * a boost::array of values defining the color */
+                 for(; first!=last; ++first)
+                 {
+                     for(std::size_t ch=0; ch<InputModel::channels; ++ch)
+                     {
+                         color_sum[ch] = color_sum[ch] + (*first).value(ch);
+                     }
+                 }
+                 
+                 /* Now we will make use of the CollaborativeDescriptor to ask for the calculation of MyArea.
+                  * If it is computed, it will not be recomputed. Otherwise, it will be calculated and stored
+                  * for future use.
+                  * We are assuming that peer_descs!=0x0, and in principle it is always true.
+                  * Nevertheless, it is always a good idea to do an ASSERT*/
+                 ASSERT(peer_descs!=0x0, "MyColorMean calculate: peer_descs must be non null");
+                 MyArea area = peer_descs->calculate(new MyArea(), first, last);
+                 
+                 /* Now the result is stored in the class itself by means of "this" */
+                 for(std::size_t ch=0; ch<InputModel::channels; ++ch)
+                 {
+                     (*this)[ch] = (float64)color_sum[ch] / area;
+                 }
+             }
+         };
+    }
+}
+
+
+/* 
+ * Following we repeat the previous example but using our brand-new descriptors, to show that they work.
+ * And they actually do. Congratulations!  ;)
+ * 
+ * Please take a look at the list of available descriptors for more examples of descriptors and advanced 
+ * features that are not illustrated here.
+ * Also, read the documentation of the functions in visual_descriptors.hpp.
+ * 
+ */
+
+using namespace imageplus;
+using namespace descriptors;
+
+void hello_create_descriptors( )
+{
+	/*  Recovering the same Partition of the previous example: */
+    typedef RegionContour<Coord2D<int64> >  RegionType;  // Type of region we will work with
+
+    /* This definition will be useful in this case*/
+    typedef ImageRGB<uint8> InputType;
+    
+    /* The partition */
+    ImagePartition<> im_part(3,3);
+    im_part[0][0] = 1;     im_part[1][0] = 1;     im_part[2][0] = 2;
+    im_part[0][1] = 1;     im_part[1][1] = 2;     im_part[2][1] = 2;
+    im_part[0][2] = 3;     im_part[1][2] = 4;     im_part[2][2] = 5;
+    
+    std::cout << "Partition we are working with:" << std::endl;
+    std::cout << im_part;
+    
+    Partition<RegionType> my_partition(im_part);
+    RegionType& my_reg = my_partition[2];
+    
+    /* The image */
+    InputType im(3,3);
+    im(0) = 1;  im(1) = 2;  im(2) = 3;  im(2)[2][0] = 6; 
+    
+    /* Our new descriptors can be computed as regular descriptors: */
+    MyArea                 my_area = calc_descriptor(new MyArea()                , im, my_reg);
+    MyColorMean<InputType> my_mean = calc_descriptor(new MyColorMean<InputType>(), im, my_reg);
+
+    /* We show the result */
+    std::cout << "The area of region "       << my_reg.label() << " is: " << my_area << "." << std::endl;
+    std::cout << "The color mean of region " << my_reg.label() << " is: " << my_mean << "." << std::endl;
+}
+
+
+
+/*
+ * 
+ *  Expected output of the example
+ * 
+ * 
+
+Partition we are working with:
+Channel 0:
+      1    1    2
+      1    2    2
+      3    4    5
+
+The area of region 2 is: 3.
+The color mean of region 2 is:       1    2    4  .
+
+ 
+ * 
+ * 
+ */
+
+/*!
+ * \endcond SKIP_DOC
+ */

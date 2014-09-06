@@ -1,0 +1,101 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file cmath.hpp
+ *
+ * Math functions in the std namespace, to avoid MSVC and TR1 problems
+ */
+
+#ifndef IMAGEPLUS_CMATH_HPP
+#define IMAGEPLUS_CMATH_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+
+
+#ifdef MSVC
+#include <cmath>
+
+namespace std
+{
+    //unsigned __int64 abs(const __int64 in);
+    inline
+    imageplus::uint64 abs(imageplus::int64 in)
+    {
+        if( in >= 0 ) return in;
+        else          return( 0-in );
+    }
+
+    template<typename T1, typename T2>
+    imageplus::float64 pow ( T1   base, T2 exp)
+    {
+        return pow( static_cast<imageplus::float64>(base), static_cast<imageplus::float64>(exp));
+    }
+
+    template<typename T>
+    T floor(T integer_value)
+    {
+        return integer_value;
+    }
+
+    template<typename T>
+    T ceil(T integer_value)
+    {
+        return integer_value;
+    }
+
+    inline
+    imageplus::float64 round(imageplus::float64 value)
+    {
+        return (value > 0.0) ? floor(value + 0.5) : ceil(value - 0.5);
+    }
+
+    template<typename T>
+    imageplus::float64 log(T val)
+    {
+        return log( static_cast<imageplus::float64>(val));
+    }
+
+    inline
+    imageplus::float64 sin(imageplus::int32 in)
+    {
+        return sin( static_cast<imageplus::float64>(in) );
+    }
+
+    template<typename T>
+    T log2(T val)
+    {
+        return log(val)/log(2);
+    }
+}
+
+#else // ! MSVC
+
+#include <tr1/cmath>
+
+namespace std
+{
+    template<typename T>
+    T log2(T val)
+    {
+        return tr1::log2(val);
+    }
+
+    template<typename T>
+    T round(T value)
+    {
+        return tr1::round(value);
+    }
+  
+    inline
+    imageplus::uint64 abs(imageplus::uint64 in)
+    {
+        if( in >= 0 ) return in;
+        else          return( 0-in );
+    }
+}
+
+#endif // MSVC
+#endif // CMATH.HPP

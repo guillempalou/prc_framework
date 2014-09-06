@@ -1,0 +1,485 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file io_image.test
+//!
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+#include <imageplus/io/writemultiarray.hpp>
+
+#include <cmath>
+
+BOOST_AUTO_TEST_SUITE ( io_image_suite );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::io;
+
+BOOST_AUTO_TEST_CASE ( io_image_check_format )
+{
+    ReadImage ri;
+    BOOST_CHECK_NO_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/jpg.jpg"));
+    BOOST_CHECK_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/jpg.png"), std::exception);
+    BOOST_CHECK_NO_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/png.png"));
+    BOOST_CHECK_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/png.tiff"), std::exception);
+    BOOST_CHECK_NO_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/tiff.tiff"));
+    BOOST_CHECK_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/tiff.jpg"), std::exception);
+    
+    BOOST_CHECK_NO_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/jpg", JPEG));
+    BOOST_CHECK_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/jpg", PNG), std::exception);
+    BOOST_CHECK_NO_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/png", PNG));
+    BOOST_CHECK_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/png", TIFF), std::exception);
+    BOOST_CHECK_NO_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/tiff", TIFF));
+    BOOST_CHECK_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/tiff", JPEG), std::exception);
+
+    BOOST_CHECK_NO_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/jpg.jpg", JPEG));
+    BOOST_CHECK_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/png.jpg", PNG), std::exception);
+    BOOST_CHECK_THROW(ri.open(string(TEST_DATA_PATH_R) + "/io/jpg.png", PNG), std::exception);
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/io/tiff");
+    BOOST_CHECK(ri.format() == TIFF);
+    ri.open(string(TEST_DATA_PATH_R) + "/io/png");
+    BOOST_CHECK(ri.format() == PNG);
+    ri.open(string(TEST_DATA_PATH_R) + "/io/jpg");
+    BOOST_CHECK(ri.format() == JPEG);
+}
+
+BOOST_AUTO_TEST_CASE ( io_image_gray_uint8_test )
+{
+
+    // This test has 3 stages:
+    // 1) Create image with all posible values.
+    // 2) Write to disk
+    // 3) Read and compare the results with initial image.
+
+    // 1)
+    ImageGray<uint8> im(256, 256);
+    uint8* im_it = im(0).data();
+
+    for (size_type i = 0; i != 256*256; ++i, ++im_it)
+        *im_it = i;
+    
+    // 2)
+    WriteImage out_png ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint8.png"  );
+    WriteImage out_jpeg( string(TEST_DATA_PATH_W) + "/io_image_gray_uint8.jpeg" );
+    WriteImage out_tiff( string(TEST_DATA_PATH_W) + "/io_image_gray_uint8.tiff" );
+#ifdef USE_IMAGEMAGICK
+    WriteImage out_bmp ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint8.bmp"  );
+#endif
+    
+
+    BOOST_CHECK( out_png.format()  == PNG  );
+    BOOST_CHECK( out_jpeg.format() == JPEG );
+    BOOST_CHECK( out_tiff.format() == TIFF );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( out_bmp.format()  == BMP  );
+#endif
+    
+    out_png  << im;
+    out_jpeg << im;
+    out_tiff << im;
+#ifdef USE_IMAGEMAGICK
+    out_bmp  << im;
+#endif
+
+    // 3)
+    ImageGray<uint8> other_png;
+    ImageGray<uint8> other_jpeg;
+    ImageGray<uint8> other_tiff;
+#ifdef USE_IMAGEMAGICK
+    ImageGray<uint8> other_bmp;
+#endif
+    
+    ReadImage in_png ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint8.png"  );
+    ReadImage in_jpeg( string(TEST_DATA_PATH_W) + "/io_image_gray_uint8.jpeg" );
+    ReadImage in_tiff( string(TEST_DATA_PATH_W) + "/io_image_gray_uint8.tiff" );
+#ifdef USE_IMAGEMAGICK
+    ReadImage in_bmp ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint8.bmp" );
+#endif
+    
+    BOOST_CHECK( in_png.format()  == PNG  );
+    BOOST_CHECK( in_jpeg.format() == JPEG );
+    BOOST_CHECK( in_tiff.format() == TIFF );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( in_bmp.format()  == BMP  );
+#endif
+    
+    in_png  >> other_png;
+    in_jpeg >> other_jpeg;
+    in_tiff >> other_tiff;
+#ifdef USE_IMAGEMAGICK
+    in_bmp  >> other_bmp;
+#endif
+    
+    BOOST_CHECK( im == other_png  );
+    BOOST_CHECK( im == other_jpeg );
+    BOOST_CHECK( im == other_tiff );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( im == other_bmp  );
+#endif
+}
+
+BOOST_AUTO_TEST_CASE ( io_image_gray_uint16_test )
+{
+    //TODO: JPEG does not support 16 bits per channel, but imagemagick hiddes a convertion.
+    //      We should avoid this
+
+    // This test has 3 stages:
+    // 1) Create image with all posible values.
+    // 2) Write to disk
+    // 3) Read and compare the results with initial image.
+
+    // 1)
+    ImageGray<uint16> im(256, 256);
+    uint16* im_it = im(0).data();
+
+    for (size_type i = 0; i != 65536; ++i, ++im_it)
+        *im_it = i;
+    
+    // 2)
+    WriteImage out_png ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint16.png"  );
+    WriteImage out_jpeg( string(TEST_DATA_PATH_W) + "/io_image_gray_uint16.jpeg" );
+    WriteImage out_tiff( string(TEST_DATA_PATH_W) + "/io_image_gray_uint16.tiff" );
+#ifdef USE_IMAGEMAGICK
+    WriteImage out_bmp ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint16.bmp"  );
+#endif
+    
+    BOOST_CHECK( out_png.format()  == PNG  );
+    BOOST_CHECK( out_jpeg.format() == JPEG );
+    BOOST_CHECK( out_tiff.format() == TIFF );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( out_bmp.format()  == BMP  );
+#endif
+    
+    out_png  << im;
+    out_tiff << im;
+#ifdef USE_IMAGEMAGICK
+    out_jpeg << im;
+    out_bmp  << im;
+#else
+    BOOST_CHECK_THROW( out_jpeg << im, ImagePlusError);
+#endif
+
+    // 3)
+    ImageGray<uint16> other_png;
+    ImageGray<uint16> other_jpeg;
+    ImageGray<uint16> other_tiff;
+#ifdef USE_IMAGEMAGICK
+    ImageGray<uint16> other_bmp;
+#endif
+    
+    ReadImage in_png  ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint16.png"  );
+    ReadImage in_tiff ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint16.tiff" );
+#ifdef USE_IMAGEMAGICK
+    ReadImage in_jpeg ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint16.jpeg" );
+    ReadImage in_bmp  ( string(TEST_DATA_PATH_W) + "/io_image_gray_uint16.bmp"  );
+#endif
+    
+    BOOST_CHECK( in_png.format()  == PNG  );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( in_jpeg.format() == JPEG );
+    BOOST_CHECK( in_bmp.format()  == BMP  );
+#endif
+    BOOST_CHECK( in_tiff.format() == TIFF );
+
+    in_png  >> other_png;
+    in_tiff >> other_tiff;
+#ifdef USE_IMAGEMAGICK
+    in_jpeg >> other_jpeg;
+    in_bmp  >> other_bmp;
+#endif
+
+    BOOST_CHECK( im == other_png  );
+    BOOST_CHECK( im == other_tiff );
+   
+//#ifdef USE_IMAGEMAGICK
+//    BOOST_CHECK( im == other_bmp  );
+//#endif   
+    
+    //TODO:
+    //BOOST_CHECK( im == other_jpeg );
+//    im_it = im(0).data();
+//    uint16* ot_it = other_jpeg(0).data();
+//    size_type cont=0;
+//    uint16 max=0;
+//    for (size_type i = 0; i != 65536; ++i)
+//    {
+//        if( std::abs(*im_it-*ot_it) > 300 )
+//        {
+//            cont++;
+//            if( std::abs(*im_it-*ot_it) > max )
+//            {
+//                max = std::abs(*im_it-*ot_it);
+//            }
+//        }
+//        
+//        im_it++;
+//        ot_it++;
+//    }
+//    
+//    std::cout << "CONT: " << cont << std::endl;
+//    std::cout << "MAX:  " << max  << std::endl;
+}
+
+
+BOOST_AUTO_TEST_CASE ( io_image_rgb_uint8_test )
+{
+    //TODO: JPEG does not support 16 bits per channel, but imagemagick hiddes a convertion.
+    //      We should avoid this
+
+    // This test has 3 stages:
+    // 1) Create image with all posible values.
+    // 2) Write to disk
+    // 3) Read and compare the results with initial image.
+
+    // 1)
+    ImageRGB<uint8> im(256, 256);
+    uint8* r = im( RED_CHANNEL   ).data();
+    uint8* g = im( GREEN_CHANNEL ).data();
+    uint8* b = im( BLUE_CHANNEL  ).data();
+
+    for (size_type i = 0; i != 65536; ++i)
+    {
+        *(r++) = i;
+        *(g++) = 65535 - i;
+        *(b++) = 65536/2 + i;
+    }
+    
+    // 2)
+    WriteImage out_png ( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint8.png"  );
+    WriteImage out_jpeg( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint8.jpg"  );
+    WriteImage out_tiff( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint8.tiff" );
+#ifdef USE_IMAGEMAGICK
+    WriteImage out_bmp ( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint8.bmp"  );
+#endif
+    
+    BOOST_CHECK( out_png.format()  == PNG  );
+    BOOST_CHECK( out_jpeg.format() == JPEG );
+    BOOST_CHECK( out_tiff.format() == TIFF );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( out_bmp.format()  == BMP  );
+#endif
+    
+    out_png  << im;
+    out_jpeg << im;
+    out_tiff << im;
+#ifdef USE_IMAGEMAGICK
+    out_bmp  << im;
+#endif
+    
+    // 3)
+    ImageRGB<uint8> other_png;
+    ImageRGB<uint8> other_jpeg;
+    ImageRGB<uint8> other_tiff;
+#ifdef USE_IMAGEMAGICK
+    ImageRGB<uint8> other_bmp;
+#endif
+    
+    ReadImage in_png ( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint8.png"  );
+    ReadImage in_tiff( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint8.tiff" );
+#ifdef USE_IMAGEMAGICK
+    ReadImage in_jpeg( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint8.jpg" );
+    ReadImage in_bmp(  string(TEST_DATA_PATH_W) + "/io_image_rgb_uint8.bmp" );
+#endif
+    
+    BOOST_CHECK( in_png.format()  == PNG  );
+    BOOST_CHECK( in_tiff.format() == TIFF );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( in_jpeg.format() == JPEG );
+    BOOST_CHECK( in_bmp.format()  == BMP  );
+#endif
+    
+    in_png  >> other_png;
+    in_tiff >> other_tiff;
+#ifdef USE_IMAGEMAGICK
+    in_jpeg >> other_jpeg;
+    in_bmp  >> other_bmp;
+#endif
+
+    BOOST_CHECK( im == other_png  );
+    BOOST_CHECK( im == other_tiff );
+#ifdef USE_IMAGEMAGICK
+    //    BOOST_CHECK( im == other_jpeg );
+    BOOST_CHECK( im == other_bmp  );
+#endif    
+}
+
+
+BOOST_AUTO_TEST_CASE ( io_image_rgb_uint16_test )
+{
+    //TODO: JPEG does not support 16 bits per channel, but imagemagick hiddes a convertion.
+    //      We should avoid this
+
+    // This test has 3 stages:
+    // 1) Create image with all posible values.
+    // 2) Write to disk
+    // 3) Read and compare the results with initial image.
+
+    // 1)
+    ImageRGB<uint16> im(256, 256);
+    uint16* r = im( RED_CHANNEL   ).data();
+    uint16* g = im( GREEN_CHANNEL ).data();
+    uint16* b = im( BLUE_CHANNEL  ).data();
+
+    for (size_type i = 0; i != 65536; ++i)
+    {
+        *(r++) = i;
+        *(g++) = 65535 - i;
+        *(b++) = 65536/2 + i;
+    }
+    
+    // 2)
+    WriteImage out_png ( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint16.png"  );
+    WriteImage out_jpeg( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint16.jpg"  );
+    WriteImage out_tiff( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint16.tiff" );
+#ifdef USE_IMAGEMAGICK
+    WriteImage out_bmp ( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint16.bmp"  );
+#endif
+    
+    BOOST_CHECK( out_png.format()  == PNG  );
+    BOOST_CHECK( out_jpeg.format() == JPEG );
+    BOOST_CHECK( out_tiff.format() == TIFF );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( out_bmp.format()  == BMP  );
+#endif
+    
+    out_png  << im;
+#ifdef USE_IMAGEMAGICK
+    out_jpeg << im;
+    out_bmp  << im;
+#else
+    BOOST_CHECK_THROW( out_jpeg << im, ImagePlusError);
+#endif
+    out_tiff << im;
+
+    // 3)
+    ImageRGB<uint16> other_png;
+    ImageRGB<uint16> other_jpeg;
+    ImageRGB<uint16> other_tiff;
+#ifdef USE_IMAGEMAGICK
+    ImageRGB<uint16> other_bmp;
+#endif
+    
+    ReadImage in_png ( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint16.png"  );
+    ReadImage in_tiff( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint16.tiff" );
+#ifdef USE_IMAGEMAGICK
+    ReadImage in_jpeg( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint16.jpg" );
+    ReadImage in_bmp ( string(TEST_DATA_PATH_W) + "/io_image_rgb_uint16.bmp" );
+#endif
+    
+    BOOST_CHECK( in_png.format()  == PNG  );
+    BOOST_CHECK( in_tiff.format() == TIFF );
+#ifdef USE_IMAGEMAGICK
+    BOOST_CHECK( in_jpeg.format() == JPEG );
+    BOOST_CHECK( in_bmp.format()  == BMP  );
+#endif
+    
+    in_png  >> other_png;
+    in_tiff >> other_tiff;
+#ifdef USE_IMAGEMAGICK
+    in_jpeg >> other_jpeg;
+    in_bmp  >> other_bmp;
+#endif
+
+    BOOST_CHECK( im == other_png  );
+    BOOST_CHECK( im == other_tiff );
+#ifdef USE_IMAGEMAGICK
+    //    BOOST_CHECK( im == other_jpeg );
+    //    BOOST_CHECK( im == other_bmp  );
+#endif    
+}
+
+
+
+
+BOOST_AUTO_TEST_CASE ( io_imagepartition_synthetic_uint32_test )
+{
+    
+    // Read and write a synthetic constant partition in many ways
+    // This test is good for checking the headers, not the ELEMENT_RUNLENGTH (next test is to do so)
+    ImagePartition<> part(20, 30);
+    ImagePartition<> part_read;
+    
+    MultiArray<uint32,2> mult_read;
+    
+    part = 123456789;
+
+    io::WriteMultiArray wm;
+    io::ReadMultiArray  rm;
+    io::WriteImage      wi;
+    io::ReadImage       ri;
+    
+    //  Write to disk as MultiArray 
+    wm.open(string(TEST_DATA_PATH_W) + "/io_imagepartition_synt_uint32_byteRL.mult");
+    wm << part(0);
+
+    // Read it as partition
+    ri.open(string(TEST_DATA_PATH_W) + "/io_imagepartition_synt_uint32_byteRL.mult");
+    ri >> part_read;
+
+    BOOST_CHECK( part(0) == part_read(0) );
+    BOOST_CHECK( part_read.size_x() == 20 );
+    BOOST_CHECK( part_read.size_y() == 30 );
+    
+
+
+    //  Write to disk as ImagePartition 
+    wi.open(string(TEST_DATA_PATH_W) + "/io_imagepartition_synt_uint32_partRL.mult");
+    wi << part;
+    
+    // Read it as MultiArray
+    rm.open(string(TEST_DATA_PATH_W) + "/io_imagepartition_synt_uint32_partRL.mult");
+    rm >> mult_read;
+
+    BOOST_CHECK( part(0) == mult_read );
+
+    // Read it as ImagePartition
+    ri.open(string(TEST_DATA_PATH_W) + "/io_imagepartition_synt_uint32_partRL.mult");
+    ri >> part_read;
+
+    BOOST_CHECK( part == part_read );
+    BOOST_CHECK( part_read.size_x() == 20 );
+    BOOST_CHECK( part_read.size_y() == 30 );
+}
+
+BOOST_AUTO_TEST_CASE ( io_imagepartition_real_uint32_test )
+{
+    // Read and write a "real" partition in two ways
+    // This test is good for checking the ELEMENT_RUNLENGTH algorithm
+    ReadImage ri(string(TEST_DATA_PATH_R) + "/io_imagepartition_real.png");
+    
+    ImageGray<uint8> part_gray;
+    ri >> part_gray;
+    
+    // Original partition from 1 to 255
+    ImagePartition<> part_orig(part_gray.size_x(), part_gray.size_y());
+    part_orig(0) = convert<uint32>(part_gray(0));
+    
+    WriteImage wi(string(TEST_DATA_PATH_W) + "/io_imagepartition_real_uint32.mult");
+    wi << part_orig;
+      
+    ReadImage ri2(string(TEST_DATA_PATH_W) + "/io_imagepartition_real_uint32.mult");
+    ImagePartition<> part_read;
+    ri2 >> part_read;
+    
+    BOOST_CHECK( part_orig == part_read );
+    
+    
+    // Original partition multiplied by 16777216 
+    part_orig(0) = (uint32)16777216*convert<uint32>(part_gray(0));
+        
+    wi.open(string(TEST_DATA_PATH_W) + "/io_imagepartition_real_uint32_2.mult");
+    wi << part_orig;
+     
+    ri2.open(string(TEST_DATA_PATH_W) + "/io_imagepartition_real_uint32_2.mult");
+    ri2 >> part_read;
+   
+    BOOST_CHECK( part_orig == part_read );
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

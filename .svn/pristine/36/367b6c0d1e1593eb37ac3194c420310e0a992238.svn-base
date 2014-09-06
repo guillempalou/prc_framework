@@ -1,0 +1,183 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file readwriteannotation.test
+ * 
+ * Tests for the ReadWriteAnnotation class
+ */ 
+
+#include <boost/filesystem.hpp>
+#include <imageplus/semantic/annotation.hpp>
+#include <imageplus/semantic/ontology.hpp>
+#include <imageplus/semantic/readwriteannotation.hpp>
+#include <imageplus/semantic/readwriteontology.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ReadWriteAnnotation_Suite );
+
+using namespace imageplus;
+using namespace semantic;
+using namespace std;
+
+void create_annotation(Annotation&);
+void check_annotation(const Annotation&);
+
+BOOST_AUTO_TEST_CASE( readwriteannotation_functions_test )
+{
+	// Create an annotation
+	Annotation annotation;
+	create_annotation(annotation);
+
+	// Write the annotation to a file
+	boost::filesystem::path ann_file = string(TEST_DATA_PATH_W);
+	ann_file /= "semantic--annotation.xml";
+
+    ReadWriteAnnotation rw_ann_out(ann_file.string());
+    rw_ann_out.write(annotation);
+
+    // Load the written annotation from the file
+    Annotation read_ann;
+    ReadWriteAnnotation rw_ann_in(ann_file.string());
+    rw_ann_in.read(read_ann);
+
+	// check that the annotated values for semantic class 2 can be retrieved
+    check_annotation(read_ann);
+}
+
+BOOST_AUTO_TEST_CASE( readwriteannotation_operators_test )
+{
+	// Create an annotation
+	Annotation annotation;
+	create_annotation(annotation);
+
+	// Write the annotation to a file
+	boost::filesystem::path ann_file = string(TEST_DATA_PATH_W);
+	ann_file /= "semantic-annotation.xml";
+
+    ReadWriteAnnotation rw_ann_out(ann_file.string());
+    rw_ann_out << annotation;
+
+    // Load the written annotation from the file
+    Annotation read_ann;
+    ReadWriteAnnotation rw_ann_in(ann_file.string());
+    rw_ann_in >> read_ann;
+
+	// check that the annotated values for semantic class 2 can be retrieved
+    check_annotation(read_ann);
+}
+
+BOOST_AUTO_TEST_CASE( readwriteannotation_open_test )
+{
+	// Create an annotation
+	Annotation annotation;
+	create_annotation(annotation);
+
+	// Write the annotation to a file
+	boost::filesystem::path ann_file = string(TEST_DATA_PATH_W);
+	ann_file /= "semantic-annotation.xml";
+
+    ReadWriteAnnotation rw_ann_out;
+    BOOST_CHECK_THROW(rw_ann_out.open("/non/existent/annotation.xml"), ImagePlusError);
+    rw_ann_out.open(ann_file.string());
+    rw_ann_out << annotation;
+
+    // Load the written annotation from the file
+    Annotation read_ann;
+    ReadWriteAnnotation rw_ann_in;
+    rw_ann_in.open(ann_file.string());
+    rw_ann_in >> read_ann;
+
+	// check that the annotated values for semantic class 2 can be retrieved
+    check_annotation(read_ann);
+}
+
+BOOST_AUTO_TEST_CASE( readwriteannotation_read_test )
+{
+	boost::filesystem::path file = string(TEST_DATA_PATH_R);
+	file /= "semantic";
+	file /= "5_semantic";
+	file /= "2_annotations";
+	file /= "image";
+	file /= "F1_publi.xml";
+
+    Annotation annotation;
+    ReadWriteAnnotation rw_ann(file.string());
+    rw_ann.read(annotation);
+
+    // check the read annotation
+	BOOST_REQUIRE(annotation.semantic_class_is_annotated(1));
+	AnnotatedSemanticClass asc1 = annotation.get_annotated_semantic_class(1);
+	BOOST_CHECK(asc1.get_instances(Instance::POSITIVE).size() == 7);
+	BOOST_CHECK(asc1.get_instances(Instance::NEUTRAL).size()  == 0);
+	BOOST_CHECK(asc1.get_instances(Instance::NEGATIVE).size() == 0);
+}
+
+BOOST_AUTO_TEST_CASE( readwriteannotation_notfound_test )
+{
+    ReadWriteAnnotation rw_annotation;
+    Annotation annotation;
+    BOOST_CHECK_THROW(rw_annotation >> annotation, ImagePlusError);
+}
+
+// AUX FUNCTIONS
+void create_annotation(Annotation& annotation)
+{
+	// Load an ontology
+	boost::filesystem::path ont_file = string(TEST_DATA_PATH_R);
+	ont_file /= "semantic";
+	ont_file /= "5_semantic";
+	ont_file /= "1_ontologies";
+	ont_file /= "F1_publicity.xml";
+
+	Ontology ontology;
+	ReadWriteOntology rw_ont(ont_file.string());
+	rw_ont >> ontology;
+
+	annotation.set_ontology(ontology);
+
+	// annotate semantic class 1
+	AnnotatedSemanticClass& asc = annotation.annotate(1);
+
+	// add 3 positive instances
+	asc.add_instance(
+		Instance("SegmentInstance1", "file:/path/to/0000001-vd.xml", 8,
+			1, list<string>()),
+		Instance::POSITIVE);
+	asc.add_instance(
+		Instance("SegmentInstance2", "file:/path/to/0000002-vd.xml", 8,
+			1, list<string>()),
+		Instance::POSITIVE);
+	asc.add_instance(
+		Instance("SegmentInstance3", "file:/path/to/0000003-vd.xml", 8,
+			1, list<string>()),
+		Instance::POSITIVE);
+
+	// add 1 neutral instance
+	asc.add_instance(
+		Instance("SegmentInstance4", "file:/path/to/0000004-vd.xml", 8,
+			1, list<string>()),
+		Instance::NEUTRAL);
+
+	// add 2 negative instances
+	asc.add_instance(
+		Instance("SegmentInstance5", "file:/path/to/0000005-vd.xml", 8,
+			1, list<string>()),
+		Instance::NEGATIVE);
+	asc.add_instance(
+		Instance("SegmentInstance6", "file:/path/to/0000006-vd.xml", 8,
+			1, list<string>()),
+		Instance::NEGATIVE);
+}
+
+void check_annotation(const Annotation& annotation)
+{
+	BOOST_REQUIRE(annotation.semantic_class_is_annotated(1));
+	AnnotatedSemanticClass asc1 = annotation.get_annotated_semantic_class(1);
+	BOOST_CHECK(asc1.get_instances(Instance::POSITIVE).size() == 3);
+	BOOST_CHECK(asc1.get_instances(Instance::NEUTRAL).size()  == 1);
+	BOOST_CHECK(asc1.get_instances(Instance::NEGATIVE).size() == 2);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

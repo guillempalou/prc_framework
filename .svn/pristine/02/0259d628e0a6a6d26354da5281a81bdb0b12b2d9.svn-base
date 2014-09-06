@@ -1,0 +1,124 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+#define IMAGEPLUS_TOOL_CONFIG_NAME  prlview
+#define IMAGEPLUS_TOOL_CONFIG_GROUP viewers
+
+
+#ifndef WIN32
+
+# include <stdlib.h>
+
+
+#include <imageplus/toolbox/tool_config.hpp>
+
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+#include <imageplus/segmentation/false_color.hpp>
+#include <imageplus/math/statistics/multiarray_statistics.hpp>
+
+#include <boost/filesystem.hpp>
+#include <boost/format.hpp>
+
+#include <iostream>
+
+
+using namespace std;
+using namespace imageplus;
+
+namespace is = imageplus::segmentation;
+namespace ims = imageplus::math::statistics;
+
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+
+    "Display PRL image\n";
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+    "This tool reads a partition in PRL and displays it in 8 bits gray-level or 24 bits false color. \n" +
+    "Display is done using an external image viewer such as XV of ImageMagick's display\n"+
+    "If the partition has more than 256 regions, 24 bit false color is used.\n";
+
+
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+    // my arguments
+    std::string filename_in_prl;
+    bool false_color;
+    std::string display_program;
+
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+    display_program = "xv";
+    false_color = false;
+
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+    IMAGEPLUS_TOOL_CONFIG_OPTION_ABV( display_program     , "External program used to display the image (xv, display, ...)", 'p' );
+
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+    IMAGEPLUS_TOOL_CONFIG_FLAG_ABV( false_color     , "Display in false color?", 'f' );
+
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    // add arguments in the desired order
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( filename_in_prl  , "Input image in PRL" );
+
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    IMAGEPLUS_TOOL_CONFIG_READ( filename_in_prl   );
+    IMAGEPLUS_TOOL_CONFIG_READ( display_program  );
+    IMAGEPLUS_TOOL_CONFIG_READ( false_color  );
+
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{
+    io::ReadImage ri(cfg.filename_in_prl);
+    ImagePartition<uint32> temp_part;
+    ri >> temp_part;
+
+    ImageRGB<uint8> out(temp_part.size_x(), temp_part.size_y());
+
+    uint64 num_regs = ims::maxval(temp_part(PARTITION_CHANNEL));
+
+    if (num_regs > 255 || cfg.false_color)
+    {
+        out = is::false_color (temp_part);
+    }
+    else
+    {
+        out(RED_CHANNEL)   = convert<uint8>( temp_part(PARTITION_CHANNEL) );
+        out(GREEN_CHANNEL) = convert<uint8>( temp_part(PARTITION_CHANNEL) );
+        out(BLUE_CHANNEL)  = convert<uint8>( temp_part(PARTITION_CHANNEL) );
+    }
+
+    char tmpname[] = "/tmp/viewprl_XXXXXX";
+    int id = mkstemp (tmpname);
+    close(id);
+
+    std::string outname = boost::str (boost::format ("%s.png") % tmpname );
+
+    io::WriteImage wi(outname);
+    wi << out;
+
+
+    std::string command_name = boost::str (boost::format ("%s %s&") % cfg.display_program % outname );
+    system ( command_name.c_str() );
+
+    return 0;
+}
+
+IMAGEPLUS_TOOL_CONFIG_END()
+
+#else //WIN32
+
+#include <iostream>
+
+int main(int argc, char* argv[])
+{
+    std::cout << "Application only available under Linux" << std::endl;
+}
+
+#endif // WIN32

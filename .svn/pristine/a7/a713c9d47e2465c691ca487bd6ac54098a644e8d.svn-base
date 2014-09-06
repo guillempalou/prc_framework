@@ -1,0 +1,214 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file color/auxiliar.test
+//!
+//! Tests for color auxiliar descriptors 
+//!
+#include <imageplus/core.hpp>
+#include <imageplus/descriptors/color/auxiliar.hpp> 
+
+BOOST_AUTO_TEST_SUITE ( Descriptors_Colors_Auxiliar_Suite );
+
+using namespace imageplus;
+using namespace descriptors;
+
+BOOST_AUTO_TEST_CASE( ColorVolume_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;
+    my_im_part[0][1] = 25;
+    my_im_part[0][2] = 10;
+    my_im_part[1][0] = 12;
+    my_im_part[1][1] = 10;
+    my_im_part[1][2] = 10;
+    my_im_part[2][0] = 3;
+    my_im_part[2][1] = 3;
+    my_im_part[2][2] = 2;
+    
+    ImageRGB<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(1) = 2;
+    my_image(2) = 3;
+    my_image(0)[0][0] = 25;
+    my_image(0)[2][0] = 2;
+    my_image(0)[1][2] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(2, 3, 26, my_part);
+    merge_regions(10, 26, 27, my_part);
+    merge_regions(25, 12, 30, my_part);
+    
+    const ColorVolume<ImageRGB<uint8> >& desc = calc_descriptor(new ColorVolume<ImageRGB<uint8> >(), my_image, my_part[30]);
+    
+    boost::array<uint64, ImageRGB<uint8>::channels> exact_value;  
+    
+    exact_value[0]=27;
+    exact_value[1]=6;
+    exact_value[2]=9;
+
+    BOOST_CHECK( desc == exact_value);
+    
+    exact_value[0]=39;
+    exact_value[1]=18;
+    exact_value[2]=27;
+    
+    const ColorVolume<ImageRGB<uint8> >& desc2 = calc_descriptor(new ColorVolume<ImageRGB<uint8> >(), my_image);
+    BOOST_CHECK( desc2 == exact_value);
+}
+
+
+
+BOOST_AUTO_TEST_CASE( ColorVolume_with_CollaborativeDescriptors_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;
+    my_im_part[0][1] = 25;
+    my_im_part[0][2] = 10;
+    my_im_part[1][0] = 12;
+    my_im_part[1][1] = 10;
+    my_im_part[1][2] = 10;
+    my_im_part[2][0] = 3;
+    my_im_part[2][1] = 3;
+    my_im_part[2][2] = 2;
+   
+    ImageRGB<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(1) = 2;
+    my_image(2) = 3;
+    my_image(0)[0][0] = 25;
+    my_image(0)[2][0] = 2;
+    my_image(0)[1][2] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(2, 3, 26, my_part);
+    merge_regions(10, 26, 27, my_part);
+    merge_regions(25, 12, 30, my_part);
+    
+    CollaborativeDescriptors desc_son1, desc_son2;
+    desc_son1.calculate(new ColorVolume<ImageRGB<uint8> >(), my_image.colors_begin(my_part[2]), my_image.colors_end(my_part[2]));
+    desc_son2.calculate(new ColorVolume<ImageRGB<uint8> >(), my_image.colors_begin(my_part[3]), my_image.colors_end(my_part[3]));
+    
+    ColorVolume<ImageRGB<uint8> > desc;
+    desc.recursive_calculate(desc_son1, desc_son2, &(my_image.coll_vd()));
+    
+    boost::array<uint64,  ImageRGB<uint8>::channels> exact_value;  
+    
+    exact_value[0]=4;
+    exact_value[1]=6;
+    exact_value[2]=9;
+    BOOST_CHECK( desc == exact_value);
+}
+
+
+
+
+BOOST_AUTO_TEST_CASE( SquaredColorVolume_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;
+    my_im_part[0][1] = 25;
+    my_im_part[0][2] = 10;
+    my_im_part[1][0] = 12;
+    my_im_part[1][1] = 10;
+    my_im_part[1][2] = 10;
+    my_im_part[2][0] = 3;
+    my_im_part[2][1] = 3;
+    my_im_part[2][2] = 2;
+    
+    ImageRGB<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(1) = 2;
+    my_image(2) = 3;
+    my_image(0)[0][0] = 25;
+    my_image(0)[2][0] = 2;
+    my_image(0)[1][2] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(2, 3, 26, my_part);
+    merge_regions(10, 26, 27, my_part);
+    merge_regions(25, 12, 30, my_part);    
+    const SquaredColorVolume<ImageRGB<uint8> >& desc = calc_descriptor(new SquaredColorVolume<ImageRGB<uint8> >(), my_image, my_part[30]);
+    
+    boost::array<uint64,  ImageRGB<uint8>::channels> exact_value;  
+    
+    exact_value[0]=627;
+    exact_value[1]=12;
+    exact_value[2]=27;
+
+    BOOST_CHECK( desc == exact_value);
+    
+    exact_value[0]=671;
+    exact_value[1]=36;
+    exact_value[2]=81;
+    
+    const SquaredColorVolume<ImageRGB<uint8> >& desc2 = calc_descriptor(new SquaredColorVolume<ImageRGB<uint8> >(), my_image);
+    BOOST_CHECK( desc2 == exact_value);
+}
+
+BOOST_AUTO_TEST_CASE( SquaredColorVolume_with_CollaborativeDescriptors_test)
+{    
+    ImagePartition<> my_im_part(3,3);
+    my_im_part[0][0] = 25;
+    my_im_part[0][1] = 25;
+    my_im_part[0][2] = 10;
+    my_im_part[1][0] = 12;
+    my_im_part[1][1] = 10;
+    my_im_part[1][2] = 10;
+    my_im_part[2][0] = 3;
+    my_im_part[2][1] = 3;
+    my_im_part[2][2] = 2;
+    
+   
+    ImageRGB<uint8> my_image(3,3);
+    my_image(0) = 1;
+    my_image(1) = 2;
+    my_image(2) = 3;
+    my_image(0)[0][0] = 25;
+    my_image(0)[2][0] = 2;
+    my_image(0)[1][2] = 6;
+    
+    typedef ImageRGB<uint8> InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType> partition_type;
+    partition_type my_part(my_im_part);
+    
+    merge_regions(2, 3, 26, my_part);
+    merge_regions(10, 26, 27, my_part);
+    merge_regions(25, 12, 30, my_part);
+    
+    CollaborativeDescriptors desc_son1, desc_son2;
+    desc_son1.calculate(new SquaredColorVolume<ImageRGB<uint8> >(), my_image.colors_begin(my_part[2]), my_image.colors_end(my_part[2]));
+    desc_son2.calculate(new SquaredColorVolume<ImageRGB<uint8> >(), my_image.colors_begin(my_part[3]), my_image.colors_end(my_part[3]));
+     
+    SquaredColorVolume<ImageRGB<uint8> > desc;
+    desc.recursive_calculate(desc_son1, desc_son2, &(my_image.coll_vd()));
+    
+    boost::array<uint64,  ImageRGB<uint8>::channels> exact_value;  
+    
+    exact_value[0]=6;
+    exact_value[1]=12;
+    exact_value[2]=27;
+    
+    BOOST_CHECK( desc == exact_value);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+
+

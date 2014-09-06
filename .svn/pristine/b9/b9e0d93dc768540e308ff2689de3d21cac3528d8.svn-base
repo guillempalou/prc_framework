@@ -1,0 +1,47 @@
+/*!
+\page structure ImagePlus Structure
+
+The contents of ImagePlus are structured in a different directories containing different types of files:
+- \ref modules
+- \ref files
+
+\section modules Directories: Modules and Namespaces
+
+ImagePlus is divided into several modules based on functionality:
+\ref imageplus::math "math", \ref imageplus::multiview "multiview"... \n
+Some of them also have submodules: \ref imageplus::math::geometry "math::geometry", \ref imageplus::math::statistics "math::statistics"...
+  
+Each (sub)module has its own (sub)namespace and (sub)directory.\n
+For a complete list, check your \c include/imageplus or \c modules directories, or see the 
+<a class="el" href="namespaces.html">list of all namespaces (i.e. modules)</a> in this documentation (always accessible using the above navigation menu).
+ 
+The basic and main namespace is \c %imageplus, i.e., \ref imageplus "the namespace of the core module", and the parent namespace of the rest of the modules.
+In the next section we will take a closer look to this \c core module. \n
+
+At the end of the list of namespaces you can also see the \ref tools, i.e, the command-line applications of the ImagePlus platform.\n
+Note that the 99% of the code must be placed in the \c modules, not in the \c %tools. \n
+The %tools are as simple as possible \c main functions. In coming sections we discuss about %tools.  
+
+
+\section files Files: Headers, Implementations, Tests and Tools 
+
+If you browse inside the \c include and \c modules directories you will found three types of files extensions:
+
+- \c .hpp: 
+  - Header files with classes and functions declarations, and the Doxygen documentation (\c include directory)
+- \c .cpp: 
+  - Implementation files with the classes and functions definitions, i.e. the algorithms code. (\c modules directory)
+  - Applications, i.e. the \c main function (\c tools and \c dev directories)
+- \c .test: 
+  - Validation tests files, with test cases to check the correct behavior of the classes and functions 
+    (\c test directory)  
+
+All of them are C++ code, so it is recommended to instruct your IDE to interpret a .test file as C++ code.
+
+As you will see, the limitations of the Generic Programming with C++ makes that some code must be write directly 
+to the \c .hpp files instead of the \c .cpp, however this practice must be avoided as much as possible. \n
+
+We will discuss later about how to create tests and tools.
+The ImagePlus applications (i.e. the tools) are basically .cpp files following a specific structure (see \ref ToolConfigMacros).  
+We will talk later about the \ref validation "validation system".
+*/

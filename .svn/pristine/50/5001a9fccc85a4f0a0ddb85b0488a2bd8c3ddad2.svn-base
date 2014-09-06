@@ -1,0 +1,447 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file client_config.hpp
+//!
+//!  Definition of ToolConfig class, to be used in tools
+//!
+
+/*! \cond SKIP_DOC */
+
+#ifndef IMAGEPLUS_TOOLBOX_CLIENT_CONFIG_HPP
+#define IMAGEPLUS_TOOLBOX_CLIENT_CONFIG_HPP
+
+#include<imageplus/toolbox/tool_config.hpp>
+#include<imageplus/toolbox/client.hpp>
+
+
+/*
+ * For the ASYNC mode
+ */
+#include <boost/thread/thread.hpp>
+#include <imageplus/toolbox/circular_sync_buffer.hpp>
+
+
+namespace imageplus
+{
+    namespace toolbox
+    {
+        static volatile bool running = true;
+
+        typedef SFC::VideoOutputFlow* VideoOutputFlow;
+        typedef SFC::VideoInputFlow*  VideoInputFlow;
+        typedef SFC::DataOutputFlow* DataOutputFlow;
+        typedef SFC::DataInputFlow*  DataInputFlow;
+        
+        typedef SFC::VideoOutputFlow* VideoOutputFlowPtr;
+        typedef SFC::VideoInputFlow*  VideoInputFlowPtr;
+//        typedef SFC::VideoMetadata    VideoMetadata;
+//        typedef SFC::BufferOut        BufferOut;
+
+        typedef SFC::DataOutputFlow* DataOutputFlowPtr;
+        typedef SFC::DataInputFlow*  DataInputFlowPtr;
+
+        class ClientConfig : public ToolConfig
+        {
+        public:
+            typedef SFC::VideoOutputFlow* VideoOutputFlow;
+            typedef SFC::VideoInputFlow*  VideoInputFlow;
+            typedef SFC::VideoMetadata    VideoMetadata;
+            typedef SFC::BufferOut        BufferOut;
+
+            typedef SFC::DataOutputFlow* DataOutputFlow;
+            typedef SFC::DataInputFlow*  DataInputFlow;
+            
+            static void kill_callback(int x) 
+            {
+                running = false;
+            };
+    
+        protected:
+            
+            //!
+            //! \brief Basic contructor.
+            //!
+            //! \param clientname     : The name of the client
+            //! \param brief        : Brief for the client functionality 
+            //! \param description  : A complete description of what the tool does
+            //!
+            ClientConfig(const std::string& clientname, const std::string& brief, const std::string& description )
+                    : ToolConfig(clientname, brief, description), _client(new SFC::Client(clientname)) {}
+
+            //!
+            //! \brief This method adds an option to be read from command line or config file.
+            //!
+            //! This method adds a configuration option.
+            //! Options can be specified from the comman line or in a config file.
+            //! In the command line the options can be spcified with its name (--option) or with its abreviature (-o)
+            //! The option value can be specified in two ways:
+            //! "--option=value" or "--option value"
+            //!
+            //! Abreviature options can be specified together (-o -k -f == -okf)
+            //! Bool options are treated as flags (without arguments after the option)
+            //!
+            //! \param default_value    : The default value for the option
+            //! \param name             : The name of the option. This name is the same name used in <tt>read</tt> method
+            //! \param description      : Description of the option
+            //! \param abv              : Option abreviature
+            //!
+            template<typename T> 
+            void add_flow_in(T default_value, const std::string name, const std::string description, const char abv = ' ');
+            
+            //! 
+            //! \brief This method reads the command line and the config file and store the values in an internal map.
+            //!
+            //! This method basically reads the command line and the config file and store the values in an internal map.
+            //! After this method is call you can call the <tt>read</tt> method to get the values readed.    
+            //!
+            //! If the <tt>--help</tt> or <tt>--version</tt> options are found, they are processed and the tool is finished with 0.
+            //!
+            //! Also if an error is detected it is printed out and the application is finished with 1. Some errors are: 
+            //! invalid arguments and options, wrong number of arguments, wrong value options...
+            //!
+            //! \param[in] argc : The number of arguments passed
+            //! \param[in] argv : An array with all arguments passed
+            //!
+            void configure(int argc, char* argv[])
+            {
+                return ToolConfig::configure(argc, argv);
+            }
+            
+            
+        public:
+            
+            //SFC::Client* _client;
+            boost::shared_ptr<SFC::Client> _client;
+            
+        };
+    }
+}
+
+//!
+//! \defgroup ToolConfigMacros TOOL_CONFIG_MACROS
+//!
+//! TOOL_CONFIG_MACROS are a set of preprocessor macros to help the configuration
+//! of any tool. They are based in the ToolConfig class, and their goal is to help you 
+//! to use the ToolConfig class in the best, and easier way.
+//!
+//! Here you can see a simple, but complete, example of how to create a tool unsing 
+//! the TOOL_CONFIG_MACROS.
+//!
+//! This example contains the fully commented source code of a tool, 
+//! and the results of executing the tool with different parameters at the end.
+//!
+//! Source code of the tool example:
+//! \include tool_config_example.cpp
+//!
+//! Results of running the above example with diferent parameters:
+//! \include tool_config_example.log
+//!
+
+//////////////////// TOOL_CONFIG_MACROS /////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////
+
+#ifndef IMAGEPLUS_CLIENT_CONFIG_GROUP
+    //!
+    //! \def IMAGEPLUS_CLIENT_CONFIG_BRIEF() 
+    //! 
+    //! \ingroup ToolConfigMacros
+    //!
+    #define IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()                       \
+    namespace clients{}                                                 \
+    using namespace clients;                                            \
+                                                                        \
+    namespace clients                                                   \
+    {                                                                   \
+        static const string IMAGEPLUS_CLIENT_CONFIG_NAME = (string)
+
+        
+/////////////////////////////////////////////////////////////////////////
+    
+    //!
+    //! \def IMAGEPLUS_CLIENT_CONFIG_PARAMETERS() 
+    //! 
+    //! \ingroup ToolConfigMacros
+    //!
+    #define IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()                        \
+                                                                        \
+    }                                                                   \
+    /*! \cond SKIP_DOC */                                               \
+    class MyClientConfig : public imageplus::toolbox::ClientConfig      \
+    {                                                                   \
+    public:                                                             \
+
+
+#else //ifdef IMAGEPLUS_CLIENT_CONFIG_GROUP 
+
+    #define IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()                       \
+                                                                        \
+    namespace clients                                                   \
+    {                                                                   \
+        namespace IMAGEPLUS_CLIENT_CONFIG_GROUP                         \
+        {                                                               \
+        }                                                               \
+    }                                                                   \
+    using namespace clients::IMAGEPLUS_CLIENT_CONFIG_GROUP;             \
+    namespace clients                                                   \
+    {                                                                   \
+        namespace IMAGEPLUS_CLIENT_CONFIG_GROUP                         \
+        {                                                               \
+            static const string IMAGEPLUS_CLIENT_CONFIG_NAME = (string)
+    
+/////////////////////////////////////////////////////////////////////////
+    
+    #define IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()                        \
+                                                                        \
+    } }                                                                 \
+    /*! \cond SKIP_DOC */                                               \
+    class MyClientConfig : public imageplus::toolbox::ClientConfig      \
+    {                                                                   \
+    public:                                                             \
+
+
+#endif //ifndef IMAGEPLUS_CLIENT_CONFIG_GROUP
+
+/////////////////////////////////////////////////////////////////////////
+
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_BRIEF() static const string BRIEF = (string)
+
+
+/////////////////////////////////////////////////////////////////////////
+
+#ifndef IMAGEPLUS_CLIENT_CONFIG_ASYNC
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+//! FOR BOOST 1.37 we can replace
+//!
+//! boost::filesystem::basename(boost::filesystem::path( argv[0]) )
+//! for
+//! boost::filesystem::path(argv[0]).filename()         
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()                        \
+                                                                        \
+    MyClientConfig(int argc, char* argv[]) :                            \
+        ClientConfig( boost::filesystem::basename(                      \
+                    boost::filesystem::path( argv[0]) ),                \
+                    BRIEF,                                              \
+                    IMAGEPLUS_CLIENT_CONFIG_NAME)                       \
+    {                                                                   \
+        
+#else
+
+#define IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()                        \
+    };                                                                  \
+    MyClientConfig(int argc, char* argv[]) :                            \
+        ClientConfig( boost::filesystem::basename(                      \
+                    boost::filesystem::path( argv[0]) ),                \
+                    BRIEF,                                              \
+                    IMAGEPLUS_CLIENT_CONFIG_NAME)                       \
+    {                                                                   \
+
+#endif //ASYNC
+
+/////////////////////////////////////////////////////////////////////////
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_OPTIONS() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_OPTIONS()
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_FLAGS() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_FLAGS()
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS()
+
+/////////////////////////////////////////////////////////////////////////
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_FLOWS() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_FLOWS()
+
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS()                       \
+                                                                        \
+    _client->setCtrlCHandler( ClientConfig::kill_callback );             \
+    _client->initClient(&argc, argv);                                    \
+    _client->initInputFlows();                                           \
+    configure(argc, argv);                                              \
+
+/////////////////////////////////////////////////////////////////////////
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_METADATAS() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#ifndef IMAGEPLUS_CLIENT_CONFIG_ASYNC
+#define IMAGEPLUS_CLIENT_CONFIG_METADATAS()                             \
+    }                                                                   \
+};                                                                      \
+                                                                        \
+using namespace SFC;                                                    \
+                                                                        \
+int main(int argc, char** argv)                                         \
+{                                                                       \
+    try {                                                               \
+        MyClientConfig cfg(argc, argv);                                 \
+
+#else // ASYNC
+
+#define IMAGEPLUS_CLIENT_CONFIG_METADATAS()                             \
+    }                                                                   \
+};                                                                      \
+                                                                        \
+using namespace SFC;                                                    \
+                                                                        \
+int main(int argc, char** argv)                                         \
+{                                                                       \
+    try {                                                               \
+        MyClientConfig cfg(argc, argv);                                 \
+        MyClientConfig::AsyncProcess<MyClientConfig> app( cfg );        \
+
+#endif
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_MAIN() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_MAIN()                                  \
+                                                                        \
+        cfg._client->initOutputFlows();                                  \
+
+
+
+//!
+//! \def IMAGEPLUS_CLIENT_CONFIG_END() 
+//! 
+//! \ingroup ToolConfigMacros
+//!
+#define IMAGEPLUS_CLIENT_CONFIG_END()                                   \
+    }                                                                   \
+    catch( const SFC::FatalException& e ) {                             \
+        std::cerr << e.what() << std::endl;                             \
+        return(1);                                                      \
+    }                                                                   \
+    catch( const SFC::Exception& e ) {                                  \
+        std::cerr << e.what() << std::endl;                             \
+        return(1);                                                      \
+    }                                                                   \
+    catch( const std::exception& e ) {                                  \
+        std::cerr << e.what() << std::endl;                             \
+        return(1);                                                      \
+    }                                                                   \
+    return 0;                                                           \
+/*! \endcond */                                                         \
+}                                                                       \
+
+/////////////////////////////////////////////////////////////////////////
+    
+#define IMAGEPLUS_CLIENT_CONFIG_READ(var) read(#var, var);
+
+/////////////////////////////////////////////////////////////////////////
+
+#define CLIENT_CONFIG_OPTION(var, msg)            add_option   ( var , #var , (string)msg        ); 
+#define CLIENT_CONFIG_OPTION_ABV(var, msg, abv)   add_option   ( var , #var , (string)msg, abv   );
+#define CLIENT_CONFIG_FLAG(var, msg)              add_flag     ( var , #var , (string)msg        ); 
+#define CLIENT_CONFIG_FLAG_ABV(var, msg, abv)     add_flag     ( var , #var , (string)msg, abv   );
+#define CLIENT_CONFIG_ARGUMENT(var, msg)          add_argument ( var , #var , (string)msg        ); 
+//#define CLIENT_CONFIG_ARGUMENT_OPTIONAL(var, msg) add_argument ( var , #var , msg, false );
+
+
+//TODO: convert 10 into a parameter?
+#define CLIENT_CONFIG_VIDEO_IN(var)                 var  = _client->addVideoIn( #var, 10);
+#define CLIENT_CONFIG_VIDEO_OUT(var)                var  = _client->addVideoOut( #var );
+
+#define CLIENT_CONFIG_DATA_OUT(var, datatype)       var  = _client->addDataOut< datatype > ( #var );
+#define CLIENT_CONFIG_DATA_IN(var, datatype)        var  = _client->addDataIn< datatype >  ( #var, 10 );
+
+#define CLIENT_CONFIG_SET_METADATA(flow, metadata) flow->setMetadata( metadata );
+
+#define CLIENT_CONFIG_GET_METADATA(flowname)        SFC::VideoMetadata  flowname_metadata = flowname->getMetadata();
+
+#define CLIENT_CONFIG_WHILE_RUNNING()               while(imageplus::toolbox::running)
+
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC_VARIABLES()    \
+    template< class ConfigClientT >                  \
+    class AsyncProcess                               \
+    {                                                \
+    public: /* to be able to use it for metadatas */ \
+        ConfigClientT       cfg;                     \
+        boost::thread_group thgrp;                   \
+
+
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC_DEFAULT_VALUES()  \
+    public:                                        \
+    AsyncProcess( ConfigClientT& cfg_ )            \
+    :   cfg(cfg_)                                  \
+    {                                              \
+
+
+#define IMAGEPLUS_CLIENT_CONFIG_APP_DESTRUCTOR() \
+    }                                            \
+    ~AsyncProcess()                              \
+    {                                            \
+
+
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREADS_LIST()       \
+    } void join(){ thgrp.join_all();            \
+    } void run() {                              \
+
+
+//#define IMAGEPLUS_CLIENT_CONFIG_APP_JOIN()    } void join() {
+
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREADS_IMPLEMENTATION()   \
+    }private:                                    \
+
+
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC_START()                   \
+    cfg._client->initOutputFlows();                             \
+    {                                                           \
+    app.run();                                                  \
+    app.join();                                                 \
+    return (0);                                                 \
+    }                                                           \
+
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( th_name ) thgrp.add_thread(new boost::thread( boost::bind(&AsyncProcess::th_name, this )));
+
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( th_name ) void th_name()
+
+/////////////////////////////////////////////////////////////////////////
+
+    
+#endif // IMAGEPLUS_CORE_CLIENT_CONFIG_HPP
+
+/*! \endcond */

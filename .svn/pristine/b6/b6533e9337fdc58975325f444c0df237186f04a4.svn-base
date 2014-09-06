@@ -1,0 +1,137 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+//!
+//!  \file readroom.hpp
+//!
+//!  Interface for the ReadRoom class. Class for input operations involving volume files.
+//!
+#ifndef IMAGEPLUS_IO_READROOM_HPP
+#define IMAGEPLUS_IO_READROOM_HPP
+
+
+
+#include <imageplus/core.hpp>
+#include <imageplus/compress/rle.hpp>
+
+#include <string>
+
+namespace imageplus
+{
+
+    namespace io
+    {
+        //! \brief File Header
+        //!
+        //! Most of the current volume sequences use a header to determine volume parameters
+        //!
+        typedef struct fileheader
+        {
+            //! \brief Number of voxels in the X axis
+            uint16 cubes_x;
+            //! \brief Number of voxels in the Y axis
+            uint16 cubes_y;
+            //! \brief Number of voxels in the Z axis
+            uint16 cubes_z;
+            //! \brief Size of the Voxel (cm)
+            float32 voxel_size;
+            //! \brief Size of data type in file
+            uint16 data_size;
+            //! \brief Flag for Regions of Interest. Deprecated in Imageplus, but present in files.
+            bool use_ROI;
+            //! \brief Representation Offset
+            float32 offset_x;
+            //! \brief Representation Offset
+            float32 offset_y;
+            //! \brief Representation Offset
+            float32 offset_z;
+
+        } fileheader;
+
+        //!
+        //! \brief Base class for Room files reading
+        //!
+        //! \author Ramon Morros <morros@gps.tsc.upc.es>
+        //! \author Adolfo López Méndez <alopez@gps.tsc.upc.es>
+        //! \author Cristian Canton <ccanton@gps.tsc.upc.es>
+        //!
+        //! \date 11-2-2008
+        //!
+        //! This class is based in GPI's volume file format. Its methods allow a user
+        //! to read from RLE compressed files, by using a pointer to multi_array data.
+        //! A struct header has been provided in order to preserve compatibility with test sequences.
+        //!
+        class ReadRoom
+        {
+
+            public:
+                //! \brief File constructor,
+                //!
+                //! creates a ReadRoom with unspecified filename.
+                //!
+                ReadRoom();
+                //! \brief File constructor,
+                //!
+                //! creates a ReadRoom with an specified filename.
+                //!
+                //! \param[in] filename : File containing a volume.
+                explicit ReadRoom( const std::string& filename );
+                //! \brief Destructor
+                ~ReadRoom();
+                //! \brief File open
+                //!
+                //! Opens a file and changes the filename of the class.
+                //!
+                //! \param[in] filename : File containing a volume.
+                void open( const std::string& filename );
+                //!
+                //! \brief Reads a file containing a Color volume
+                //!
+                //! \param[in] r : Room with Color Volume to write in file
+                //!
+                template<typename T>
+                void operator>>( Room<T,3>& r) const;
+                //!
+                //! \brief Reads a file containing a Gray Room
+                //!
+                //! \param[in] r : Room with Gray Volume to write file data
+                //!
+                template<typename T>
+                void operator>>( Room<T,1>& r) const;
+
+                //!
+                //! \brief Reads a file stored with RLEV2 format
+                //!
+                //! \param[in] r : Room with Gray Volume to write file data
+                //!
+                template<typename T>
+                void read_rle_v2( Room<T,1>& r) const;
+
+            private:
+                //!
+                //! \brief Copy constructor
+                //!
+                //! \param[in] rvol : Class to copy.
+                //!
+                ReadRoom( const ReadRoom& rvol);
+
+                //!
+                //! \brief Assignment operator for ReadRoom.
+                //!
+                //! \param[in] rvol : Class to assign.
+                //!
+                //! \return rvol, to concatenate
+                //!
+                const ReadRoom& operator=( const ReadRoom& rvol);
+
+                //! string storing the file route
+                std::string _filename;
+
+        };
+
+    }//names io
+} //namespace ImagePlus
+
+
+#endif /*READROOM_HPP_*/

@@ -1,0 +1,301 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file mask.test
+//!
+//! Tests for mask descriptors 
+//!
+
+#include <imageplus/core/mask.hpp>
+#include <imageplus/core/imagepartition.hpp>
+#include <imageplus/core/imagergb.hpp>
+#include <imageplus/core/region_contour.hpp>
+
+#include <imageplus/core/partition.hpp>
+#include <imageplus/core/partition_functions.hpp>
+
+BOOST_AUTO_TEST_SUITE ( Core_Mask_Suite );
+
+using namespace imageplus;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE( Mask_test)
+{   
+    ImagePartition<> my_im_part(6,5);
+    my_im_part[0][0] = 3;    my_im_part[1][0] = 3;    my_im_part[2][0] = 6;    my_im_part[3][0] = 6;    my_im_part[4][0] = 6;    my_im_part[5][0] = 6;
+    my_im_part[0][1] = 3;    my_im_part[1][1] = 5;    my_im_part[2][1] = 5;    my_im_part[3][1] = 5;    my_im_part[4][1] = 2;    my_im_part[5][1] = 2;
+    my_im_part[0][2] = 5;    my_im_part[1][2] = 5;    my_im_part[2][2] = 5;    my_im_part[3][2] = 5;    my_im_part[4][2] = 5;    my_im_part[5][2] = 2;
+    my_im_part[0][3] = 4;    my_im_part[1][3] = 5;    my_im_part[2][3] = 5;    my_im_part[3][3] = 5;    my_im_part[4][3] = 2;    my_im_part[5][3] = 2;
+    my_im_part[0][4] = 4;    my_im_part[1][4] = 4;    my_im_part[2][4] = 1;    my_im_part[3][4] = 1;    my_im_part[4][4] = 1;    my_im_part[5][4] = 7;
+    
+    ImageRGB<uint8> my_image(6,5);
+    
+    typedef ImageRGB<uint8>                InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType>          partition_type;
+    
+    partition_type my_part(my_im_part);
+    
+    //const Mask<Coord2D<int64> >& desc = calc_descriptor(new Mask<Coord2D<int64> >(), my_image, my_part[5]);
+    imageplus::Mask<Coord2D<int64> > desc = calc_descriptor(new imageplus::Mask<Coord2D<int64> >(), my_image, my_part[5]);
+    
+    ImaVolMask<2> mask(5,3);
+    mask[1][0] = true;
+    mask[2][0] = true;
+    mask[3][0] = true;
+    mask[0][1] = true;
+    mask[1][1] = true;
+    mask[2][1] = true;
+    mask[3][1] = true;
+    mask[4][1] = true;
+    mask[1][2] = true;
+    mask[2][2] = true;
+    mask[3][2] = true;
+    
+    BOOST_CHECK( desc(MASK_CHANNEL) == mask(MASK_CHANNEL));
+    BOOST_CHECK_EQUAL(desc.id(), "Mask");
+    
+    // Check that the coords are kept
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(2,3)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(3,3)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(4,3)) == false);
+    
+    BOOST_CHECK( desc(MASK_CHANNEL)[2][3] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[3][3] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[4][3] == false);
+
+}
+
+BOOST_AUTO_TEST_CASE( Mask_global_test)
+{   
+    ImagePartition<> my_im_part(6,5);
+    my_im_part[0][0] = 3;    my_im_part[1][0] = 3;    my_im_part[2][0] = 6;    my_im_part[3][0] = 6;    my_im_part[4][0] = 6;    my_im_part[5][0] = 6;
+    my_im_part[0][1] = 3;    my_im_part[1][1] = 5;    my_im_part[2][1] = 5;    my_im_part[3][1] = 5;    my_im_part[4][1] = 2;    my_im_part[5][1] = 2;
+    my_im_part[0][2] = 5;    my_im_part[1][2] = 5;    my_im_part[2][2] = 5;    my_im_part[3][2] = 5;    my_im_part[4][2] = 5;    my_im_part[5][2] = 2;
+    my_im_part[0][3] = 4;    my_im_part[1][3] = 5;    my_im_part[2][3] = 5;    my_im_part[3][3] = 5;    my_im_part[4][3] = 2;    my_im_part[5][3] = 2;
+    my_im_part[0][4] = 4;    my_im_part[1][4] = 4;    my_im_part[2][4] = 1;    my_im_part[3][4] = 1;    my_im_part[4][4] = 1;    my_im_part[5][4] = 7;
+    
+    ImageRGB<uint8> my_image(6,5);
+    
+    typedef ImageRGB<uint8>                InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType>          partition_type;
+    
+    partition_type my_part(my_im_part);
+
+    imageplus::Mask<Coord2D<int64> > desc = calc_descriptor(new imageplus::Mask<Coord2D<int64> >(true), my_image, my_part[5]);
+    
+    ImaVolMask<2> mask(6,5);
+    mask[1][1] = true;
+    mask[2][1] = true;
+    mask[3][1] = true;
+    mask[0][2] = true;
+    mask[1][2] = true;
+    mask[2][2] = true;
+    mask[3][2] = true;
+    mask[4][2] = true;
+    mask[1][3] = true;
+    mask[2][3] = true;
+    mask[3][3] = true;
+    
+    BOOST_CHECK( desc(MASK_CHANNEL) == mask(MASK_CHANNEL));
+    
+    BOOST_CHECK_EQUAL(desc.id(), "Mask_global");
+    
+    // Check that the coords are kept
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(2,3)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(3,3)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(4,3)) == false);
+    
+    BOOST_CHECK( desc(MASK_CHANNEL)[2][3] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[3][3] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[4][3] == false);
+}
+
+BOOST_AUTO_TEST_CASE( ImavolMask_with_border_test )
+{   
+    ImageRGB<uint8> my_image(2,2);
+      
+    RegionContour<Coord2D<int64> > my_reg;
+    my_reg.push_back(Coord2D<int64>(1,0));
+    my_reg.push_back(Coord2D<int64>(1,1));
+    
+    Coord2D<int64> borders2d;
+    borders2d[0] = 2;
+    borders2d[1] = 1;
+    imageplus::Mask<Coord2D<int64> > desc = calc_descriptor(new imageplus::Mask<Coord2D<int64> >(borders2d), my_image, my_reg);
+    
+    ImaVolMask<2> mask(5,4);
+    mask[2][1] = true;
+    mask[2][2] = true;
+    
+    BOOST_CHECK( desc(0) == mask(0));
+    
+    BOOST_CHECK_EQUAL(desc.id(), "Mask_2_1");
+    
+    //// Iterators
+    imageplus::Mask<Coord2D<int64> >::position_iterator pos_it = desc.begin();
+    imageplus::Mask<Coord2D<int64> >::position_iterator pos_it_end = desc.end();
+    
+    BOOST_CHECK(*pos_it == Coord2D<int64>(1,0));
+    ++pos_it;
+    BOOST_CHECK(*pos_it == Coord2D<int64>(1,1));
+    ++pos_it;
+    BOOST_CHECK(pos_it==pos_it_end);
+    
+    // Check that the coords are kept
+    BOOST_CHECK( desc(MASK_CHANNEL)(Coord2D<int64>(-1,-1)) == false);
+    BOOST_CHECK( desc(MASK_CHANNEL)(Coord2D<int64>( 3, 2)) == false);
+    BOOST_CHECK( desc(MASK_CHANNEL)(Coord2D<int64>( 1, 0)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(Coord2D<int64>( 1, 1)) == true);
+    
+    
+    BOOST_CHECK( desc(MASK_CHANNEL)[-1][-1] == false);
+    BOOST_CHECK( desc(MASK_CHANNEL)[ 3][ 2] == false);
+    BOOST_CHECK( desc(MASK_CHANNEL)[ 1][ 0] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[ 1][ 1] == true);
+}
+
+
+BOOST_AUTO_TEST_CASE( Mask_with_border_test)
+{   
+    ImagePartition<> my_im_part(6,5);
+    my_im_part[0][0] = 3;    my_im_part[1][0] = 3;    my_im_part[2][0] = 6;    my_im_part[3][0] = 6;    my_im_part[4][0] = 6;    my_im_part[5][0] = 6;
+    my_im_part[0][1] = 3;    my_im_part[1][1] = 5;    my_im_part[2][1] = 5;    my_im_part[3][1] = 5;    my_im_part[4][1] = 2;    my_im_part[5][1] = 2;
+    my_im_part[0][2] = 5;    my_im_part[1][2] = 5;    my_im_part[2][2] = 5;    my_im_part[3][2] = 5;    my_im_part[4][2] = 5;    my_im_part[5][2] = 2;
+    my_im_part[0][3] = 4;    my_im_part[1][3] = 5;    my_im_part[2][3] = 5;    my_im_part[3][3] = 5;    my_im_part[4][3] = 2;    my_im_part[5][3] = 2;
+    my_im_part[0][4] = 4;    my_im_part[1][4] = 4;    my_im_part[2][4] = 1;    my_im_part[3][4] = 1;    my_im_part[4][4] = 1;    my_im_part[5][4] = 7;
+
+    
+    ImageRGB<uint8> my_image(6,5);
+    
+    typedef ImageRGB<uint8>                InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType>          partition_type;
+    
+    partition_type my_part(my_im_part);
+    
+    Coord2D<int64> borders2d;
+    borders2d[0] = 2;
+    borders2d[1] = 1;
+    imageplus::Mask<Coord2D<int64> > desc = calc_descriptor(new imageplus::Mask<Coord2D<int64> >(borders2d), my_image, my_part[5]);
+    
+    ImaVolMask<2> mask(9,5);
+    mask[3][1] = true;
+    mask[4][1] = true;
+    mask[5][1] = true;
+    mask[2][2] = true;
+    mask[3][2] = true;
+    mask[4][2] = true;
+    mask[5][2] = true;
+    mask[6][2] = true;
+    mask[3][3] = true;
+    mask[4][3] = true;
+    mask[5][3] = true;
+    
+    BOOST_CHECK( desc(0) == mask(0));
+    
+    BOOST_CHECK_EQUAL(desc.id(), "Mask_2_1");
+    
+    // Check that the coords are kept
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(2,3)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(3,3)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(4,3)) == false);
+    
+    BOOST_CHECK( desc(MASK_CHANNEL)[2][3] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[3][3] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[4][3] == false);
+}
+
+BOOST_AUTO_TEST_CASE( Mask_global_with_border_test)
+{   
+    ImagePartition<> my_im_part(6,5);
+    my_im_part[0][0] = 3;    my_im_part[1][0] = 3;    my_im_part[2][0] = 6;    my_im_part[3][0] = 6;    my_im_part[4][0] = 6;    my_im_part[5][0] = 6;
+    my_im_part[0][1] = 3;    my_im_part[1][1] = 5;    my_im_part[2][1] = 5;    my_im_part[3][1] = 5;    my_im_part[4][1] = 2;    my_im_part[5][1] = 2;
+    my_im_part[0][2] = 5;    my_im_part[1][2] = 5;    my_im_part[2][2] = 5;    my_im_part[3][2] = 5;    my_im_part[4][2] = 5;    my_im_part[5][2] = 2;
+    my_im_part[0][3] = 4;    my_im_part[1][3] = 5;    my_im_part[2][3] = 5;    my_im_part[3][3] = 5;    my_im_part[4][3] = 2;    my_im_part[5][3] = 2;
+    my_im_part[0][4] = 4;    my_im_part[1][4] = 4;    my_im_part[2][4] = 1;    my_im_part[3][4] = 1;    my_im_part[4][4] = 1;    my_im_part[5][4] = 7;
+    
+    ImageRGB<uint8> my_image(6,5);
+    
+    typedef ImageRGB<uint8>                InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType>          partition_type;
+    
+    partition_type my_part(my_im_part);
+    
+    Coord2D<int64> borders2d;
+    borders2d[0] = 2;
+    borders2d[1] = 1;
+    imageplus::Mask<Coord2D<int64> > desc = calc_descriptor(new imageplus::Mask<Coord2D<int64> >(borders2d,true), my_image, my_part[5]);
+    
+    ImaVolMask<2> mask(10,7);
+    mask[3][2] = true;
+    mask[4][2] = true;
+    mask[5][2] = true;
+    mask[2][3] = true;
+    mask[3][3] = true;
+    mask[4][3] = true;
+    mask[5][3] = true;
+    mask[6][3] = true;
+    mask[3][4] = true;
+    mask[4][4] = true;
+    mask[5][4] = true;
+    
+    BOOST_CHECK( desc(MASK_CHANNEL) == mask(MASK_CHANNEL));
+    
+    BOOST_CHECK_EQUAL(desc.id(), "Mask_global_2_1");
+    
+    // Check that the coords are kept
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(2,3)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(3,3)) == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)(InputType::CoordType(4,3)) == false);
+    
+    BOOST_CHECK( desc(MASK_CHANNEL)[2][3] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[3][3] == true);
+    BOOST_CHECK( desc(MASK_CHANNEL)[4][3] == false);
+    
+    // Negative coords can be accessed!
+    BOOST_CHECK( desc(MASK_CHANNEL)[-2][-1] == false);
+    BOOST_CHECK( desc(MASK_CHANNEL)[-1][ 0] == false);
+    BOOST_CHECK( desc(MASK_CHANNEL)[ 5][-1] == false);
+}
+
+
+BOOST_AUTO_TEST_CASE( ContourMask_test)
+{   
+    ImagePartition<> my_im_part(6,5);
+    my_im_part[0][0] = 3;    my_im_part[1][0] = 3;    my_im_part[2][0] = 6;    my_im_part[3][0] = 6;    my_im_part[4][0] = 6;    my_im_part[5][0] = 6;
+    my_im_part[0][1] = 3;    my_im_part[1][1] = 5;    my_im_part[2][1] = 5;    my_im_part[3][1] = 5;    my_im_part[4][1] = 2;    my_im_part[5][1] = 2;
+    my_im_part[0][2] = 5;    my_im_part[1][2] = 5;    my_im_part[2][2] = 5;    my_im_part[3][2] = 5;    my_im_part[4][2] = 5;    my_im_part[5][2] = 2;
+    my_im_part[0][3] = 4;    my_im_part[1][3] = 5;    my_im_part[2][3] = 5;    my_im_part[3][3] = 5;    my_im_part[4][3] = 2;    my_im_part[5][3] = 2;
+    my_im_part[0][4] = 4;    my_im_part[1][4] = 4;    my_im_part[2][4] = 1;    my_im_part[3][4] = 1;    my_im_part[4][4] = 1;    my_im_part[5][4] = 7;
+    
+    ImageRGB<uint8> my_image(6,5);
+    
+    typedef ImageRGB<uint8>                InputType;
+    typedef RegionContour<Coord2D<int64> > RegionType;
+    typedef Partition<RegionType>          partition_type;
+    
+    partition_type my_part(my_im_part);
+    
+    const ContourMask<Coord2D<int64> >& desc = calc_descriptor(new ContourMask<Coord2D<int64> >(), my_image, my_part[5]);
+
+    ImaVolMask<2> mask(5,3);
+    mask[1][0] = true;
+    mask[2][0] = true;
+    mask[3][0] = true;
+    mask[0][1] = true;
+    mask[4][1] = true;
+    mask[1][2] = true;
+    mask[2][2] = true;
+    mask[3][2] = true;
+    
+    const ImaVolMask<2>& mask_desc = desc.value();
+    BOOST_CHECK( mask_desc(0) == mask(0));
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

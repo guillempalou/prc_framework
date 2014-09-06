@@ -1,0 +1,464 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file rectangles.test
+//!
+//! Tests for multiarray copy & paste functions
+//!
+
+#include <iostream>
+
+#include <imageplus/core.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( RectanglesSuite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list<uint8,int64,float64> DataTypes;
+typedef boost::mpl::list<uint8,int64> DataTypes2;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_copy_view, T, DataTypes)
+{
+    // 1D
+    MultiArray<T,1> X(5);
+    X[0] = 1;
+    X[1] = 2;
+    X[2] = 3;
+    X[3] = 4;
+    X[4] = 5;
+
+    MultiArray<T,1> Y(3);
+    Y[0] = 3;
+    Y[1] = 4;
+    Y[2] = 5;
+    
+
+    MultiArray<T,1> r1;
+
+    BBox<int64,1> bb1(Coord<int64,1>(2),3);
+    r1 = copy_view (X, bb1);
+    BOOST_CHECK(r1 == Y);
+
+
+    //2D
+    MultiArray<T,2> A(5,5);
+
+    A[0][0] = 1;    A[1][0] = 2;    A[2][0] = 3;    A[3][0] = 4;    A[4][0] = 5;
+    A[0][1] = 6;    A[1][1] = 7;    A[2][1] = 8;    A[3][1] = 9;    A[4][1] = 3;
+    A[0][2] = 9;    A[1][2] = 8;    A[2][2] = 7;    A[3][2] = 6;    A[4][2] = 5;
+    A[0][3] = 4;    A[1][3] = 3;    A[2][3] = 2;    A[3][3] = 1;    A[4][3] = 2;
+    A[0][4] = 1;    A[1][4] = 1;    A[2][4] = 2;    A[3][4] = 3;    A[4][4] = 4;
+
+    MultiArray<T,2> B(3,3);
+
+
+    B[0][0] = 8;    B[1][0] = 9;    B[2][0] = 3;
+    B[0][1] = 7;    B[1][1] = 6;    B[2][1] = 5;
+    B[0][2] = 2;    B[1][2] = 1;    B[2][2] = 2;
+
+
+    MultiArray<T,2> c;
+
+    c = copy_view (A, BBox2D(Coord2D<>(2,1), 3,3));
+
+    BOOST_CHECK (c == B);
+
+    // 3D TODO
+
+
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_copy_view_ima, T, DataTypes2)
+{
+    MultiArray<T,2> A(5,5);
+
+    A[0][0] = 1;    A[1][0] = 2;    A[2][0] = 3;    A[3][0] = 4;    A[4][0] = 5;
+    A[0][1] = 6;    A[1][1] = 7;    A[2][1] = 8;    A[3][1] = 9;    A[4][1] = 3;
+    A[0][2] = 9;    A[1][2] = 8;    A[2][2] = 7;    A[3][2] = 6;    A[4][2] = 5;
+    A[0][3] = 4;    A[1][3] = 3;    A[2][3] = 2;    A[3][3] = 1;    A[4][3] = 2;
+    A[0][4] = 1;    A[1][4] = 1;    A[2][4] = 2;    A[3][4] = 3;    A[4][4] = 4;
+
+    MultiArray<T,2> B(3,3);
+
+
+    B[0][0] = 8;    B[1][0] = 9;    B[2][0] = 3;
+    B[0][1] = 7;    B[1][1] = 6;    B[2][1] = 5;
+    B[0][2] = 2;    B[1][2] = 1;    B[2][2] = 2;
+
+
+    // Image<T,N>
+    ImageRGB<T> irgb(5,5);
+    irgb(0) = A;
+    irgb(1) = A;
+    irgb(2) = A;
+
+    ImageRGB<T> res(3,3);
+    res(0) = B;
+    res(1) = B;
+    res(2) = B;
+
+
+    ImageRGB<T> irgb_res = copy_view (irgb, BBox2D(Coord2D<>(2,1), 3,3));
+
+    BOOST_CHECK (irgb_res == res);
+}
+
+
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_copy_paste_view, T, DataTypes)
+{
+    // 1D
+    MultiArray<T,1> X(5);
+    X[0] = 1;
+    X[1] = 2;
+    X[2] = 3;
+    X[3] = 4;
+    X[4] = 5;
+
+    MultiArray<T,1> Y(5);
+    Y[0] = 1;
+    Y[1] = 3;
+    Y[2] = 4;
+    Y[3] = 5;
+    Y[4] = 1;
+    
+    MultiArray<T,1> r1(5);
+    r1 = static_cast<T>(1);
+    
+    BBox<int64,1> bb1(Coord<int64,1>(2),3);
+    copy_paste_view (X, bb1, r1, Coord<int64,1>(1));
+    BOOST_CHECK(r1 == Y);
+
+    // 2D
+    MultiArray<T,2> A(5,5);
+
+    A[0][0] = 1;    A[1][0] = 2;    A[2][0] = 3;    A[3][0] = 4;    A[4][0] = 5;
+    A[0][1] = 6;    A[1][1] = 7;    A[2][1] = 8;    A[3][1] = 9;    A[4][1] = 3;
+    A[0][2] = 9;    A[1][2] = 8;    A[2][2] = 7;    A[3][2] = 6;    A[4][2] = 5;
+    A[0][3] = 4;    A[1][3] = 3;    A[2][3] = 2;    A[3][3] = 1;    A[4][3] = 2;
+    A[0][4] = 1;    A[1][4] = 1;    A[2][4] = 2;    A[3][4] = 3;    A[4][4] = 4;
+
+
+
+    MultiArray<T,2> C(5,5);
+
+    C[0][0] = 1;    C[1][0] = 1;    C[2][0] = 1;    C[3][0] = 1;    C[4][0] = 1;
+    C[0][1] = 1;    C[1][1] = 1;    C[2][1] = 8;    C[3][1] = 9;    C[4][1] = 3;
+    C[0][2] = 1;    C[1][2] = 1;    C[2][2] = 7;    C[3][2] = 6;    C[4][2] = 5;
+    C[0][3] = 1;    C[1][3] = 1;    C[2][3] = 2;    C[3][3] = 1;    C[4][3] = 2;
+    C[0][4] = 1;    C[1][4] = 1;    C[2][4] = 1;    C[3][4] = 1;    C[4][4] = 1;
+
+
+    MultiArray<T,2> res(5,5);
+    res = 1;
+
+    copy_paste_view (A, BBox2D(Coord2D<>(2,1), 3,3), res, Coord2D<>(2,1));
+
+    BOOST_CHECK (C == res);
+
+
+    // 3D TODO
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_copy_paste, T, DataTypes)
+{
+    MultiArray<T,2> A(5,5);
+
+    A[0][0] = 1;    A[1][0] = 2;    A[2][0] = 3;    A[3][0] = 4;    A[4][0] = 5;
+    A[0][1] = 6;    A[1][1] = 7;    A[2][1] = 8;    A[3][1] = 9;    A[4][1] = 3;
+    A[0][2] = 9;    A[1][2] = 8;    A[2][2] = 7;    A[3][2] = 6;    A[4][2] = 5;
+    A[0][3] = 4;    A[1][3] = 3;    A[2][3] = 2;    A[3][3] = 1;    A[4][3] = 2;
+    A[0][4] = 1;    A[1][4] = 1;    A[2][4] = 2;    A[3][4] = 3;    A[4][4] = 4;
+
+    MultiArray<T,2> B(7,7);
+
+
+    B[0][0] = 10;    B[1][0] = 10;    B[2][0] = 10;   B[3][0] = 10;   B[4][0] = 10;   B[5][0] = 10;   B[6][0] = 10;
+    B[0][1] = 10;    B[1][1] = 10;    B[2][1] = 1;    B[3][1] = 2;    B[4][1] = 3;    B[5][1] = 4;    B[6][1] = 5;
+    B[0][2] = 10;    B[1][2] = 10;    B[2][2] = 6;    B[3][2] = 7;    B[4][2] = 8;    B[5][2] = 9;    B[6][2] = 3;
+    B[0][3] = 10;    B[1][3] = 10;    B[2][3] = 9;    B[3][3] = 8;    B[4][3] = 7;    B[5][3] = 6;    B[6][3] = 5;
+    B[0][4] = 10;    B[1][4] = 10;    B[2][4] = 4;    B[3][4] = 3;    B[4][4] = 2;    B[5][4] = 1;    B[6][4] = 2;
+    B[0][5] = 10;    B[1][5] = 10;    B[2][5] = 1;    B[3][5] = 1;    B[4][5] = 2;    B[5][5] = 3;    B[6][5] = 4;
+    B[0][6] = 10;    B[1][6] = 10;    B[2][6] = 10;   B[3][6] = 10;   B[4][6] = 10;   B[5][6] = 10;   B[6][6] = 10;
+
+
+    MultiArray<T,2> C(7,7);
+    C = 10;
+
+    copy_paste (A,C, Coord2D<>(2,1));
+
+    BOOST_CHECK (C==B);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_copy_paste_image, T, DataTypes2)
+{
+    MultiArray<T,2> A(5,5);
+
+    A[0][0] = 1;    A[1][0] = 2;    A[2][0] = 3;    A[3][0] = 4;    A[4][0] = 5;
+    A[0][1] = 6;    A[1][1] = 7;    A[2][1] = 8;    A[3][1] = 9;    A[4][1] = 3;
+    A[0][2] = 9;    A[1][2] = 8;    A[2][2] = 7;    A[3][2] = 6;    A[4][2] = 5;
+    A[0][3] = 4;    A[1][3] = 3;    A[2][3] = 2;    A[3][3] = 1;    A[4][3] = 2;
+    A[0][4] = 1;    A[1][4] = 1;    A[2][4] = 2;    A[3][4] = 3;    A[4][4] = 4;
+
+    MultiArray<T,2> B(7,7);
+
+
+    B[0][0] = 10;    B[1][0] = 10;    B[2][0] = 10;   B[3][0] = 10;   B[4][0] = 10;   B[5][0] = 10;   B[6][0] = 10;
+    B[0][1] = 10;    B[1][1] = 10;    B[2][1] = 1;    B[3][1] = 2;    B[4][1] = 3;    B[5][1] = 4;    B[6][1] = 5;
+    B[0][2] = 10;    B[1][2] = 10;    B[2][2] = 6;    B[3][2] = 7;    B[4][2] = 8;    B[5][2] = 9;    B[6][2] = 3;
+    B[0][3] = 10;    B[1][3] = 10;    B[2][3] = 9;    B[3][3] = 8;    B[4][3] = 7;    B[5][3] = 6;    B[6][3] = 5;
+    B[0][4] = 10;    B[1][4] = 10;    B[2][4] = 4;    B[3][4] = 3;    B[4][4] = 2;    B[5][4] = 1;    B[6][4] = 2;
+    B[0][5] = 10;    B[1][5] = 10;    B[2][5] = 1;    B[3][5] = 1;    B[4][5] = 2;    B[5][5] = 3;    B[6][5] = 4;
+    B[0][6] = 10;    B[1][6] = 10;    B[2][6] = 10;   B[3][6] = 10;   B[4][6] = 10;   B[5][6] = 10;   B[6][6] = 10;
+
+
+    ImageGray<T> D(5,5);
+    D(GRAY_CHANNEL) = A;
+
+    ImageGray<T> E(7,7);
+    E(GRAY_CHANNEL) = B;
+
+    ImageGray<T> F(7,7);
+    F(GRAY_CHANNEL) = 10;
+
+    copy_paste (D, F, Coord2D<>(2,1));
+
+    BOOST_CHECK (F==E);
+
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_copy_paste_row, T, DataTypes)
+{
+    MultiArray<T,1> A(5);
+
+    A[0] = 6;    A[1] = 7;    A[2] = 8;    A[3] = 9;    A[4] = 3;
+
+    MultiArray<T,2> B(5,3);
+    B=1;
+
+    MultiArray<T,2> C(5,3);
+    C[0][0] = 1;    C[1][0] = 1;    C[2][0] = 1;    C[3][0] = 1;    C[4][0] = 1;
+    C[0][1] = 6;    C[1][1] = 7;    C[2][1] = 8;    C[3][1] = 9;    C[4][1] = 3;
+    C[0][2] = 1;    C[1][2] = 1;    C[2][2] = 1;    C[3][2] = 1;    C[4][2] = 1;
+    
+    copy_paste_row (A, 1, B);
+
+
+    BOOST_CHECK (B==C);
+}
+
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_copy_paste_column, T, DataTypes)
+{
+    MultiArray<T,1> A(3);
+
+    A[0] = 6;    A[1] = 7;    A[2] = 8;
+
+    MultiArray<T,2> B(5,3);
+    B=1;
+
+    MultiArray<T,2> C(5,3);
+    C[0][0] = 1;    C[1][0] = 6;    C[2][0] = 1;    C[3][0] = 1;    C[4][0] = 1;
+    C[0][1] = 1;    C[1][1] = 7;    C[2][1] = 1;    C[3][1] = 1;    C[4][1] = 1;
+    C[0][2] = 1;    C[1][2] = 8;    C[2][2] = 1;    C[3][2] = 1;    C[4][2] = 1;
+    
+    copy_paste_column (A, 1, B);
+
+
+    BOOST_CHECK (B==C);
+
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_slice_z, T, DataTypes)
+{
+    MultiArray<T,3> A(3,3,3);
+    A=static_cast<T>(1);
+
+    A[0][0][0] = 3;
+
+    MultiArray<T,2> B(3,3);
+
+    B[0][0] = 3;    B[1][0] = 1;    B[2][0] = 1;
+    B[0][1] = 1;    B[1][1] = 1;    B[2][1] = 1;
+    B[0][2] = 1;    B[1][2] = 1;    B[2][2] = 1;
+
+    MultiArray<T,2> res = slice_z(A,0);
+
+    BOOST_CHECK(res==B);
+
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_row, T, DataTypes)
+{
+
+	MultiArray<T,2> ma1(10,5);
+
+    for (uint64 j = 0; j < ma1.dims(1); j++)
+    {        
+        for (uint64 i = 0; i < ma1.dims(0); i++)
+        {
+            ma1[i][j] = 2*i*j;
+        }
+    }
+
+
+    MultiArray<T,1> ma_row1(10), ma_row2;
+
+    // test row 3
+    for (uint64 i = 0; i < ma_row1.dims(0); i++)
+    {
+        ma_row1[i] = 2*i*3;
+    }
+
+    ma_row2 = row(ma1, 3);
+
+    BOOST_CHECK ( ma_row1 == ma_row2 );
+
+
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_column, T, DataTypes)
+{
+	MultiArray<T,2> ma1(10,5);
+
+    for (uint64 j = 0; j < ma1.dims(1); j++)
+    for (uint64 i = 0; i < ma1.dims(0); i++)
+    {
+        ma1[i][j] = 2*i*j;
+    }
+
+    MultiArray<T,1> ma_col1(5), ma_col2;
+
+    for (uint64 i = 0; i < ma_col1.dims(0); i++)
+    {
+        ma_col1[i] = 2*i*4;
+    }
+
+    ma_col2 = column(ma1, 4);
+
+    BOOST_CHECK ( ma_col1 == ma_col2 );
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_cat, T, DataTypes)
+{
+    MultiArray<T,2> a(3,4);
+    a = 1;
+
+    MultiArray<T,2> b(2,4);
+    b = 2;
+
+    MultiArray<T,2> c(3,2);
+    c=3;
+
+    MultiArray<T,1> v1(4);
+    v1 = 4;
+
+
+    MultiArray<T,2> R1(5,4);
+
+    R1[0][0] = 1;    R1[1][0] = 1;    R1[2][0] = 1;    R1[3][0] = 2;    R1[4][0] = 2;
+    R1[0][1] = 1;    R1[1][1] = 1;    R1[2][1] = 1;    R1[3][1] = 2;    R1[4][1] = 2;
+    R1[0][2] = 1;    R1[1][2] = 1;    R1[2][2] = 1;    R1[3][2] = 2;    R1[4][2] = 2;
+    R1[0][3] = 1;    R1[1][3] = 1;    R1[2][3] = 1;    R1[3][3] = 2;    R1[4][3] = 2;
+
+
+    MultiArray<T,2> r1 = horzcat (a,b);
+    BOOST_CHECK ( R1 == r1 );
+
+
+    MultiArray<T,2> R2(3,6);
+    R2[0][0] = 1;    R2[1][0] = 1;    R2[2][0] = 1;
+    R2[0][1] = 1;    R2[1][1] = 1;    R2[2][1] = 1;
+    R2[0][2] = 1;    R2[1][2] = 1;    R2[2][2] = 1;
+    R2[0][3] = 1;    R2[1][3] = 1;    R2[2][3] = 1;
+    R2[0][4] = 3;    R2[1][4] = 3;    R2[2][4] = 3;
+    R2[0][5] = 3;    R2[1][5] = 3;    R2[2][5] = 3;
+
+
+    MultiArray<T,2> r2 = vertcat (a,c);
+    BOOST_CHECK ( R2 == r2 );
+
+    MultiArray<T,2> R3(4,4);
+
+    R3[0][0] = 1;    R3[1][0] = 1;    R3[2][0] = 1;    R3[3][0] = 4;
+    R3[0][1] = 1;    R3[1][1] = 1;    R3[2][1] = 1;    R3[3][1] = 4;
+    R3[0][2] = 1;    R3[1][2] = 1;    R3[2][2] = 1;    R3[3][2] = 4;
+    R3[0][3] = 1;    R3[1][3] = 1;    R3[2][3] = 1;    R3[3][3] = 4;
+
+    MultiArray<T,2> r3 = horzcat (a,v1);
+    BOOST_CHECK ( R3 == r3 );
+}
+
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_flip, T, DataTypes)
+{
+    MultiArray<T,2> A(3,3);
+
+    A[0][0] = 8;    A[1][0] = 9;    A[2][0] = 3;
+    A[0][1] = 7;    A[1][1] = 6;    A[2][1] = 5;
+    A[0][2] = 2;    A[1][2] = 1;    A[2][2] = 2;
+
+    MultiArray<T,2> B(3,3);
+
+    B[0][0] = 3;    B[1][0] = 9;    B[2][0] = 8;
+    B[0][1] = 5;    B[1][1] = 6;    B[2][1] = 7;
+    B[0][2] = 2;    B[1][2] = 1;    B[2][2] = 2;
+
+    MultiArray<T,2> C(3,3);
+
+    C[0][0] = 2;    C[1][0] = 1;    C[2][0] = 2;
+    C[0][1] = 7;    C[1][1] = 6;    C[2][1] = 5;
+    C[0][2] = 8;    C[1][2] = 9;    C[2][2] = 3;
+
+    MultiArray<T,2> D(3,3);
+
+    D[0][0] = 2;    D[1][0] = 1;    D[2][0] = 2;
+    D[0][1] = 5;    D[1][1] = 6;    D[2][1] = 7;
+    D[0][2] = 3;    D[1][2] = 9;    D[2][2] = 8;
+
+
+    MultiArray<T,2> res1 = flip(A, HORIZONTAL_FLIP);
+    BOOST_CHECK(res1==B);
+
+    MultiArray<T,2> res2 = flip(A, VERTICAL_FLIP);
+    BOOST_CHECK(res2==C);
+
+    MultiArray<T,2> res3 = flip(A, HORIZONTAL_VERTICAL_FLIP);
+    BOOST_CHECK(res3==D);
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_to1d, T, DataTypes)
+{
+    MultiArray<T,2> B(3,3);
+
+    B[0][0] = 8;    B[1][0] = 9;    B[2][0] = 3;
+    B[0][1] = 7;    B[1][1] = 6;    B[2][1] = 5;
+    B[0][2] = 2;    B[1][2] = 1;    B[2][2] = 2;
+
+
+    MultiArray<T,1> res(9);
+    res[0] = 8;    res[1] = 9;    res[2] = 3;
+    res[3] = 7;    res[4] = 6;    res[5] = 5;
+    res[6] = 2;    res[7] = 1;    res[8] = 2;
+
+
+    MultiArray<T,1> v1d = to_1d(B);
+
+    BOOST_CHECK(v1d == res);
+
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

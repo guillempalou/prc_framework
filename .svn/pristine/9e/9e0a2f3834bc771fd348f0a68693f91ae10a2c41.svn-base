@@ -1,0 +1,53 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file multiarray_arithmetic.cpp
+//!
+
+// Add necesary includes, at least the corresponding hpp must be used
+#include <imageplus/modulename/naming_conventions.hpp>
+
+using namespace modulename;
+
+// No need to document again the methods but please add comments
+template<typename T>
+MyClass<T>::MyClass()
+{
+}
+
+template<typename T>
+MyClass<T>::~MyClass()
+{
+}
+
+template<typename T>
+void MyClass<T>::function(float64 var2)
+{
+    
+    // Respect the indent and bracket position
+    // Always use curly-brackets in if, for, ...: Start in a new line. See the example below
+    if(condition)
+    {
+        do_this();
+    }
+    else
+    {
+        do_that();
+    }
+    
+    for(condition)
+    {
+        do_this();
+    }
+}
+
+template<typename T>
+int32& MyClass<T>::var1()
+{
+    // return does not use brackets
+    return _var1;
+}
+

@@ -1,0 +1,51 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+/*!
+ * \file coding.hpp
+ */
+
+
+#ifndef IMAGEPLUS_CODING_HPP
+#define IMAGEPLUS_CODING_HPP
+
+namespace imageplus
+{
+/*!
+ * \namespace coding
+ *
+ * This module contains classes and functions related to coding.
+ *
+ * It includes some submodules:
+ * - texture : classes and functions related to texture coding
+ *
+ * \todo add more detailed information
+ */
+namespace coding
+{
+    /*!
+     * Frame types in a video sequence
+     */
+    enum FrameType
+    {
+        INTRA_FRAME, //!< Intra frame
+        INTER_FRAME, //!< Inter frame
+        LAYER_INTRA  //!< Layer intra
+    };
+
+    /*!
+     * Possible texture codec types
+     */
+    enum TextureCodecType
+    {
+        ORTHOBASIS_CODEC, //!< \see OrthoBasisCodec
+        REGIONDCT_CODEC   //!< \todo Not implemented
+    };
+
+} // ns coding
+} // imageplus
+
+#endif // IMAGEPLUS_CODING_HPP

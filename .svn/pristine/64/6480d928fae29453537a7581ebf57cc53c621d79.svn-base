@@ -1,0 +1,348 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file writedescriptors.hpp
+//!
+//!  Classes for writing descriptors to disk
+//!
+
+
+
+#ifndef IMAGEPLUS_IO_WRITEDESCRIPTORS_HPP
+#define IMAGEPLUS_IO_WRITEDESCRIPTORS_HPP
+
+#include <string>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/io_types.hpp>
+#include <boost/lexical_cast.hpp>
+
+#ifdef USE_XML
+#include <imageplus/io/xml_auxiliar.hpp>
+#endif
+
+namespace imageplus
+{
+    namespace io
+    {
+        //!
+        //! \brief class for writing visual descriptors to disk files
+        //!
+        //! Usage:
+        //! \code
+        //!    Partition<ImageRGB<uint8> > my_partition;
+        //!    ...
+        //!    io::WriteDescriptors writeDescriptors("prova.xml");
+        //!    writeDescriptors << my_partition;
+        //! \endcode
+        //!
+        //! \author Jordi Pont Tuset <jpont@gps.tsc.upc.edu>
+        //!
+        //! \date 13-5-2009
+        //! \todo Add the functionality to read descriptors (we should be able to know a type from a string: factory?)
+        //!
+        class WriteDescriptors
+        {
+        public:
+            
+            //!
+            //! \brief Default constructor
+            //!
+            WriteDescriptors();
+
+            //!
+            //! \brief Constructor from file name and related URIs
+            //!
+            //! \param[in] filename   : Name of the file to store the output BPT
+            //! \param[in] identifiers   : Vector with the identifiers of the visual descriptors to write
+            //! \param[in] uri_names  : Name of the locations to be put in the header (e.g. "ImageFile")
+            //! \param[in] uri_values : Value of the locations to be put in the header (e.g. "/mnt/seq/i3media/example.jpg")
+            explicit WriteDescriptors(const std::string& filename, const std::vector<std::string>& identifiers, const std::vector<std::string>& uri_names=std::vector<std::string>(0), const std::vector<std::string>& uri_values=std::vector<std::string>(0));
+
+            //!
+            //! \brief Destructor
+            //!
+            ~WriteDescriptors();
+            
+            //!
+            //! \brief Set descriptors file name and related URIs
+            //!
+            //! \param[in] filename   : Name of the file to store the output BPT
+            //! \param[in] identifiers   : Vector with the identifiers of the visual descriptors to write
+            //! \param[in] uri_names  : Name of the locations to be put in the header (e.g. "ImageFile")
+            //! \param[in] uri_values : Value of the locations to be put in the header (e.g. "/mnt/seq/i3media/example.jpg")
+            void open(const std::string& filename, const std::vector<std::string>& identifiers, const std::vector<std::string>& uri_names=std::vector<std::string>(0), const std::vector<std::string>& uri_values=std::vector<std::string>(0));
+            
+            //!
+            //! \brief Operator to write 
+            //!
+            //! \param[in] partition : Source partition whose descriptors will be written
+            template< class RegionModel >
+            void operator<<(const Partition<RegionModel>& partition) const
+            {
+                if(_filename == "")
+                {
+                    throw ImagePlusError( "WriteDescriptors: Reading before opening any file." );
+                }
+                
+            #ifdef USE_XML
+            
+                XERCES_CPP_NAMESPACE::DOMImplementation* impl;
+                std::string append;
+                
+                try
+                {
+                    XERCES_CPP_NAMESPACE::XMLPlatformUtils::Initialize();
+                }
+                catch(const XERCES_CPP_NAMESPACE::XMLException& toCatch)
+                {
+                    char* message = NULL;
+                    sprintf( message, "XML reading exception message is: '%s'",  toNative(toCatch.getMessage()).c_str());
+                    throw ImagePlusError( message );
+                }
+             
+                impl =  XERCES_CPP_NAMESPACE::DOMImplementationRegistry::getDOMImplementation(fromNative("Core").c_str());
+             
+                if (impl != NULL)
+                {
+                    try
+                    {
+                        XERCES_CPP_NAMESPACE::DOMDocument* doc = impl->createDocument(
+                                                0,                              // root element namespace URI.
+                                                fromNative("Mpeg7").c_str(),  // root element name
+                                                0);
+                        XERCES_CPP_NAMESPACE::DOMElement* imaElem = bpt_xml_write_header(doc, _uri_names, _uri_values);
+
+                        XERCES_CPP_NAMESPACE::DOMElement*  spatialElem = doc->createElement(fromNative("SpatialDecomposition").c_str());
+                        spatialElem->setAttribute(fromNative("id").c_str(), fromNative("VisualDescriptors").c_str());
+                        append = boost::lexical_cast<std::string>(partition.num_regions());
+                        spatialElem->setAttribute(fromNative("size").c_str(), fromNative(append.c_str()).c_str());
+                        spatialElem->setAttribute(fromNative("gap").c_str(), fromNative("false").c_str());
+                        spatialElem->setAttribute(fromNative("overlap").c_str(), fromNative("true").c_str());
+                        imaElem->appendChild(spatialElem);
+                                        
+                        XERCES_CPP_NAMESPACE::DOMElement*   stillElem;
+                        XERCES_CPP_NAMESPACE::DOMElement*      vdElem;
+            
+                        typename Partition<RegionModel>::const_global_iterator it, it_end;
+                        for(it=partition.begin(), it_end=partition.end(); it!=it_end; ++it)
+                        {
+                            bool write_region = false;
+                            
+                            // Check whether this region has any descriptor to be written
+                            std::vector<std::string>::const_iterator it2 = _identifiers.begin();
+                            while(it2 != _identifiers.end() && !write_region ) 
+                            {
+                                if((*it).coll_vd().is_calculated(*it2)) 
+                                    write_region = true;
+                                ++it2;
+                            }
+                            
+                            // Yes, it has to be written
+                            if(write_region)
+                            {
+                                append = "Region";
+                                append = append + boost::lexical_cast<std::string>((*it).label());
+                                stillElem = doc->createElement(fromNative("StillRegion").c_str());
+                                stillElem->setAttribute(fromNative("id").c_str(), fromNative(append.c_str()).c_str());
+                                spatialElem->appendChild(stillElem);
+                                
+                                // Write only those descriptors we are interested in
+                                for (std::vector<std::string>::const_iterator it2 = _identifiers.begin(); it2 != _identifiers.end(); ++it2)
+                                {
+                                    if((*it).coll_vd().is_calculated(*it2)) 
+                                    {
+                                    	const DescriptorBase * desc = (*it).coll_vd().get_id(*it2);
+                                        if(desc->xml_name() == "ShapeBoxOrientedType")
+                                        {
+                                        	vdElem = doc->createElement(fromNative("SpatialLocator").c_str());
+                                        }
+                                        else
+                                        {
+                                            vdElem = doc->createElement(fromNative("VisualDescriptor").c_str());
+                                            vdElem->setAttribute(fromNative("xsi:type").c_str(), fromNative(desc->xml_name().c_str()).c_str());
+                                        }
+                                        stillElem->appendChild(vdElem);
+                                        
+                                        desc->xml_write(doc, vdElem);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        
+                        XERCES_CPP_NAMESPACE::XMLFormatTarget *myFormTarget;
+                        myFormTarget = new XERCES_CPP_NAMESPACE::LocalFileFormatTarget(_filename.c_str());
+                        
+                        XERCES_CPP_NAMESPACE::DOMWriter  *theSerializer = ((XERCES_CPP_NAMESPACE::DOMImplementationLS*)impl)->createDOMWriter();
+                        
+                        // format-pretty-print
+                        theSerializer->setFeature(XERCES_CPP_NAMESPACE::XMLUni::fgDOMWRTFormatPrettyPrint, true);
+                        theSerializer->writeNode(myFormTarget, *doc);
+        
+                        doc->release();
+                        delete myFormTarget;
+                    }
+                    catch (...)
+                    {
+                        throw ImagePlusError("An error occurred while writing the XML descriptors.");
+                    }
+                }  
+                else
+                {
+                    throw ImagePlusError("An error occurred while writing the XML descriptors.");
+                }
+                
+                XERCES_CPP_NAMESPACE::XMLPlatformUtils::Terminate();
+            #else
+                throw ImagePlusError("You need the XML library to write the descriptors in XML format. Be sure to define 'USE_XML=True'.");
+            #endif
+                
+            }
+
+            //!
+            //! \brief Operator to write 
+            //!
+            //! \param[in] container : Source container whose descriptors will be written
+            //!
+            template<typename T, std::size_t N, std::size_t D>
+            void operator<<(const ImaVol<T,N,D>& container) const
+            {
+                if(_filename == "")
+                {
+                    throw ImagePlusError( "WriteDescriptors: Reading before opening any file." );
+                }
+                        
+                
+            #ifdef USE_XML
+            
+                XERCES_CPP_NAMESPACE::DOMImplementation* impl;
+                std::string append;
+                
+                try
+                {
+                    XERCES_CPP_NAMESPACE::XMLPlatformUtils::Initialize();
+                }
+                catch(const XERCES_CPP_NAMESPACE::XMLException& toCatch)
+                {
+                    char* message = NULL;
+                    sprintf( message, "XML reading exception message is: '%s'",  toNative(toCatch.getMessage()).c_str());
+                    throw ImagePlusError( message );
+                }
+             
+                impl =  XERCES_CPP_NAMESPACE::DOMImplementationRegistry::getDOMImplementation(fromNative("Core").c_str());
+             
+                if (impl != NULL)
+                {
+                    try
+                    {
+                        XERCES_CPP_NAMESPACE::DOMDocument* doc = impl->createDocument(
+                                                0,                              // root element namespace URI.
+                                                fromNative("Mpeg7").c_str(),  // root element name
+                                                0);
+                        XERCES_CPP_NAMESPACE::DOMElement* imaElem = bpt_xml_write_header(doc, _uri_names, _uri_values);
+            
+                        XERCES_CPP_NAMESPACE::DOMElement*  spatialElem = doc->createElement(fromNative("SpatialDecomposition").c_str());
+                        spatialElem->setAttribute(fromNative("id").c_str(), fromNative("VisualDescriptors").c_str());
+                        spatialElem->setAttribute(fromNative("size").c_str(), fromNative("1").c_str());
+                        spatialElem->setAttribute(fromNative("gap").c_str(), fromNative("false").c_str());
+                        spatialElem->setAttribute(fromNative("overlap").c_str(), fromNative("true").c_str());
+                        imaElem->appendChild(spatialElem);
+                                        
+                        XERCES_CPP_NAMESPACE::DOMElement*   stillElem;
+                        XERCES_CPP_NAMESPACE::DOMElement*      vdElem;
+            
+                        bool write_region = false;
+                            
+                        // Check whether this region has any descriptor to be written
+                        std::vector<std::string>::const_iterator it2 = _identifiers.begin();
+                        while(it2 != _identifiers.end() && !write_region ) 
+                        {
+                            if(container.coll_vd().is_calculated(*it2)) 
+                                write_region = true;
+                            ++it2;
+                        }
+                            
+                        // Yes, it has to be written
+                        if(write_region)
+                        {
+                            append = "Region1";
+                            stillElem = doc->createElement(fromNative("StillRegion").c_str());
+                            stillElem->setAttribute(fromNative("id").c_str(), fromNative(append.c_str()).c_str());
+                            spatialElem->appendChild(stillElem);
+                                
+                            // Write only those descriptors we are interested in
+                            for (std::vector<std::string>::const_iterator it2 = _identifiers.begin(); it2 != _identifiers.end(); ++it2)
+                            {
+                                if(container.coll_vd().is_calculated(*it2)) 
+                                {
+                                    const DescriptorBase * desc = container.coll_vd().get_id(*it2);
+                                    if(desc->xml_name() == "ShapeBoxOrientedType")
+                                    {
+                                    	vdElem = doc->createElement(fromNative("SpatialLocator").c_str());
+                                    }
+                                    else
+                                    {
+                                        vdElem = doc->createElement(fromNative("VisualDescriptor").c_str());
+                                        vdElem->setAttribute(fromNative("xsi:type").c_str(), fromNative(desc->xml_name().c_str()).c_str());
+                                    }
+
+                                    stillElem->appendChild(vdElem);
+                                        
+                                    desc->xml_write(doc, vdElem);
+                                }
+                            }
+                        }
+                        
+                        XERCES_CPP_NAMESPACE::XMLFormatTarget *myFormTarget;
+                        myFormTarget = new XERCES_CPP_NAMESPACE::LocalFileFormatTarget(_filename.c_str());
+                        
+                        XERCES_CPP_NAMESPACE::DOMWriter  *theSerializer = ((XERCES_CPP_NAMESPACE::DOMImplementationLS*)impl)->createDOMWriter();
+                        
+                        // format-pretty-print
+                        theSerializer->setFeature(XERCES_CPP_NAMESPACE::XMLUni::fgDOMWRTFormatPrettyPrint, true);
+                        theSerializer->writeNode(myFormTarget, *doc);
+            
+                        doc->release();
+                        delete myFormTarget;
+                    }
+                    catch (...)
+                    {
+                        throw ImagePlusError("An error occurred while writing the XML descriptors.");
+                    }
+                }  
+                else
+                {
+                    throw ImagePlusError("An error occurred while writing the XML descriptors.");
+                }
+                
+                XERCES_CPP_NAMESPACE::XMLPlatformUtils::Terminate();
+            #else
+                throw ImagePlusError("You need the XML library to write the descriptors in XML format. Be sure to define 'USE_XML=True'.");
+            #endif
+            }
+            
+            
+        private:
+            
+            //! Stores the file name of the desciptors to write
+            std::string _filename;
+            
+            //! Stores the identifiers of the visual descriptors to write
+            std::vector<std::string> _identifiers;
+            
+            //! Name of the locations to be put in the header (e.g. "ImageFile")
+            std::vector<std::string> _uri_names;
+
+            //! Value of the locations to be put in the header (e.g. "/mnt/seq/i3media/example.jpg")
+            std::vector<std::string> _uri_values;
+        };
+
+    } // namespace io
+
+} //namespace imageplus
+
+#endif

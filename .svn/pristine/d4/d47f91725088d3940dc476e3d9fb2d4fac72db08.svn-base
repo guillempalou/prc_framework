@@ -1,0 +1,61 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file difference_of_gaussians.hpp
+//!
+//!  Interface for Difference Of Gaussians (blob features) extractor
+//!
+
+#ifndef IMAGEPLUS_FILTERS_DIFFERENCE_OF_GAUSSIANS_HPP
+#define IMAGEPLUS_FILTERS_DIFFERENCE_OF_GAUSSIANS_HPP
+
+#include <imageplus/core.hpp>
+#include <imageplus/filters/linear_convolution.hpp>
+
+namespace imageplus
+{
+    namespace filters
+    {
+        //! \brief Difference of gaussians extractor
+        //! 
+        //! \author Jordi Salvador Marcos <jordi@gps.tsc.upc.edu>
+        //! 
+        //! The response of the Difference of Gaussians filter at a
+        //! given image point is defined as the absolute value of the
+        //! images obtained after convolving each with a Gaussian mask
+        //! with standard deviations \f$ \sigma_1 \f$ and \f$ \sigma_2 \f$
+        //!
+        //! \param[in] in : image where corner features must be extracted
+        //! \param[in] sigma1 : Standard deviation of the first Gaussian filter
+        //! \param[in] sigma2 : Standard deviation of the second Gaussian filter
+        //!
+        //! \return Filtered image
+        //!
+        template <typename T>
+        MultiArray<T,2> difference_of_gaussians( const MultiArray<T,2> & in, const float64 sigma1, const float64 sigma2 );
+
+
+        //! \brief Difference of gaussians extractor
+        //! 
+        //! \author Jordi Salvador Marcos <jordi@gps.tsc.upc.edu>
+        //! 
+        //! The response of the Difference of Gaussians filter at a
+        //! given image point is defined as the absolute value of the
+        //! images obtained after convolving each with a Gaussian mask
+        //! with standard deviations \f$ \sigma_1 \f$ and \f$ \sigma_2 \f$. In this case,
+        //!  \f$ \sigma_2 = \sigma_1 \sqrt{2} \f$
+        //!
+        //! \param[in] in : image where corner features must be extracted
+        //! \param[in] sigma : Standard deviation of the first Gaussian filter
+        //!
+        //! \return Filtered image
+        //!
+        template <typename T>
+        MultiArray<T,2> difference_of_gaussians( const MultiArray<T,2> & in, const float64 sigma );
+    }
+}
+
+#endif

@@ -1,0 +1,90 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imagelbp.test
+//!
+
+#include <imageplus/core/imagelbp.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( ImageLBPSuite );
+
+using namespace imageplus;
+
+/*!
+ * \cond TestStructure
+ */
+struct ImageLBPFixture {
+	
+	ImageLBPFixture() :
+		size(10),
+		ig1(size,size),
+		ig2(size,size),
+		iv(size,size),
+		im(size,size)
+		{BOOST_TEST_MESSAGE("setting up the test...");}
+	~ImageLBPFixture() {BOOST_TEST_MESSAGE("tear down the test..."); }
+
+	uint64 size;
+	ImageLBP ig1, ig2;
+	ImaVol<uint64,1,2> iv;
+	Image<uint64,1> im;
+};
+/*!
+ * \endcond
+ */
+
+BOOST_AUTO_TEST_CASE( ImageLBP_Constructors )
+{
+	ImageLBPFixture f;
+	
+	// Check constructor for imavol
+	f.iv=44;
+    f.ig1=ImageLBP(f.iv);    
+    BOOST_CHECK_EQUAL( f.ig1(0), f.iv(0) );
+    
+	// Check constructor for Image
+    f.im=33;
+    f.ig1=ImageLBP(f.im);
+    BOOST_CHECK_EQUAL( f.ig1(0), f.im(0) );
+    
+    // Check constructor for imagelbp
+    f.ig1 = ImageLBP(f.ig2);
+    BOOST_CHECK_EQUAL( f.ig1(0), f.ig2(0) );    
+}
+
+BOOST_AUTO_TEST_CASE( ImageLBP_Access )
+{
+	ImageLBPFixture f;
+    
+    // Check access
+    for( uint64 i= 0; i< f.size; i++) 
+    {
+    	f.ig1(0)[0][0] = i;
+    	f.ig1[0][0]    = i;
+    	
+    	BOOST_CHECK_EQUAL( f.ig1(0)[0][0], i );
+    }
+
+}
+
+BOOST_AUTO_TEST_CASE( ImageLBP_Operations )
+{
+	ImageLBPFixture f;
+
+    // Check operations
+    for( uint64 i= 0; i< f.size; i++) 
+    {
+    	f.ig1 = i;
+	    f.ig2 = i+1;
+	    f.ig1 = f.ig1 + f.ig2;
+	    uint64 sum = 2*i + 1;
+	    BOOST_CHECK_EQUAL( f.ig1(0), sum );
+    }
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

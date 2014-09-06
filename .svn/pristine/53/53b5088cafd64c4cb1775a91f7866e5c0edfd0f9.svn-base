@@ -1,0 +1,10 @@
+@echo off
+REM This script uses the bpt_population tool in Windows
+REM Written by Jordi Pont
+REM 12th March 2009
+
+set BIN=D:\Workspace\i3media\tools\bpt_population\bin\release\bpt_population.exe
+set BPT=D:\Workspace\Results\1248_00011921-bpt.xml
+set RESULTSDIR=D:\Workspace\Results\
+
+%BIN% %BPT% %RESULTSDIR%

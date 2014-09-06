@@ -1,0 +1,377 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file array_arithmetic.test
+//!
+
+#include <iostream>
+#include <imageplus/core.hpp>
+#include <imageplus/core/array_arithmetic.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( array_arithmetics_suite );
+
+using namespace imageplus;
+
+typedef boost::mpl::list< uint8, uint16, uint32, uint64, int8, int16, int32, int64, float32, float64 > DataTypes;
+
+// Tests for the 4 operators +, -, * and /
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_sum, T, DataTypes )
+{	
+    size_t size = 2;
+    T val = static_cast<T>(10);
+    
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 1; ba1[1] = 1;
+    ba2[0] = 2; ba2[1] = 2;
+    
+    ba_res = ba1 + ba2;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 3);	
+    }
+    
+    ba_res = val + ba2;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 12);	
+    }
+
+    ba_res = ba1 + val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 11);	
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_substract, T, DataTypes )
+{
+    // BOOST_WARN_MESSAGE(false, "TEST COMMENTED BECAUSE NOT COMPILE: testcase_operator_substract");
+
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 1; ba1[1] = 1;
+    ba2[0] = 20; ba2[1] = 20;
+    
+    ba_res = ba2 - ba1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 19);	
+    }
+    
+    // TODO: BUG in method implementation not valid ba = val
+    ba_res = val - ba1;
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 9);	
+    }
+
+    ba_res = ba2 - val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 10);	
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_product, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 1; ba1[1] = 1;
+    ba2[0] = 10; ba2[1] = 10;
+    
+    ba_res = ba2 * ba1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 10);	
+    }
+    
+    ba_res = val * ba1;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 10);	
+    }
+
+    ba_res = ba2 * val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 100);	
+    }
+    
+    val = 0;
+    
+    ba_res = ba2 * val;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 0);	
+    }
+    
+    // Operator with bools
+    boost::array<bool,2> ba3;
+    ba3[0] = true; ba3[1] = false;
+    
+    ba_res = ba2 * ba3;
+    
+    BOOST_CHECK(ba_res[0] == 10);
+    BOOST_CHECK(ba_res[1] == 0);
+    
+    ba_res = ba3 * ba2;
+    
+    BOOST_CHECK(ba_res[0] == 10);
+    BOOST_CHECK(ba_res[1] == 0);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_operator_division, T, DataTypes )
+{
+    uint64 size = 2;
+    
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 2; ba1[1] = 2;
+    ba2[0] = 20; ba2[1] = 20;
+    
+    ba_res = ba2 / ba1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 10);	
+    }
+}
+
+// Tests for the 4 operators methods: sum, substract, product and division
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_method_sum, T, DataTypes )
+{	
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 1; ba1[1] = 1;
+    ba2[0] = 2; ba2[1] = 2;
+
+    sum( ba1, ba2, ba_res ); // ba_res = ba1 + ba2;
+        
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 3);	
+    }
+    
+    sum( val, ba2, ba_res ); // ba_res = val + ba2;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 12);	
+    }
+
+    sum( ba1, val, ba_res ); // ba_res = ba1 + val;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 11);	
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_method_substract, T, DataTypes )
+{
+    //BOOST_WARN_MESSAGE(false, "TEST COMMENTED BECAUSE NOT COMPILE: testcase_method_substract");
+
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 1; ba1[1] = 1;
+    ba2[0] = 20; ba2[1] = 20;
+    
+    substract( ba2, ba1, ba_res ); // ba_res = ba2 - ba1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 19);	
+    }
+    
+    // TODO: BUG in method implementation not valid ba = val
+    substract( val, ba1, ba_res ); // ba_res = val - ba1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 9);	
+    }
+
+    substract( ba2, val, ba_res ); // ba_res = ba2 - val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 10);	
+    }
+
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_method_product, T, DataTypes )
+{
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 1; ba1[1] = 1;
+    ba2[0] = 10; ba2[1] = 10;
+
+    product( ba2, ba1, ba_res ); // ba_res = ba2 * ba1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 10);	
+    }
+    
+    product( val, ba1, ba_res ); // ba_res = val * ba1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 10);	
+    }
+
+    product( ba2, val, ba_res ); //ba_res = ba2 * val;
+
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 100);	
+    }
+    
+    val = 0;
+    
+    product( ba2, val, ba_res ); // ba_res = ba2 * val;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 0);	
+    }
+    
+    // Product with bools
+    boost::array<bool,2> ba3;
+    ba3[0] = true; ba3[1] = false;
+    
+    product( ba2, ba3, ba_res ); // ba_res = ba2 * ba3<bool>;
+    
+    BOOST_CHECK(ba_res[0] == 10);
+    BOOST_CHECK(ba_res[1] == 0);
+    
+    product( ba3, ba2, ba_res ); // ba_res = ba3<bool> * ba2;
+    
+    BOOST_CHECK(ba_res[0] == 10);
+    BOOST_CHECK(ba_res[1] == 0);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_method_division, T, DataTypes )
+{
+    //BOOST_WARN_MESSAGE(false, "TEST COMMENTED BECAUSE NOT COMPILE: testcase_method_division");
+
+    uint64 size = 2;
+    T val = static_cast<T>(10);
+    
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 2; ba1[1] = 2;
+    ba2[0] = 20; ba2[1] = 20;
+
+    division( ba2, ba1, ba_res ); // ba_res = ba2 / ba1;
+    
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 10);	
+    }
+    
+    // TODO: BUG in method implementation not valid ba = val
+    division( val, ba1, ba_res ); // ba_res = val / ba1;
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 5);	
+    }
+
+    division( ba2, val, ba_res ); //ba_res = ba2 / val;
+    for( uint64 i = 0; i < size; i++ )
+    {
+    	BOOST_CHECK(ba_res[i] == 2);	
+    }
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( test_equal_and_operation, T, DataTypes )
+{
+    boost::array<T,2> ba1;
+    boost::array<T,2> ba2;
+    boost::array<T,2> tmp;
+    boost::array<T,2> ba_res;
+    
+    ba1[0] = 3;  ba1[1] = 5;
+    ba2[0] = 4;  ba2[1] = 2;
+    tmp = ba1;
+
+    /*
+     * Addition
+     */
+    ba1 = tmp;
+    ba_res = ba1 + ba2;
+    ba1 += ba2;
+    BOOST_CHECK(ba_res == ba1);
+    
+    /*
+     * Substraction
+     */
+    ba1 = tmp;
+    ba_res = ba1 - ba2;
+    ba1 -= ba2;
+    BOOST_CHECK(ba_res == ba1);
+    
+    /*
+     * Multiplication
+     */
+    ba1 = tmp;
+    ba_res = ba1 * ba2;
+    ba1 *= ba2;
+    BOOST_CHECK(ba_res == ba1);
+
+    /*
+     * Division
+     */
+    ba1 = tmp;
+    ba_res = ba1 / ba2;
+    ba1 /= ba2;
+    BOOST_CHECK(ba_res == ba1);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

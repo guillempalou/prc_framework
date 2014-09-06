@@ -1,0 +1,63 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file updownsample.test
+//!
+
+#include <iostream>
+#include <imageplus/core.hpp>
+
+BOOST_AUTO_TEST_SUITE ( camera_suite );
+
+using namespace imageplus;
+
+BOOST_AUTO_TEST_CASE( testcase_camera )
+{
+    std::string cam_name = std::string(TEST_DATA_PATH_R) + "/TCameraParameters_cam1.dat";
+    std::string cam_out_name = std::string(TEST_DATA_PATH_W) + "/TCameraParameters_cam1.dat";
+
+    Camera cam;
+    cam.read_parameters(cam_name);
+
+    // Test writing to a file
+    cam.write_parameters (cam_out_name);
+
+    // Read again
+    Camera cam2;
+    cam2.read_parameters(cam_out_name);
+
+
+    
+
+    BOOST_CHECK(cam.im_width()   == cam2.im_width());
+    BOOST_CHECK(cam.im_height()  == cam2.im_height());
+
+    BOOST_CHECK(cam.rot()        == cam2.rot());
+    BOOST_CHECK(cam.p()          == cam2.p());
+    BOOST_CHECK(cam.k()          == cam2.k());
+    BOOST_CHECK(cam.trans()      == cam2.trans());
+
+    /*
+    for (uint64 i =0; i < 4; i++)
+    {
+        std::cout << cam2.distortion()[i] << std::endl;
+    }
+
+    for (uint64 i =0; i < 4; i++)
+    {
+        std::cout << cam.distortion()[i] << std::endl;
+    }
+    */
+
+    BOOST_CHECK(cam.distortion() == cam2.distortion());
+}
+
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+
+  

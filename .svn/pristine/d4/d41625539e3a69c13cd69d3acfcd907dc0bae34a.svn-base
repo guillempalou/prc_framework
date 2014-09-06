@@ -1,0 +1,220 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file color/contrast.test
+//!
+//! Tests for contrast measures
+//!
+
+
+#include <imageplus/core.hpp> 
+#include <imageplus/descriptors/color/contrast.hpp> 
+
+BOOST_AUTO_TEST_SUITE ( Descriptors_Contrast_Suite );
+
+using namespace imageplus;
+using namespace descriptors;
+
+
+BOOST_AUTO_TEST_CASE( IntraContrast_test)
+{    
+    typedef ImageYUV<uint8> InputType;
+
+
+    ImagePartition<> im_part(4,4);
+    im_part[0][0] = 1;     im_part[1][0] = 1;     im_part[2][0] = 2;     im_part[3][0] = 2;
+    im_part[0][1] = 1;     im_part[1][1] = 1;     im_part[2][1] = 2;     im_part[3][1] = 2;
+    im_part[0][2] = 1;     im_part[1][2] = 2;     im_part[2][2] = 2;     im_part[3][2] = 2;
+    im_part[0][3] = 1;     im_part[1][3] = 2;     im_part[2][3] = 2;     im_part[3][3] = 2;
+
+    InputType ima(4,4);
+    ima(0)[0][0] = 1;     ima(0)[1][0] = 5;     ima(0)[2][0] = 9;     ima(0)[3][0] = 2;
+    ima(0)[0][1] = 7;     ima(0)[1][1] = 1;     ima(0)[2][1] = 7;     ima(0)[3][1] = 3;
+    ima(0)[0][2] = 1;     ima(0)[1][2] = 2;     ima(0)[2][2] = 1;     ima(0)[3][2] = 7;
+    ima(0)[0][3] = 9;     ima(0)[1][3] = 0;     ima(0)[2][3] = 9;     ima(0)[3][3] = 2;
+
+
+    ima(1)[0][0] = 1;     ima(1)[1][0] = 5;     ima(1)[2][0] = 9;     ima(1)[3][0] = 2;
+    ima(1)[0][1] = 7;     ima(1)[1][1] = 1;     ima(1)[2][1] = 7;     ima(1)[3][1] = 3;
+    ima(1)[0][2] = 1;     ima(1)[1][2] = 2;     ima(1)[2][2] = 1;     ima(1)[3][2] = 7;
+    ima(1)[0][3] = 9;     ima(1)[1][3] = 0;     ima(1)[2][3] = 9;     ima(1)[3][3] = 2;
+
+    ima(2)[0][0] = 1;     ima(2)[1][0] = 5;     ima(2)[2][0] = 9;     ima(2)[3][0] = 2;
+    ima(2)[0][1] = 7;     ima(2)[1][1] = 1;     ima(2)[2][1] = 7;     ima(2)[3][1] = 3;
+    ima(2)[0][2] = 1;     ima(2)[1][2] = 2;     ima(2)[2][2] = 1;     ima(2)[3][2] = 7;
+    ima(2)[0][3] = 9;     ima(2)[1][3] = 0;     ima(2)[2][3] = 9;     ima(2)[3][3] = 2;
+
+
+
+    typedef RegionContour<Coord2D<int64> >  RegionType;  // Type of region we will work with
+    typedef Partition<RegionType> partition_type;
+
+    partition_type my_partition(im_part);
+    boost::array<float64, InputType::channels> exact_value;  
+
+    IntraContrast< InputType > intra_cont;
+
+    partition_type::global_iterator reg_it     = my_partition.begin();
+
+    // First region
+    const IntraContrast< InputType >& intra_cont1 = calc_descriptor(new IntraContrast< InputType >(), ima, *reg_it);
+
+    exact_value[0]=0.024836601307189541;
+    exact_value[1]=0.024836601307189541;
+    exact_value[2]=0.024836601307189541;
+
+    for (uint64 i=0; i < InputType::channels; ++i)
+    {
+        BOOST_CHECK_CLOSE( intra_cont1[i], exact_value[i], 1e-6);
+    }
+
+    // Second region
+    ++reg_it;
+    const IntraContrast< InputType >& intra_cont2 = calc_descriptor(new IntraContrast< InputType >(), ima, *reg_it);
+
+    exact_value[0]=0.025490196078431372;
+    exact_value[1]=0.025490196078431372;
+    exact_value[2]=0.025490196078431372;
+
+    for (uint64 i=0; i < InputType::channels; ++i)
+    {
+        BOOST_CHECK_CLOSE( intra_cont2[i], exact_value[i], 1e-6);
+    }
+}
+
+BOOST_AUTO_TEST_CASE( InterContrast_test)
+{    
+    typedef ImageYUV<uint8> InputType;
+
+
+    ImagePartition<> im_part(4,4);
+    im_part[0][0] = 1;     im_part[1][0] = 1;     im_part[2][0] = 2;     im_part[3][0] = 2;
+    im_part[0][1] = 1;     im_part[1][1] = 1;     im_part[2][1] = 2;     im_part[3][1] = 2;
+    im_part[0][2] = 1;     im_part[1][2] = 2;     im_part[2][2] = 2;     im_part[3][2] = 2;
+    im_part[0][3] = 1;     im_part[1][3] = 2;     im_part[2][3] = 2;     im_part[3][3] = 2;
+
+    InputType ima(4,4);
+    ima(0)[0][0] = 1;     ima(0)[1][0] = 5;     ima(0)[2][0] = 9;     ima(0)[3][0] = 2;
+    ima(0)[0][1] = 7;     ima(0)[1][1] = 1;     ima(0)[2][1] = 7;     ima(0)[3][1] = 3;
+    ima(0)[0][2] = 1;     ima(0)[1][2] = 2;     ima(0)[2][2] = 1;     ima(0)[3][2] = 7;
+    ima(0)[0][3] = 9;     ima(0)[1][3] = 0;     ima(0)[2][3] = 9;     ima(0)[3][3] = 2;
+
+
+    ima(1)[0][0] = 1;     ima(1)[1][0] = 5;     ima(1)[2][0] = 9;     ima(1)[3][0] = 2;
+    ima(1)[0][1] = 7;     ima(1)[1][1] = 1;     ima(1)[2][1] = 7;     ima(1)[3][1] = 3;
+    ima(1)[0][2] = 1;     ima(1)[1][2] = 2;     ima(1)[2][2] = 1;     ima(1)[3][2] = 7;
+    ima(1)[0][3] = 9;     ima(1)[1][3] = 0;     ima(1)[2][3] = 9;     ima(1)[3][3] = 2;
+
+    ima(2)[0][0] = 1;     ima(2)[1][0] = 5;     ima(2)[2][0] = 9;     ima(2)[3][0] = 2;
+    ima(2)[0][1] = 7;     ima(2)[1][1] = 1;     ima(2)[2][1] = 7;     ima(2)[3][1] = 3;
+    ima(2)[0][2] = 1;     ima(2)[1][2] = 2;     ima(2)[2][2] = 1;     ima(2)[3][2] = 7;
+    ima(2)[0][3] = 9;     ima(2)[1][3] = 0;     ima(2)[2][3] = 9;     ima(2)[3][3] = 2;
+
+
+
+    typedef RegionContour<Coord2D<int64> >  RegionType;  // Type of region we will work with
+    typedef Partition<RegionType> partition_type;
+
+    partition_type my_partition(im_part);
+    boost::array<float64, InputType::channels> exact_value;  
+
+    InterContrast< InputType > inter_cont;
+
+    partition_type::global_iterator reg_it     = my_partition.begin();
+
+    // First region
+    const InterContrast< InputType >& inter_cont1 = calc_descriptor(new InterContrast< InputType >(), ima, *reg_it);
+
+    exact_value[0]=0.019607843137254902;
+    exact_value[1]=0.019607843137254902;
+    exact_value[2]=0.019607843137254902;
+
+    for (uint64 i=0; i < InputType::channels; ++i)
+    {
+        BOOST_CHECK_CLOSE( inter_cont1[i], exact_value[i], 1e-6);
+    }
+    // Second region
+    ++reg_it;
+    const InterContrast< InputType >& inter_cont2 = calc_descriptor(new InterContrast< InputType >(), ima, *reg_it);
+
+    exact_value[0]=0.019607843137254902;
+    exact_value[1]=0.019607843137254902;
+    exact_value[2]=0.019607843137254902;
+
+    for (uint64 i=0; i < InputType::channels; ++i)
+    {
+        BOOST_CHECK_CLOSE( inter_cont2[i], exact_value[i], 1e-6);
+    }
+}
+
+BOOST_AUTO_TEST_CASE( ZeboudjContrast_test)
+{    
+    typedef ImageYUV<uint8> InputType;
+
+
+    ImagePartition<> im_part(4,4);
+    im_part[0][0] = 1;     im_part[1][0] = 1;     im_part[2][0] = 2;     im_part[3][0] = 2;
+    im_part[0][1] = 1;     im_part[1][1] = 1;     im_part[2][1] = 2;     im_part[3][1] = 2;
+    im_part[0][2] = 1;     im_part[1][2] = 2;     im_part[2][2] = 2;     im_part[3][2] = 2;
+    im_part[0][3] = 1;     im_part[1][3] = 2;     im_part[2][3] = 2;     im_part[3][3] = 2;
+
+
+    ImageYUV<uint8> ima(4,4);
+    ima(0)[0][0] = 1;     ima(0)[1][0] = 2;     ima(0)[2][0] = 19;     ima(0)[3][0] = 16;
+    ima(0)[0][1] = 2;     ima(0)[1][1] = 1;     ima(0)[2][1] = 17;     ima(0)[3][1] = 17;
+    ima(0)[0][2] = 1;     ima(0)[1][2] = 17;    ima(0)[2][2] = 15;     ima(0)[3][2] = 17;
+    ima(0)[0][3] = 0;     ima(0)[1][3] = 19;    ima(0)[2][3] = 19;     ima(0)[3][3] = 16;
+
+
+    ima(1)[0][0] = 1;     ima(1)[1][0] = 2;     ima(1)[2][0] = 19;     ima(1)[3][0] = 16;
+    ima(1)[0][1] = 2;     ima(1)[1][1] = 1;     ima(1)[2][1] = 17;     ima(1)[3][1] = 17;
+    ima(1)[0][2] = 1;     ima(1)[1][2] = 17;    ima(1)[2][2] = 15;     ima(1)[3][2] = 17;
+    ima(1)[0][3] = 0;     ima(1)[1][3] = 19;    ima(1)[2][3] = 19;     ima(1)[3][3] = 16;
+
+    ima(2)[0][0] = 1;     ima(2)[1][0] = 2;     ima(2)[2][0] = 19;     ima(2)[3][0] = 16;
+    ima(2)[0][1] = 2;     ima(2)[1][1] = 1;     ima(2)[2][1] = 17;     ima(2)[3][1] = 17;
+    ima(2)[0][2] = 1;     ima(2)[1][2] = 17;    ima(2)[2][2] = 15;     ima(2)[3][2] = 17;
+    ima(2)[0][3] = 0;     ima(2)[1][3] = 19;    ima(2)[2][3] = 19;     ima(2)[3][3] = 16;
+
+
+
+    typedef RegionContour<Coord2D<int64> >  RegionType;  // Type of region we will work with
+    typedef Partition<RegionType> partition_type;
+
+    partition_type my_partition(im_part);
+    boost::array<float64, InputType::channels> exact_value;  
+
+    partition_type::global_iterator reg_it     = my_partition.begin();
+
+    // First region
+    const ZeboudjContrast< InputType >& zeboudj_cont1 = calc_descriptor(new ZeboudjContrast< InputType >(), ima, *reg_it);
+
+    exact_value[0]=0.94117647058823528;
+    exact_value[1]=0.94117647058823528;
+    exact_value[2]=0.94117647058823528;
+
+    for (uint64 i=0; i < InputType::channels; ++i)
+    {
+        BOOST_CHECK_CLOSE( zeboudj_cont1[i], exact_value[i], 1e-6);
+    }
+    // Second region
+    ++reg_it;
+    const ZeboudjContrast< InputType >& zeboudj_cont2 = calc_descriptor(new ZeboudjContrast< InputType >(), ima, *reg_it);
+
+    exact_value[0]=0.84705882352941175;
+    exact_value[1]=0.84705882352941175;
+    exact_value[2]=0.84705882352941175;
+
+    for (uint64 i=0; i < InputType::channels; ++i)
+    {
+        BOOST_CHECK_CLOSE( zeboudj_cont2[i], exact_value[i], 1e-6);
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+
+

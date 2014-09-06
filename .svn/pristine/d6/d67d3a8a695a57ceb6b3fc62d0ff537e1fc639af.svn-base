@@ -1,0 +1,730 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file fourier.cpp
+//!
+//!  Funtions for fourier and related transforms 
+//!
+
+
+#include <complex>
+
+#ifdef USE_FFTW3 // Only if FFTW3 is installed
+#include <fftw3.h>
+#endif
+
+#include <imageplus/math/transforms/fourier.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace transforms
+        {
+     
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+    
+            // Helping function-object for fft and invfft.
+            template<typename T>
+            struct dft_
+            {
+                    void operator()( int rank, const int *n, const std::complex<T> *in, std::complex<T> *out, int sign )
+                    {
+                        fftw_plan plan = fftw_plan_dft( rank, n, reinterpret_cast<fftw_complex *>(const_cast<std::complex<T> *>(in)), 
+                                                        reinterpret_cast<fftw_complex *>(out), sign, FFTW_ESTIMATE | FFTW_PRESERVE_INPUT );
+    
+                        assert( plan != NULL );
+      
+                        fftw_execute( plan );
+                        fftw_destroy_plan( plan );
+                    }
+            };
+    
+            template< typename T, std::size_t D>
+            struct fft_t : public std::unary_function<const MultiArray< std::complex<T>, D>&, MultiArray<std::complex<T>, D> >
+            {
+                    MultiArray<std::complex<T>, D> operator()(const MultiArray< std::complex<T>, D>& field )
+                    {
+                        boost::array<int, D> shape;
+                        std::copy( field.shape(), field.shape() + D, shape.begin() );
+      
+                        MultiArray< std::complex<T>, D > retVal( shape );
+    
+                        dft_<T> dft;
+                        dft( D, shape.begin(), field.data(), retVal.data(), -1 );
+    
+                        return retVal;
+                    }
+            };
+    #       endif /* USE_FFTW3 */
+    
+    
+            template< typename T, std::size_t D>
+            MultiArray<std::complex<T>, D> fft( const MultiArray< std::complex<T>, D>& field )
+            {
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return fft_t<T, D>()( field );
+    #       else
+                throw ImagePlusError("transforms::fft : Not yet implemented without the FFTW3 library");    
+    #       endif
+            }
+    
+    
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+            template<typename T, std::size_t D>
+            struct ifft_t: public std::unary_function< const MultiArray<std::complex<T>, D>&, MultiArray<std::complex<T>, D> >
+            {
+                    MultiArray<std::complex< T >, D> operator()( const MultiArray< std::complex<T>, D>& field )
+                    {
+                        boost::array<int, D> shape;
+                        std::copy( field.shape(), field.shape() + D, shape.begin() );
+    
+                        MultiArray<std::complex<T>, D> retVal( shape );
+        
+                        dft_<T> dft;
+                        dft( D, shape.begin(), field.data(), retVal.data(), +1 );
+    
+                        return retVal * std::complex<T>( 1.0 / retVal.num_elements() );
+                    }
+            };
+    #       endif /* USE_FFTW3 */
+    
+    
+            template<typename T, std::size_t D>
+            MultiArray< std::complex< T >, D >  ifft( const MultiArray< std::complex<T>, D>& field )
+            {
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return ifft_t< T, D>()( field );
+    #       else
+                throw ImagePlusError("transforms::ifft : Not yet implemented without the FFTW3 library");    
+    #       endif
+            }
+    
+    
+    
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+            // Helping function-object for rfft.
+            template<typename T>
+            struct dft_r2c_
+            {
+                    void operator()( int rank, const int *n, const T *in, std::complex<T> *out )
+                    {
+                        fftw_plan plan = fftw_plan_dft_r2c( rank, n, static_cast<double*>(const_cast<T*>(in)), reinterpret_cast<fftw_complex*>(out),
+                                                              FFTW_ESTIMATE | FFTW_PRESERVE_INPUT );
+    
+                        assert( plan != NULL );
+      
+                        fftw_execute( plan );
+                        fftw_destroy_plan( plan );
+                    }
+            };
+    
+            template< typename T, std::size_t D>
+            struct rfft_t: public std::unary_function< const MultiArray<T,D>&, MultiArray<std::complex<T>,D> >
+            {
+                    MultiArray<std::complex<T>, D> operator()( const MultiArray<T,D>& field )
+                    {
+                        assert( field.shape()[ D - 1 ] % 2 == 0 );
+    
+                        boost::array<int, D> shape1, shape2;
+                        std::copy( field.shape(), field.shape() + D, shape1.begin() );
+                        std::copy( field.shape(), field.shape() + D, shape2.begin() );
+                        shape1[D - 1] = shape1[D - 1] / 2 + 1;
+      
+                        MultiArray<std::complex<T>, D> retVal( shape1 );
+    
+                        dft_r2c_<T> dft_r2c;
+                        dft_r2c( D, shape2.begin(), field.data(), retVal.data() );
+      
+                        return retVal;
+                    }
+            };
+    #       endif /* USE_FFTW3 */
+    
+            template<typename T, std::size_t D>
+            MultiArray<std::complex<T>, D> rfft( const MultiArray<T,D>& field )
+            {
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return rfft_t<T, D>()( field );
+    #       else
+                throw ImagePlusError("transforms::rfft : Not yet implemented without the FFTW3 library");    
+    #       endif
+            }
+    
+    
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+            // Helping function-object for irfft.
+            template<typename T>
+            struct dft_c2r_
+            {
+                    void operator()( int rank, const int *n, const std::complex<T> *in, T *out )
+                    {
+                        assert( sizeof( std::complex< double > ) == sizeof( fftw_complex ) );
+                        fftw_plan plan = fftw_plan_dft_c2r( rank, n, reinterpret_cast<fftw_complex *>(const_cast<std::complex<T> *>(in)), static_cast<double *>(out),
+                                                              FFTW_ESTIMATE  );// FFTW_PRESERVE_INPUT
+    
+                        assert( plan != NULL );
+      
+                        fftw_execute( plan );
+                        fftw_destroy_plan( plan );
+                    }
+            };
+    
+            template<typename T, std::size_t D>
+            struct irfft_t : public std::unary_function< const MultiArray<std::complex<T>, D>&, MultiArray<T, D> >
+            {
+                    MultiArray<T, D> operator()( const MultiArray<std::complex<T>, D>&field )
+                    {
+                        // Doesn't preserve input.
+                        MultiArray<std::complex<T>, D> copy( field );
+    
+                        boost::array<int, D> shape;
+                        std::copy( field.shape(), field.shape() + D, shape.begin() );
+                        shape[ D - 1 ] = ( shape[ D - 1 ] - 1 ) * 2;
+    
+                        MultiArray<T, D> retVal( shape );
+    
+                        dft_c2r_<T> dft_c2r;
+                        dft_c2r( D, shape.begin(), copy.data(), retVal.data() );
+    
+                        return retVal * (T)( 1.0 / retVal.num_elements() );
+                    }
+    
+            };
+    #       endif /* USE_FFTW3 */
+    
+    
+            template<typename T, std::size_t D>
+            MultiArray<T, D> irfft( const MultiArray<std::complex<T>, D>& field )
+            {
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return irfft_t<T, D>()( field );
+    #       else
+                throw ImagePlusError("transforms::irfft : Not yet implemented without the FFTW3 library");    
+    #       endif
+            }
+    
+    
+    
+    
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+            // Helping function-object for dct and idct.
+            template<typename T>
+            struct dct_
+            {
+                    void operator()( int rank, const int *n, const T* in, T* out, const fftw_r2r_kind* kind )
+                    {
+                        fftw_plan plan = fftw_plan_r2r ( rank, n, static_cast<double*>(const_cast<T*>(in)), static_cast<double*>(out), 
+                                                         kind, FFTW_ESTIMATE | FFTW_PRESERVE_INPUT );
+    
+                        assert( plan != NULL );
+      
+                        fftw_execute( plan );
+                        fftw_destroy_plan( plan );
+                    }
+            };
+    
+    
+            template< typename T>
+            struct dct_t_1d : public std::unary_function< const MultiArray<T,1>&, MultiArray<T,1> >
+            {
+                    MultiArray<T,1> operator()(const MultiArray<T,1>& field )
+                    {
+                        fftw_r2r_kind kind[1];
+    
+                        for (uint64 i=0; i < 1; i++)
+                        {
+                            kind[i] = FFTW_REDFT10;
+                        }
+    
+                        boost::array<int, 1> shape;
+                        std::copy( field.shape(), field.shape() + 1, shape.begin() );
+      
+                        MultiArray<T,1> retVal( shape );
+    
+                        dct_<T> redft10;
+                        redft10( 1, shape.begin(), field.data(), retVal.data(), kind );
+    
+                        // Normalization to ensure orthonormality
+                        float64 factor, factori;
+                        float64 factori0 = std::sqrt(1.0/static_cast<float64>(shape[0]));
+                        float64 factori1 = std::sqrt(2.0/static_cast<float64>(shape[0]));
+    
+                        for (int64 i=0; i < shape[0]; i++)
+                        {
+                            factori = (i == 0) ? factori0 : factori1; 
+    
+                            // FFTW3 puts a 2 factor in each direction
+                            factor = factori / 2.0;
+    
+                            retVal[i] = retVal[i] * factor;
+                        }
+    
+                        return retVal;
+                    }
+            };
+    
+    
+            template< typename T>
+            struct dct_t_2d : public std::unary_function< const MultiArray<T,2>&, MultiArray<T,2> >
+            {
+                    MultiArray<T,2> operator()(const MultiArray<T,2>& field )
+                    {
+                        fftw_r2r_kind kind[2];
+    
+                        for (uint64 i=0; i < 2; i++)
+                        {
+                            kind[i] = FFTW_REDFT10;
+                        }
+    
+                        boost::array<int, 2> shape;
+                        std::copy( field.shape(), field.shape() + 2, shape.begin() );
+      
+    
+    
+                        MultiArray<T,2> retVal( shape );
+    
+                        dct_<T> redft10;
+                        redft10( 2, shape.begin(), field.data(), retVal.data(), kind );
+    
+    
+                        // Normalization to ensure orthonormality
+                        float64 factor, factori, factorj;
+                        float64 factori0 = std::sqrt(1.0/static_cast<float64>(shape[0]));
+                        float64 factori1 = std::sqrt(2.0/static_cast<float64>(shape[0]));
+                        float64 factorj0 = std::sqrt(1.0/static_cast<float64>(shape[1]));
+                        float64 factorj1 = std::sqrt(2.0/static_cast<float64>(shape[1]));
+    
+                        for (int64 i=0; i < shape[0]; i++)
+                        {
+                            factori = (i == 0) ? factori0 : factori1; 
+                            
+                            for (int64 j=0; j < shape[1]; j++)
+                            {
+                                factorj = (j == 0) ? factorj0 : factorj1; 
+    
+                                // FFTW3 puts a 2 factor in each direction
+                                factor = (factori * factorj) / 4.0;
+    
+                                retVal[i][j] = retVal[i][j] * factor;
+                            }
+                        }
+                        return retVal;
+                    }
+            };
+    
+    
+            template< typename T>
+            struct dct_t_3d : public std::unary_function< const MultiArray<T,3>&, MultiArray<T,3> >
+            {
+                    MultiArray<T,3> operator()(const MultiArray<T,3>& field )
+                    {
+                        fftw_r2r_kind kind[3];
+    
+                        for (uint64 i=0; i < 3; i++)
+                        {
+                            kind[i] = FFTW_REDFT10;
+                        }
+    
+                        boost::array<int, 3> shape;
+                        std::copy( field.shape(), field.shape() + 3, shape.begin() );
+      
+    
+    
+                        MultiArray<T,3> retVal( shape );
+    
+                        dct_<T> redft10;
+                        redft10( 3, shape.begin(), field.data(), retVal.data(), kind );
+    
+    
+                        // Normalization to ensure orthonormality
+                        float64 factor, factori, factorj, factork;
+                        float64 factori0 = std::sqrt(1.0/static_cast<float64>(shape[0]));
+                        float64 factori1 = std::sqrt(2.0/static_cast<float64>(shape[0]));
+                        float64 factorj0 = std::sqrt(1.0/static_cast<float64>(shape[1]));
+                        float64 factorj1 = std::sqrt(2.0/static_cast<float64>(shape[1]));
+                        float64 factork0 = std::sqrt(1.0/static_cast<float64>(shape[2]));
+                        float64 factork1 = std::sqrt(2.0/static_cast<float64>(shape[2]));
+    
+                        for (int64 i=0; i < shape[0]; i++)
+                        {
+                            factori = (i == 0) ? factori0 : factori1; 
+                            
+                            for (int64 j=0; j < shape[1]; j++)
+                            {
+                                factorj = (j == 0) ? factorj0 : factorj1;
+    
+                                for (int64 k=0; k < shape[2]; k++)
+                                {
+                                    factork = (k == 0) ? factork0 : factork1;
+    
+                                    // FFTW3 puts a 2 factor in each direction
+                                    factor = (factori * factorj * factork) / 8.0;
+    
+                                    retVal[i][j][k] = retVal[i][j][k] * factor;
+                                }
+                            }
+                        }
+    
+                        return retVal;
+                    }
+            };
+    #       endif /* USE_FFTW3 */
+    
+    
+            template<typename T>
+            MultiArray<T,1> dct1d( const MultiArray<T,1>& field ) throw (ImagePlusError)
+            {
+    #           ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return dct_t_1d<T>()( field );
+    #           else
+                throw ImagePlusError("transforms::dct1d : Not yet implemented without the FFTW3 library");    
+    #           endif /* USE_FFTW3 */
+            }
+    
+    
+            template<typename T>
+            MultiArray<T,2> dct2d( const MultiArray<T,2>& field )  throw (ImagePlusError)
+            {
+    #           ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return dct_t_2d<T>()( field );
+    #           else
+                throw ImagePlusError("transforms::dct2d : Not yet implemented without the FFTW3 library");    
+    #           endif /* USE_FFTW3 */
+            }
+    
+            template<typename T>
+            MultiArray<T,3> dct3d( const MultiArray<T,3>& field )  throw (ImagePlusError)
+            {
+    #           ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return dct_t_3d<T>()( field );
+    #           else
+                throw ImagePlusError("transforms::dct3d : Not yet implemented without the FFTW3 library");    
+    #           endif /* USE_FFTW3 */
+            }
+    
+    
+    
+    #       ifdef USE_FFTW3 // Only if FFTW3 is installed
+            template<typename T>
+            struct idct_t_1d : public std::unary_function< const MultiArray<T,1>&, MultiArray<T,1> >
+            {
+                    MultiArray<T,1> operator()( const MultiArray<T,1>& field )
+                    {
+                        fftw_r2r_kind kind[1];
+                        
+                        for (uint64 i=0; i < 1; i++)
+                        {
+                            kind[i] = FFTW_REDFT01;
+                        }
+    
+                        boost::array<int,1> shape;
+                        std::copy( field.shape(), field.shape() + 1, shape.begin() );
+    
+                        // Doesn't preserve input.
+                        MultiArray<T,1> copy( shape );
+    
+                        // Normalization to ensure orthonormality
+                        float64 factor, factori;
+                        float64 factori0 = std::sqrt(1.0/static_cast<float64>(shape[0]));
+                        float64 factori1 = 0.5*std::sqrt(2.0/static_cast<float64>(shape[0]));
+    
+                        for (int64 i=0; i < shape[0]; i++)
+                        {
+                            factori = (i == 0) ? factori0 : factori1;
+    
+                            factor = factori;                            
+                            
+                            copy[i] = field[i] * factor;
+                        }
+    
+    
+                        MultiArray<T,1> retVal( shape );
+    
+                        dct_<T> redft01;
+                        redft01( 1, shape.begin(), copy.data(), retVal.data(), kind );
+    
+                        return retVal;
+                    }
+            };
+    
+            template<typename T>
+            struct idct_t_2d : public std::unary_function< const MultiArray<T,2>&, MultiArray<T,2> >
+            {
+                    MultiArray<T,2> operator()( const MultiArray<T,2>& field )
+                    {
+                        fftw_r2r_kind kind[2];
+                        
+                        for (uint64 i=0; i < 2; i++)
+                        {
+                            kind[i] = FFTW_REDFT01;
+                        }
+    
+                        boost::array<int,2> shape;
+                        std::copy( field.shape(), field.shape() + 2, shape.begin() );
+    
+                        // Doesn't preserve input.
+                        MultiArray<T,2> copy( shape );
+    
+    
+                        // Normalization to ensure orthonormality
+                        float64 factor, factori, factorj;
+                        float64 factori0 = std::sqrt(1.0/static_cast<float64>(shape[0]));
+                        float64 factori1 = 0.5*std::sqrt(2.0/static_cast<float64>(shape[0]));
+                        float64 factorj0 = std::sqrt(1.0/static_cast<float64>(shape[1]));
+                        float64 factorj1 = 0.5*std::sqrt(2.0/static_cast<float64>(shape[1]));
+    
+                        for (int64 i=0; i < shape[0]; i++)
+                        {
+                            factori = (i == 0) ? factori0 : factori1;
+                            
+                            for (int64 j=0; j < shape[1]; j++)
+                            {
+                                factorj = (j == 0) ? factorj0 : factorj1;
+    
+                                factor = (factori * factorj);                            
+                                
+                                copy[i][j] = field[i][j] * factor;
+                            }
+                        }
+    
+    
+                        MultiArray<T,2> retVal( shape );
+    
+                        dct_<T> redft01;
+                        redft01( 2, shape.begin(), copy.data(), retVal.data(), kind );
+    
+                        return retVal;
+                    }
+            };
+    
+    
+            template<typename T>
+            struct idct_t_3d : public std::unary_function< const MultiArray<T,3>&, MultiArray<T,3> >
+            {
+                    MultiArray<T,3> operator()( const MultiArray<T,3>& field )
+                    {
+                        fftw_r2r_kind kind[3];
+                        
+                        for (uint64 i=0; i < 3; i++)
+                        {
+                            kind[i] = FFTW_REDFT01;
+                        }
+    
+                        boost::array<int,3> shape;
+                        std::copy( field.shape(), field.shape() + 3, shape.begin() );
+    
+                        // Doesn't preserve input.
+                        MultiArray<T,3> copy( shape );
+    
+                        // Normalization to ensure orthonormality
+                        // Normalization to ensure orthonormality
+                        float64 factor, factori, factorj, factork;
+                        float64 factori0 = std::sqrt(1.0/static_cast<float64>(shape[0]));
+                        float64 factori1 = 0.5*std::sqrt(2.0/static_cast<float64>(shape[0]));
+                        float64 factorj0 = std::sqrt(1.0/static_cast<float64>(shape[1]));
+                        float64 factorj1 = 0.5*std::sqrt(2.0/static_cast<float64>(shape[1]));
+                        float64 factork0 = std::sqrt(1.0/static_cast<float64>(shape[2]));
+                        float64 factork1 = 0.5*std::sqrt(2.0/static_cast<float64>(shape[2]));
+    
+                        for (int64 i=0; i < shape[0]; i++)
+                        {
+                            factori = (i == 0) ? factori0 : factori1; 
+                            
+                            for (int64 j=0; j < shape[1]; j++)
+                            {
+                                factorj = (j == 0) ? factorj0 : factorj1;
+    
+                                for (int64 k=0; k < shape[2]; k++)
+                                {
+                                    factork = (k == 0) ? factork0 : factork1;
+    
+                                    // FFTW3 puts a 2 factor in each direction
+                                    factor = (factori * factorj * factork);
+    
+                                    copy[i][j][k] = field[i][j][k] * factor;
+                                }
+                            }
+                        }
+    
+    
+                        MultiArray<T,3> retVal( shape );
+    
+                        dct_<T> redft01;
+                        redft01( 3, shape.begin(), copy.data(), retVal.data(), kind );
+    
+                        return retVal;
+                    }
+            };
+    
+    #       endif /* USE_FFTW3 */
+    
+            template<typename T>
+            MultiArray<T,1> idct1d( const MultiArray<T,1>& field )  throw (ImagePlusError)
+            {
+    #           ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return idct_t_1d<T>()( field );
+    #           else
+                throw ImagePlusError("transforms::idct1d : Not yet implemented without the FFTW3 library");    
+    #           endif /* USE_FFTW3 */
+            }
+    
+    
+            template<typename T>
+            MultiArray<T,2> idct2d( const MultiArray<T,2>& field ) throw (ImagePlusError)
+            {
+    #           ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return idct_t_2d<T>()( field );
+    #           else
+                throw ImagePlusError("transforms::idct2d : Not yet implemented without the FFTW3 library");    
+    #           endif /* USE_FFTW3 */
+            }
+    
+            template<typename T>
+            MultiArray<T,3> idct3d( const MultiArray<T,3>& field ) throw (ImagePlusError)
+            {
+    #           ifdef USE_FFTW3 // Only if FFTW3 is installed
+                return idct_t_3d<T>()( field );
+    #           else
+                throw ImagePlusError("transforms::idct3d : Not yet implemented without the FFTW3 library");    
+    #           endif /* USE_FFTW3 */
+            }
+    
+    
+    
+            template<typename T>
+            MultiArray<T,2> idct1d( const MultiArray<T,2>& field, uint64 direction ) throw (ImagePlusError)
+            {
+                MultiArray<T,2> out( field.dims(0), field.dims(1) );
+    
+                for (uint64 i = 0; i < field.dims(direction); i++)
+                {
+                    if (direction == ROW_TRANSFORM)
+                    {
+                        MultiArray<T,1> res( field.dims(1) );
+    
+                        // Compute the dct1d 
+                        res = idct1d ( row (field, i) );
+                        
+                        // Copy into result matrix
+                        copy_paste_row (res, i, out);
+                    }
+                    else
+                    {
+                        MultiArray<T,1> res( field.dims(0) );
+    
+                        // Compute the dct1d 
+                        res = idct1d ( column (field, i) );
+                        
+                        // Copy into result matrix
+                        copy_paste_column (res, i, out);
+                    }
+                }
+                return out;
+            }
+    
+    
+    
+            template<typename T>
+            MultiArray<T,2> dct1d( const MultiArray<T,2>& field, uint64 direction ) throw (ImagePlusError)
+            {
+    
+                MultiArray<T,2> out( field.dims(0), field.dims(1) );
+    
+                for (uint64 i = 0; i < field.dims(direction); i++)
+                {
+                    if (direction == ROW_TRANSFORM)
+                    {
+                        MultiArray<T,1> res( field.dims(1) );
+    
+                        // Compute the dct1d 
+                        res = dct1d ( row (field, i) );
+                        
+                        // Copy into result matrix
+                        copy_paste_row (res, i, out);
+                    }
+                    else
+                    {
+                        MultiArray<T,1> res( field.dims(0) );
+    
+                        // Compute the dct1d 
+                        res = dct1d ( column (field, i) );
+                        
+                        // Copy into result matrix
+                        copy_paste_column (res, i, out);
+                    }
+                }
+                return out;
+            }
+        } // namespace transforms
+    } // namespace math
+} // namespace imageplus
+
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace transforms
+        {
+
+#       ifdef USE_FFTW3 // Only if FFTW3 is installed
+            template struct    dft_<float64>;
+    
+            template struct dft_r2c_<float64>;
+            template struct dft_c2r_<float64>;
+                    
+            template struct   fft_t<float64,1>;
+            template struct  ifft_t<float64,1>;
+            template struct  rfft_t<float64,1>;
+            template struct irfft_t<float64,1>;
+    
+            template struct   fft_t<float64,2>;
+            template struct  ifft_t<float64,2>;
+            template struct  rfft_t<float64,2>;
+            template struct irfft_t<float64,2>;
+    
+            template struct    dct_<float64>;
+    
+            template struct   dct_t_1d<float64>;
+            template struct  idct_t_1d<float64>;
+            
+            template struct   dct_t_2d<float64>;
+            template struct  idct_t_2d<float64>;
+    
+            template struct   dct_t_3d<float64>;
+            template struct  idct_t_3d<float64>;
+    #       endif /* USE_FFTW3 */
+    
+    
+    
+            template MultiArray<float64,1>  dct1d( const MultiArray<float64,1>&  );
+            template MultiArray<float64,1> idct1d( const MultiArray<float64,1>&  );
+    
+            template MultiArray<float64,2>  dct2d( const MultiArray<float64,2>&  );
+            template MultiArray<float64,2> idct2d( const MultiArray<float64,2>&  );
+    
+            template MultiArray<float64,3>  dct3d( const MultiArray<float64,3>&  );
+            template MultiArray<float64,3> idct3d( const MultiArray<float64,3>&  );
+    
+            template MultiArray<float64,2>  dct1d( const MultiArray<float64,2>&, uint64  );
+            template MultiArray<float64,2> idct1d( const MultiArray<float64,2>&, uint64  );
+    
+            template MultiArray<std::complex<float64>, 1>  fft( const MultiArray< std::complex<float64>, 1>&  );
+            template MultiArray<std::complex<float64>, 1> ifft( const MultiArray< std::complex<float64>, 1>&  );
+            template MultiArray<std::complex<float64>, 1> rfft( const MultiArray<float64,1>& );
+            template MultiArray<float64, 1> irfft( const MultiArray<std::complex<float64>,1>& );
+    
+            template MultiArray<std::complex<float64>, 2>  fft( const MultiArray< std::complex<float64>, 2>&  );
+            template MultiArray<std::complex<float64>, 2> ifft( const MultiArray< std::complex<float64>, 2>&  );
+            template MultiArray<std::complex<float64>, 2> rfft( const MultiArray<float64,2>& );
+            template MultiArray<float64, 2> irfft( const MultiArray<std::complex<float64>,2>& );
+        }
+    }
+}
+

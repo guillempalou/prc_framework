@@ -1,0 +1,135 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file partition_functions.test
+//!
+//! Tests for partition_functions.hpp
+//!
+#include <imageplus/core.hpp>
+
+BOOST_AUTO_TEST_SUITE ( Partition_Functions_Suite );
+
+using namespace imageplus;
+using namespace std;
+
+typedef boost::mpl::list< imageplus::Region<Coord2D<int64> >, 
+                          imageplus::RegionContour<Coord2D<int64> > > RegionTypeList;
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( partition_relabel, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part;
+    temp_part.resize(2,2);
+    
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 4;
+    temp_part[0][1] = 8;
+    temp_part[1][1] = 1;
+
+    typedef Partition<RegionType> partition_type;
+    partition_type my_partition(temp_part);
+    
+    merge_regions(8,1,26,my_partition);
+    merge_regions(3,4,27,my_partition);
+    merge_regions(26,27,29,my_partition);
+    
+    relabel(my_partition);
+    
+    temp_part[0][0] = 1;
+    temp_part[1][0] = 2;
+    temp_part[0][1] = 3;
+    temp_part[1][1] = 4;
+    
+    partition_type my_partition_truth(temp_part);
+
+    merge_regions(3,4,5,my_partition_truth);
+    merge_regions(1,2,6,my_partition_truth);
+    merge_regions(5,6,7,my_partition_truth);
+
+    BOOST_CHECK(my_partition==my_partition_truth);
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( create_image_partition_test, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part;
+    temp_part.resize(2,2);
+    
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 4;
+    temp_part[0][1] = 8;
+    temp_part[1][1] = 1;
+
+    typedef Partition<RegionType> partition_type;
+    partition_type my_partition(temp_part);
+    
+    merge_regions(8,1,26,my_partition);
+    merge_regions(3,4,27,my_partition);
+
+    ImagePartition<> leaves_part;
+    leaves_part.resize(2,2);
+
+    typename partition_type::leaves_iterator first = my_partition.begin();
+    typename partition_type::leaves_iterator last = my_partition.end();
+    create_image_partition(first, last, leaves_part);
+    
+    BOOST_CHECK(leaves_part==my_partition.leaves_partition());
+    
+    ImagePartition<> roots_part;
+    roots_part.resize(2,2);
+    
+    typename partition_type::roots_iterator first2 = my_partition.begin();
+    typename partition_type::roots_iterator last2 = my_partition.end();
+    create_image_partition(first2, last2, roots_part);
+
+    ImagePartition<> roots_ok;
+    roots_ok.resize(2,2);
+    
+    roots_ok[0][0] = 27;
+    roots_ok[1][0] = 27;
+    roots_ok[0][1] = 26;
+    roots_ok[1][1] = 26;
+    
+    BOOST_CHECK(roots_part==roots_ok);
+}
+
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( create_image_partition_2_test, RegionType, RegionTypeList)
+{  
+    ImagePartition<> temp_part;
+    temp_part.resize(2,2);
+    
+    temp_part[0][0] = 3;
+    temp_part[1][0] = 4;
+    temp_part[0][1] = 8;
+    temp_part[1][1] = 1;
+
+    typedef Partition<RegionType> partition_type;
+    partition_type my_partition(temp_part);
+    
+    merge_regions(8,1,26,my_partition);
+    merge_regions(3,4,27,my_partition);
+
+    ImagePartition<> my_part;
+    my_part.resize(2,2);
+
+    ImagePartition<> ok_part(temp_part);
+    create_image_partition(my_partition, 4, my_part);
+    BOOST_CHECK(my_part == ok_part);
+
+    ok_part[0][1] = 26;
+    ok_part[1][1] = 26;
+    create_image_partition(my_partition, 3, my_part);
+    BOOST_CHECK(my_part == ok_part);
+    
+    ok_part[0][0] = 27;
+    ok_part[1][0] = 27;
+    create_image_partition(my_partition, 2, my_part);
+    BOOST_CHECK(my_part == ok_part);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+

@@ -1,0 +1,303 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file bounding_box.hpp
+//!
+#ifndef IMAGEPLUS_CORE_BOUNDING_BOX_HPP
+#define IMAGEPLUS_CORE_BOUNDING_BOX_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/config.hpp>
+#include <imageplus/core/exceptions.hpp>
+#include <boost/array.hpp>
+
+
+#include <imageplus/core/visual_descriptors.hpp>
+
+namespace imageplus
+{
+    /*!
+     * \brief Base class for straight bounding boxes
+     *
+     * The bounding box, also known as minimum bounding rectangle (MBR) or envelope,
+     * is a D dimensional hypervolume surrounding a region in a ImaVol. It is oriented with the axes
+     * of the co-ordinate system, and it is then known as an axis-aligned bounding box (AABB)\n
+     * A bounding box is specified by the coordinates of one point and the length of the D sides.\n
+     * 
+     * \tparam InputModel : The input type: any ImaVol, Region, etc.
+     * 
+     * \author Jordi Pont <jordi.pont@upc.edu>
+     *
+     * \date 01-02-2010
+     */ 
+    template<class PositionModel>
+    class BoundingBox : public DescriptorBase
+    {
+    public:
+    	//! Type of coordinates of the input
+        typedef PositionModel CoordType;
+        
+        //! Number of dimensions of the input
+        static const std::size_t dimensions = CoordType::dimensions;
+
+        //!
+        //! \brief Default constructor
+        //!
+        BoundingBox ( ) :
+            DescriptorBase("BoundingBox",true), _origin(), _opposite()
+        {
+            _compute_sides();
+        }
+        
+        
+        //!
+        //! \brief Constructor for n dimensions
+        //!
+        //! \param[in] origin : Coordinate of the origin of the BoundingBox
+        //! \param[in] opposite : Coordinate of the opposite of the BoundingBox
+        BoundingBox(CoordType  origin, CoordType opposite ):
+            DescriptorBase("BoundingBox",true), _origin(origin), _opposite(opposite)
+        {
+            _compute_sides();
+        }
+    
+        //!
+        //! \brief Constructor for 2 dimensions
+        //!
+        //! \param[in] origin : Coordinates of the origin of the BoundingBox
+        //! \param[in] width  : width of the BoundingBox
+        //! \param[in] height : height of the BoundingBox
+        BoundingBox (CoordType origin, std::size_t width, std::size_t height ) :
+            DescriptorBase("BoundingBox",true), _origin(origin), _sides()
+        {
+            ASSERT(dimensions==2, "Calling 2-dimension constructor with dimensions=" << dimensions);
+            
+            _sides[0] = width;
+            _sides[1] = height;
+            
+            _compute_opposite();
+        }
+
+    
+        //!
+        //! \brief Constructor for 3 dimensions
+        //!
+        //! \param[in] origin : Cordinates of the origin of the BoundingBox
+        //! \param[in] width  : width of the BoundingBox
+        //! \param[in] depth  : depth of the BoundingBox
+        //! \param[in] height : height of the BoundingBox
+        BoundingBox (CoordType origin, uint64 width, uint64 height, uint64 depth ) :
+            DescriptorBase("BoundingBox",true), _origin(origin), _sides()
+        {
+            ASSERT(dimensions==3, "Calling 3-dimension constructor with dimensions=" << dimensions);
+            
+            _sides[0] = width;
+            _sides[1] = height;
+            _sides[2] = depth;
+            
+            _compute_opposite();
+        }
+    
+        //!
+        //! \brief Copy constructor
+        //!
+        //! \param[in] copy : Creates a copy (including values) of this BoundingBox
+        BoundingBox( const BoundingBox& copy ) :
+            DescriptorBase("BoundingBox",true), _origin(copy._origin), _opposite(copy._opposite), _sides(copy._sides)
+        {
+        }
+    
+        //! \brief Destructor
+        virtual
+        ~BoundingBox()
+        {
+        }
+    
+        //!
+        //! \brief Assignment operator for BoundingBox
+        //!
+        //! \param[in] copy : Creates a copy of this BoundingBox
+        //!
+        //! \return Reference to (this) so a = b = c; works.
+        //!
+        //! \exception ImageplusError : Self assignment
+        //!
+        const BoundingBox& operator = ( const BoundingBox& copy ) throw (ImagePlusError)
+        {
+            ASSERT( &copy != this, "BoundingBox::operator=: Self Assignment" );
+            
+            _origin = copy._origin;
+            _sides = copy._sides;
+            _opposite = copy._opposite;
+            return *this;
+        }
+        
+        //!
+        //! \brief Dimensionality of the BoundingBox
+        //!
+        //! \return Dimensionality of the BoundingBox
+        //!
+        std::size_t dimension() const
+        {
+            return dimensions;
+        }
+    
+        //!
+        //! \brief Get the origin of the BoundingBox
+        //!
+        //! \return Const reference to BoundingBox origin coordinates
+        //!
+        const CoordType & origin() const
+        {
+            return (_origin);
+        }
+        
+        //!
+        //! \brief Set the origin of the BoundingBox
+        //! \param origin : Origin to set
+        //!
+        void origin(const CoordType& origin)
+        {
+            _origin = origin;
+            _compute_sides();
+        }
+    
+        //!
+        //! \brief Get the coordinates of the vertex opposite to the origin
+        //!
+        //! \return Coordinates of opposite vertex
+        //!
+        const CoordType& opposite() const
+        {
+            return _opposite;
+        }
+    
+        //!
+        //! \brief Sets the opposite of the BoundingBox
+        //! \param opposite : Opposite to set
+        //!
+        void opposite(const CoordType& opposite)
+        {
+            _opposite = opposite;
+            _compute_sides();
+        }
+        
+        //!
+        //! \brief Get the lengths of BoundingBox sides
+        //!
+        //! \param[in] n : Side number to get/set
+        //!
+        //! \return Reference to nth BoundingBox side length
+        //!
+        const typename CoordType::data_type& side(std::size_t n) const
+        {
+            return (_sides[n]);
+        }
+    
+        //!
+        //! \brief Set the lengths of BoundingBox sides
+        //!
+        //! \param[in] n : Side number to set
+        //! \param[in] length : Length to set
+        //!
+        //! \return Reference to nth BoundingBox side length
+        //!
+        void side(std::size_t n, int64 length)
+        {
+            _sides[n] = length;
+            _compute_opposite();
+        }
+        
+        //! \returns the sides of the BoundingBox
+        const CoordType& sides() const
+        {
+            return _sides;
+        }
+        
+        //! \brief Calculates the BoundingBox of a region given a pair of iterators. 
+        //!
+        //! \param[in] first : Iterator to the beginning of the region
+        //! \param[in] last : Iterator to the end of the region
+        //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+        template< class IteratorModel >
+        void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+        {
+            _origin = (*first).position();
+            _opposite = _origin;
+
+            for(; first!=last; ++first)
+            {
+                CoordType coord_curr = (*first).position();
+                for(std::size_t ii=0; ii<dimensions; ii++)
+                {
+                    if (coord_curr[ii] < _origin[ii])
+                    {
+                        _origin[ii] = coord_curr[ii];
+                    }
+                    else if (coord_curr[ii] > _opposite[ii])
+                    {
+                        _opposite[ii] = coord_curr[ii];
+                    }
+                }
+            }
+            
+            _compute_sides();
+        }
+        
+        //! \brief Calculates the Bounding Box of the father given the sons
+        //!
+        //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+        //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+        //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+        void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+        {
+            const BoundingBox& bb1 = son1_descs.get(*this); 
+            const BoundingBox& bb2 = son2_descs.get(*this); 
+            
+            for(std::size_t ii=0; ii<dimensions; ii++)
+            {
+                (bb1.origin()[ii]<=bb2.origin()[ii]) ? _origin[ii]   = bb1.origin()[ii] : _origin[ii]   = bb2.origin()[ii]; 
+                (bb1.opposite()[ii]>=bb2.opposite()[ii]) ? _opposite[ii] = bb1.opposite()[ii] : _opposite[ii] = bb2.opposite()[ii];
+            }
+            
+            _compute_sides();
+        }
+        
+    protected:
+    
+        //! Origin of the BoundingBox. Nearest vertex to the origin of the coordinate system
+        CoordType _origin;
+        
+        //! Opposite of the BoundingBox
+        CoordType _opposite;
+        
+        //! Sizes of the sides of BoundingBox (width, height, depth, ...)
+        CoordType _sides;
+        
+        //! Private method to compute the sides from the origin and opposite
+        void _compute_sides()
+        {
+            for(std::size_t dd = 0; dd<dimensions; ++dd)
+            {
+                _sides[dd] = _opposite[dd] - _origin[dd] + 1;
+            }
+        }
+        
+        //! Private method to compute the opposite from the origin and sides
+        void _compute_opposite()
+        {
+            _opposite = _origin;
+            for(std::size_t dd = 0; dd<dimensions; ++dd)
+            {
+                _opposite[dd] += _sides[dd]-1;
+            }
+        }
+    };
+} // namespace imageplus
+
+
+#endif
+

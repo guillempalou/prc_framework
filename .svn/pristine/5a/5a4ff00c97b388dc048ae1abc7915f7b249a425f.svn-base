@@ -1,0 +1,88 @@
+/*
+ * video_rw_test.cpp
+ *
+ *  Created on: Oct 1, 2012
+ *      Author: guillem
+ */
+
+/*
+ * image_test.cpp
+ *
+ *  Created on: Sep 5, 2012
+ *      Author: guillem
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+
+
+#include <imageplus/bpt/binary_partition_tree.hpp>
+#include <imageplus/bpt/models/mean_color_distance.hpp>
+
+#include <imageplus/toolbox/tictoc.hpp>
+
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+
+using namespace imageplus;
+#define uint64 imageplus::uint64
+
+
+
+int main(int argc, char* argv[]) {
+
+	typedef VideoSignal<float64,3> 			VideoType;
+
+	typedef VideoType::coord_type 			coord2d;
+	typedef VideoType::value_type			lab_type;
+
+	std::string path = argv[1];
+
+	std::istringstream is(argv[2]);
+	uint64 start = 0; is >> start;
+
+	std::istringstream is2(argv[3]);
+	uint64 end = 0; is2 >> end;
+
+	//The algorithm assumes that the directory is structured
+	// BasePath /
+	// /Frames/frame000.png ...
+	uint64 N = end-start+1;
+	VideoType video(N);
+
+	for (uint64 i = start; i <= end; i++) {
+		//Read frames
+		std::ostringstream os;
+		os << path << "/frames/frame" << std::setw(3) << std::setfill('0') << i << ".png";
+		video.read_frame(os.str(),i-start); // read frame k and put it to the position k-i of the current block
+	}
+
+	ColorSpaceConverter<VideoType> converter;
+
+	converter.convert(video, ColorSpaceLAB);
+
+	for (uint64 t = 0; t < N; t+=2) {
+		VideoType::ImageType frame = video.frame(t);
+		for (uint64 x = 50; x < 70; x++) {
+			for (uint64 y = 10; y < 20; y++) {
+				frame(x,y) = lab_type(100,128,128);
+			}
+		}
+	}
+
+	converter.convert(video, ColorSpaceRGB);
+
+	for (uint64 i = start; i <= end; i++) {
+		std::ostringstream os;
+		os << path << "/processed/frame" << std::setw(3) << std::setfill('0') << i << ".png";
+		video.write_frame(os.str(),i-start); // read frame k and put it to the position k-i of the current block
+	}
+
+}
+
+
+

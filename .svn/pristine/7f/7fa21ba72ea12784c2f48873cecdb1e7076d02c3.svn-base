@@ -1,0 +1,97 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file foreground2d.test
+//!
+//!  Tests for foreground2d functions
+//!
+
+#include <iostream>
+#include <stdio.h>
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+#include <imageplus/foreground2d/colorview.hpp>
+#include <cmath>
+#include <iostream>
+#include <fstream>
+
+
+BOOST_AUTO_TEST_SUITE ( suite_colorview );
+
+using namespace imageplus;
+using namespace imageplus::foreground2d;
+using namespace std;
+    
+BOOST_AUTO_TEST_CASE ( test_colorview )
+{    
+        
+    //init io objects
+    io::ReadImage readImage;
+    ImageRGB<uint8> currentImage;
+    readImage.open(string(TEST_DATA_PATH_R) + "/Foreground2D/seq000000.jpg" );
+    
+    readImage >> currentImage ;
+
+    //Use color view Constructor
+    ColorView<uint8,3> cview;
+    //set view at currentImage
+    cview.view_at(currentImage);
+    
+    //Check view values
+    BOOST_CHECK(cview[0] == currentImage(0)[0][0]);
+    BOOST_CHECK(cview[1] == currentImage(1)[0][0]);
+    BOOST_CHECK(cview[2] == currentImage(2)[0][0]);
+    
+    cview ++;
+    
+    BOOST_CHECK(cview[0] == currentImage(0)[1][0]);
+    BOOST_CHECK(cview[1] == currentImage(1)[1][0]);
+    BOOST_CHECK(cview[2] == currentImage(2)[1][0]);
+    
+    // Use color view constructor
+    ColorView<uint8,3> colorview(currentImage);
+    
+    //check dereference
+    boost::array<uint8,3> values = *colorview;
+    
+    BOOST_CHECK(values[0] == currentImage(0)[0][0]);
+    BOOST_CHECK(values[1] == currentImage(1)[0][0]);
+    BOOST_CHECK(values[2] == currentImage(2)[0][0]);
+    
+    //check operators
+    colorview += 2;
+    
+    BOOST_CHECK(colorview[0] == currentImage(0)[2][0]);
+    BOOST_CHECK(colorview[1] == currentImage(1)[2][0]);
+    BOOST_CHECK(colorview[2] == currentImage(2)[2][0]);
+    
+    colorview -= 2;
+    
+    BOOST_CHECK(colorview[0] == currentImage(0)[0][0]);
+    BOOST_CHECK(colorview[1] == currentImage(1)[0][0]);
+    BOOST_CHECK(colorview[2] == currentImage(2)[0][0]);
+    
+    colorview ++;
+    colorview --;
+    
+    BOOST_CHECK(colorview[0] == currentImage(0)[0][0]);
+    BOOST_CHECK(colorview[1] == currentImage(1)[0][0]);
+    BOOST_CHECK(colorview[2] == currentImage(2)[0][0]);
+    
+    //Modifying check
+    uint8 oldvalue = currentImage(0)[0][0];
+    colorview[0] = colorview[0] + 1;
+    uint8 newvalue = oldvalue +1 ;
+    
+    BOOST_CHECK(currentImage(0)[0][0] == newvalue);
+    
+
+    
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

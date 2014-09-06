@@ -1,0 +1,927 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file multiarray_comparison.hpp
+//!
+//!  Methods to compare multiarrays, as a whole or element by element.
+//!
+
+#ifndef IMAGEPLUS_CORE_MULTIARRAY_COMPARISON_HPP
+#define IMAGEPLUS_CORE_MULTIARRAY_COMPARISON_HPP
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+
+
+namespace imageplus
+{
+    //!
+    //! \brief Test that two multiarrays are different objects.
+    //!
+    //! \tparam T : Type of the data 
+    //! \tparam D : Number of dimensions
+    //!
+    //! \param[in] input1 : First operand (multiarray)
+    //! \param[in] input2 : Second operand (multiarray)
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input images are the same object
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 03-03-2008
+    //!
+    template<typename T, std::size_t D>
+    IMAGEPLUS_INLINE
+    void notsame( const MultiArray<T,D>& input1, const MultiArray<T,D>& input2) throw (ImagePlusError);
+
+    //!
+    //! \brief Test that two multiarrays are compatible (same dimensions).
+    //!
+    //! \tparam T1 : Type of the data for first operand 
+    //! \tparam T2 : Type of the data for second operand 
+    //! \tparam D  : Number of dimensions
+    //!
+    //! \param[in] input1 : First operand (multiarray)
+    //! \param[in] input2 : Second operand (multiarray)
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 03-03-2008
+    //!
+    template<typename T1,typename T2,std::size_t D>
+    IMAGEPLUS_INLINE
+    void compatible( const MultiArray<T1,D>& input1, const MultiArray<T2,D>& input2) throw (ImagePlusError);
+    
+    //!
+    //! \brief Count the number of elements where the element-by-element comparison between two multiarrays is true
+    //!
+    //! Compares both multiarrays element per element and returns the number of elements where the comparison is true\n
+    //! The operators can be:\n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).\n
+    //! Usage:
+    //! \code
+    //!  MultiArray<T,2> ma1;
+    //!  MultiArray<T,2> ma2;
+    //!  
+    //!  // Fill ma1 and ma2 with data
+    //!  .....
+    //!  
+    //!  // Count the number of elements in ma1 that are >= than the corresponding elements in ma1
+    //!  uint64 val = comparison_count (ma1, ma2, ">=");
+    //! \endcode
+    //!
+    //! \tparam T : Type of the data 
+    //! \tparam D : Number of dimensions
+    //!
+    //! \param[in] ma1 : First operand (multiarray)
+    //! \param[in] ma2 : Second operand (multiarray)
+    //! \param[in] op  : Comparison operation (==, !=, >=, <=, >, <)
+    //!
+    //! \return Number of elements where the comparison returns true
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 03-03-2008
+    //!
+    template<typename T, std::size_t D>
+    uint64 comparison_count (const MultiArray<T,D>& ma1, const MultiArray<T,D>& ma2, const int8 op[3])  throw (ImagePlusError);
+
+
+    //!
+    //! \brief Count the number of elements where the element-by-element comparison between two multiarrays is true
+    //!
+    //! Compares both multiarrays element per element and returns the number of elements where the comparison is true\n
+    //! Specialization for bool type
+    //! The operators can be:\n
+    //!     "=="(equal),"!=" (non equal)
+    //! Usage:
+    //! \code
+    //!  MultiArray<bool,2> ma1;
+    //!  MultiArray<bool,2> ma2;
+    //!  
+    //!  // Fill ma1 and ma2 with data
+    //!  .....
+    //!  
+    //!  // Count the number of elements in ma1 that are >= than the corresponding elements in ma1
+    //!  uint64 val = comparison_count (ma1, ma2, ">=");
+    //! \endcode
+    //!
+    //! \tparam D : Number of dimensions \n
+    //!
+    //! \param[in] ma1 : First operand (multiarray)
+    //! \param[in] ma2 : Second operand (multiarray)
+    //! \param[in] op  : Comparison operation (==, !=)
+    //!
+    //! \return Number of elements that fulfill the comparison
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 03-03-2008
+    //!
+    template<std::size_t D>
+    uint64 comparison_count (const MultiArray<bool,D>& ma1, const MultiArray<bool,D>& ma2, const int8 op[3])  throw (ImagePlusError);
+
+
+    //!
+    //! \brief Count the number of elements where the element-by-element comparison between a multiarray and a scalar value is true
+    //!
+    //! Compares each element in a multiarray with a scalar value and returns the number of elements where the comparison is true\n
+    //! The operators can be:
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).\n
+    //! Usage:
+    //! \code
+    //!  MultiArray<T,2> ma;
+    //!  
+    //!  // Fill ma with data
+    //!  .....
+    //!  
+    //!  // Count the number of elements in ma that have value 5
+    //!  uint64 val = comparison_count (ma, ">=", static_cast<T>(5));
+    //! \endcode
+    //!
+    //! \tparam T : Type of the data 
+    //! \tparam D : Number of dimensions
+    //!
+    //! \param[in] ma1 : First operand (multiarray)
+    //! \param[in] val : Second operand (scalar)
+    //! \param[in] op  : Comparison operation (==, !=, >=, <=, >, <)
+    //!
+    //! \return Number of elements that fulfill the comparison
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 03-03-2008
+    //!
+    template<typename T, std::size_t D>
+    uint64 comparison_count (const MultiArray<T,D>& ma1, T val, const int8 op[3]) throw (ImagePlusError);
+
+    //!
+    //! \brief Count the number of elements where the element-by-element comparison between a multiarray and a scalar value is true
+    //!
+    //! Compares each element in a multiarray with a scalar value and returns the number of elements where the comparison is true\n
+    //! Specialization for bool type
+    //!
+    //! The operators can be:
+    //!     "=="(equal),"!=" (non equal)
+    //! Usage:
+    //! \code
+    //!  MultiArray<bool,2> ma;
+    //!  
+    //!  // Fill ma with data
+    //!  .....
+    //!  
+    //!  // Count the number of elements in ma that have value true
+    //!  uint64 val = comparison_count (ma, ">=", true);
+    //! \endcode
+    //!
+    //! \tparam D : Number of dimensions
+    //!
+    //! \param[in] ma1 : First operand (multiarray)
+    //! \param[in] val : Second operand (bool)
+    //! \param[in] op  : Comparison operation (==, !=)
+    //!
+    //! \return Number of elements that fulfill the comparison
+    //!
+    //! \exception ImagePlusError : Exception is thrown on bad comparison operation
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 03-03-2008
+    //!
+    template<std::size_t D>
+    uint64 comparison_count (const MultiArray<bool,D>& ma1, bool val, const int8 op[3]) throw (ImagePlusError);
+
+
+    //!
+    //! \brief Element-by-element comparisons between two multiarrays, outputing the result on an multiarray. 
+    //!
+    //! Create an output multiarray based on the element per element comparison of two first input multiarrays. 
+    //! In each case, if the condition is true, the value of the corresponding element in the output multiarray is 
+    //! set to the corresponding element value in 'tr'. If false, the value is set to the corresponding element value 
+    //! in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).\n
+    //! Example:
+    //! \code
+    //!  MultiArray<T1,2> ma1;
+    //!  MultiArray<T1,2> ma2;
+    //!  MultiArray<T2,2> ma3;
+    //!  MultiArray<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma2, ma3 and ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= ma2 will be set in out1 to the values in ma3. The rest of positions will be
+    //!  // taken from ma4
+    //!  MultiArray<T2,2> out1;
+    //!  out1 = ma_compare (ma1, ma2, ">=", ma3, ma4);
+    //!
+    //!  // Of course, ma3/ma4 can be the same as ma1/ma2
+    //!  MultiArray<T2,2> out2;
+    //!  out2 = ma_compare (ma1, ma2, ">=", ma1, ma2);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data 
+    //! \tparam T2 : Type of the data 
+    //! \tparam D  : Number of dimensions
+    //!
+    //! \param[in] ma1 : First operand (multiarray)
+    //! \param[in] ma2 : Second operand (multiarray)
+    //! \param[in] op  : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] tr  : Output multiarray when the codition is true
+    //! \param[in] fa  : Output multiarray when the codition is false
+    //!
+    //! \return The output multiarray, constructed from elements in 'tr' and 'fa'
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogii()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D>
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, const MultiArray<T1,D>& ma2, const int8 op[3], const MultiArray<T2,D>& tr, const MultiArray<T2,D>& fa)  throw (ImagePlusError);
+
+
+    //!
+    //! \brief Element-by-element comparisons between two multiarrays, outputing the result on an multiarray. 
+    //!
+    //! Create an output multiarray based on the element per element comparison of two first input multiarrays. 
+    //! In each case, if the condition is true, the value of the corresponding element in the output multiarray is 
+    //! set to trv. If false, the value is set to fav 
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).\n
+    //! Example:
+    //! \code
+    //!  MultiArray<T1,2> ma1;
+    //!  MultiArray<T1,2> ma2;
+    //!  
+    //!  // Fill ma1 and ma2 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= ma2 will be set to 255. The rest of positions will be set to 0
+    //!  MultiArray<T2,2> out1;
+    //!  out1 = ma_compare (ma1, ma2, ">=", (T2)255, (T2)0);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data 
+    //! \tparam T2 : Type of the data 
+    //! \tparam D  : Number of dimensions
+    //!
+    //! \param[in] ma1 : First operand (multiarray)
+    //! \param[in] ma2 : Second operand (multiarray)
+    //! \param[in] op  : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv  : Output value when the codition is true
+    //! \param[in] fav  : Output value when the codition is false
+    //!
+    //! \return The output multiarray, constructed with values  'trv' and 'fav'
+    //! 
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D>
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, const MultiArray<T1,D>& ma2, const int8 op[3], T2 trv, T2 fav) throw (ImagePlusError); 
+
+
+    //!
+    //! \brief Element-by-element comparisons between a multiarray and a scalar, outputing the result on an multiarray. 
+    //!
+    //! Create an output multiarray based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray 
+    //! is set to trv. If false, the value is set to fav 
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).\n
+    //! Example:
+    //! \code
+    //!  MultiArray<T1,2> ma1;
+    //!  
+    //!  // Fill ma1 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set to 255 in the ouput multiarray.
+    //!  // The rest of positions will be set to 0
+    //!  MultiArray<T2,2> out1;
+    //!  out1 = ma_compare (ma1, (T1)5, ">=", (T2)255, (T2)0);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data 
+    //! \tparam T2 : Type of the data 
+    //! \tparam D  : Number of dimensions
+    //!
+    //! \param[in] ma1  : First operand (multiarray)
+    //! \param[in] val  : Second operand (scalar)
+    //! \param[in] op   : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv  : Output value when the codition is true
+    //! \param[in] fav  : Output value when the codition is false
+    //!
+    //! \return The output multiarray, constructed with values  'trv' and 'fav'
+    //! 
+    //! \exception ImagePlusError : Exception is thrown on bad comparison operation
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D>
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], T2 trv, T2 fav) throw (ImagePlusError);
+
+
+
+    //!
+    //! \brief Element-by-element comparisons between a multiarray and a scalar, outputing the result on an multiarray. 
+    //!
+    //! Create an output multiarray based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the corresponding element value in 'tr'. If false, the value is set to the corresponding element value 
+    //! in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).\n
+    //! Example:
+    //! \code
+    //!  MultiArray<T1,2> ma1;
+    //!  MultiArray<T2,2> ma3;
+    //!  MultiArray<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set in out1 to the values in ma3. The rest of positions will be
+    //!  // taken from ma4
+    //!  MultiArray<T2,2> out1;
+    //!  out1 = ma_compare (ma1, (T1)5, ">=", ma3, ma4);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data 
+    //! \tparam T2 : Type of the data 
+    //! \tparam D  : Number of dimensions
+    //!
+    //! \param[in] ma1 : First operand (multiarray)
+    //! \param[in] val : Second operand (scalar)
+    //! \param[in] op  : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] tr  : Output when the codition is true
+    //! \param[in] fa  : Output when the codition is false
+    //!
+    //! \return The output multiarray, constructed with values from 'tr' and 'fa'
+    //! 
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogsi()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D>
+    IMAGEPLUS_INLINE
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], const MultiArray<T2,D>& tr, const MultiArray<T2,D>& fa) throw (ImagePlusError);
+
+
+    //!
+    //! \brief Element-by-element comparisons between a multiarray and a scalar, outputing the result on an multiarray (inplace version). 
+    //!
+    //! Create an output multiarray based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the corresponding element value in 'tr'. If false, the value is set to the corresponding element value 
+    //! in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).
+    //!
+    //! This function gives the output value in an already allocated multiarray passed by reference instead of using return value \n
+    //! Example:
+    //! \code
+    //!  MultiArray<T1,2> ma1;
+    //!  MultiArray<T2,2> ma3;
+    //!  MultiArray<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set in out1 to the values in ma3. The rest of positions will be
+    //!  // taken from ma4
+    //!  MultiArray<T2,2> out1(ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, (T1)5, ">=", ma3, ma4, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data 
+    //! \tparam T2 : Type of the data 
+    //! \tparam D : Number of dimensions
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] tr    : Output when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //! \param[out] out  : Output multiarray
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogsi()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 18-06-2008
+    //!
+    template<typename T1, typename T2, std::size_t D>
+    void ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], const MultiArray<T2,D>& tr, const MultiArray<T2,D>& fa, MultiArray<T2,D>& out) throw (ImagePlusError); //itogss
+
+
+    //!
+    //! \brief Element-by-element comparisons between a multiarray and a scalar, outputing the result on an multiarray. 
+    //!
+    //! Create an output multiarray based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value trv. If false, the value is set to the corresponding element value in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).\n
+    //! Example:
+    //! \code
+    //!  MultiArray<T1,2> ma1;
+    //!  MultiArray<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set to in out1 to 255. The rest of positions will be taken from ma4
+    //!  MultiArray<T2,2> out1;
+    //!  out1 = ma_compare (ma1, (T1)5, ">=", (T2)255, ma4);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data 
+    //! \tparam T2 : Type of the data 
+    //! \tparam D  : Number of dimensions
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //!
+    //! \return The output multiarray, constructed with values from 'trv' and 'fa'
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogss()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 21-03-2009
+    //!
+    template<typename T1, typename T2, std::size_t D>
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], T2 trv, const MultiArray<T2,D>& fa) throw (ImagePlusError);
+
+
+    //!
+    //! \brief Element-by-element comparisons between a multiarray and a scalar, outputing the result on an multiarray (inplace version). 
+    //!
+    //! Create an output multiarray based on the element per element comparison of the first multiarray and a scalar
+    //! value val. In each case, if the condition is true, the value of the corresponding element in the output multiarray
+    //! is set to the scalar value trv. If false, the value is set to the corresponding element value in 'fa'.\n
+    //! The operators can be: \n
+    //!     "=="(equal),"!=" (non equal), ">" (larger), "<" (smaller), ">=" (larger or equal), "<=" (smaller or equal).\n
+    //! This function gives the output value in an already allocated multiarray passed by reference instead of using return value \n
+    //! Example:
+    //! \code
+    //!  MultiArray<T1,2> ma1;
+    //!  MultiArray<T2,2> ma4;
+    //!  
+    //!  // Fill ma1, ma3, ma4 with data
+    //!  .....
+    //!  
+    //!  // positions where ma1 >= 5 will be set to in out1 to 255. The rest of positions will be taken from ma4
+    //!  MultiArray<T2,2> out1 (ma1.dims(0), ma1.dims(1));
+    //!  ma_compare (ma1, (T1)5, ">=", (T2)255, ma4, out1);
+    //! \endcode
+    //!
+    //! \tparam T1 : Type of the data 
+    //! \tparam T2 : Type of the data 
+    //! \tparam D  : Number of dimensions
+    //!
+    //! \param[in] ma1   : First operand (multiarray)
+    //! \param[in] val   : Second operand (scalar)
+    //! \param[in] op    : Comparison operation (==, !=, >=, <=, >, <)
+    //! \param[in] trv   : Output when the codition is true
+    //! \param[in] fa    : Output when the codition is false
+    //! \param[out] out  : Output multiarray
+    //!
+    //! \exception ImagePlusError : Exception is thrown when input multiarrays have different dimensions or on bad comparison operation
+    //!
+    //! \note Equivalent to SoftImage function itogss()
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 21-03-2009
+    //!
+    template<typename T1, typename T2, std::size_t D>
+    void ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], T2 trv, const MultiArray<T2,D>& fa, MultiArray<T2,D>& out) throw (ImagePlusError);
+}
+ 
+
+
+//
+// Implementation of template functions
+//
+
+namespace imageplus
+{
+    template<typename T, std::size_t D>
+    IMAGEPLUS_INLINE
+    void notsame( const MultiArray<T,D>& input1, const MultiArray<T,D>& input2) throw (ImagePlusError)
+    {
+        if (&input1 == &input2)
+        {
+            throw ImagePlusError ("Objects are the same. This is bad");
+        }
+    }
+
+
+    template<typename T1,typename T2,std::size_t D>
+    IMAGEPLUS_INLINE
+    void compatible ( const MultiArray<T1,D>& input1, const MultiArray<T2,D>& input2) throw (ImagePlusError)
+    {
+        if (!(input1.dims() == input2.dims()))
+        {
+            throw ImagePlusError ("Objects do not have same dimensions");
+        }
+    }
+
+
+    template<typename T1, typename T2, std::size_t D>
+    IMAGEPLUS_INLINE
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], const MultiArray<T2,D>& tr, const MultiArray<T2,D>& fa) throw (ImagePlusError)
+    {
+        MultiArray<T2,D> out(ma1.dims());
+
+        // Call in-place function
+        ma_compare (ma1, val, op, tr, fa, out);
+
+        return out;
+    }
+
+
+    template<typename T1, typename T2, std::size_t D>
+    IMAGEPLUS_INLINE
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, const MultiArray<T1,D>& ma2, const int8 op[3], const MultiArray<T2,D>& tr, const MultiArray<T2,D>& fa) throw (ImagePlusError)
+    {
+        compatible(ma1, ma2);
+        compatible(ma1, tr);
+        compatible(ma1, fa);
+
+        MultiArray<T2,D> out(ma1.dims());
+
+        int64 opp = (op[1] == 0) ? op[0] : op[0]*256+op[1];
+
+        const T1* da  = ma1.data();
+        const T1* end = da + ma1.num_elements();
+        const T1* db  = ma2.data();
+        const T2* dt  = tr.data();
+        const T2* df  = fa.data();
+        T2* rd  = out.data();
+
+        switch(opp)
+        {
+            case ('='*256 + '='):
+                while(da != end)
+                {
+                    *rd = (*da == *db) ? *dt : *df;
+                    da++; db++; dt++; df++; rd++;
+                }
+                break;
+            case ('!'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da != *db) ? *dt : *df;
+                    da++; db++; dt++; df++; rd++;
+                }
+                break;
+            case ('>'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da >= *db) ? *dt : *df;
+                    da++; db++; dt++; df++; rd++;
+                }
+                break;
+            case ('<'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da <= *db) ? *dt : *df;
+                    da++; db++; dt++; df++; rd++;
+                }
+                break;
+            case '>': 
+                while(da != end)
+                {
+                    *rd = (*da > *db) ? *dt : *df;
+                    da++; db++; dt++; df++; rd++;
+                }
+                break;
+            case '<': 
+                while(da != end)
+                {
+                    *rd = (*da < *db) ? *dt : *df;
+                    da++; db++; dt++; df++; rd++;
+                }
+                break;
+            default: 
+                throw ImagePlusError ("Bad operation code.");
+                break;
+        }
+
+        return out;
+    }
+
+    template<typename T1, typename T2, std::size_t D>
+    IMAGEPLUS_INLINE
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, const MultiArray<T1,D>& ma2, const int8 op[3], T2 trv, T2 fav) throw (ImagePlusError)
+    {
+        compatible(ma1, ma2);
+
+        MultiArray<T2,D> out(ma1.dims());
+
+        int64 opp = (op[1] == 0) ? op[0] : op[0]*256+op[1];
+
+        const T1* da  = ma1.data();
+        const T1* end = da + ma1.num_elements();
+        const T1* db  = ma2.data();
+        T2* rd  = out.data();
+
+        switch(opp)
+        {
+            case ('='*256 + '='):
+                while(da != end)
+                {
+                    *rd = (*da == *db) ? trv : fav;
+                    da++; db++; rd++;
+                }
+                break;
+            case ('!'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da != *db) ? trv : fav;
+                    da++; db++; rd++;
+                }
+                break;
+            case ('>'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da >= *db) ? trv : fav;
+                    da++; db++; rd++;
+                }
+                break;
+            case ('<'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da <= *db) ? trv : fav;
+                    da++; db++; rd++;
+                }
+                break;
+            case '>': 
+                while(da != end)
+                {
+                    *rd = (*da > *db) ? trv : fav;
+                    da++; db++; rd++;
+                }
+                break;
+            case '<': 
+                while(da != end)
+                {
+                    *rd = (*da < *db) ? trv : fav;
+                    da++; db++; rd++;
+                }
+                break;
+            default: 
+                throw ImagePlusError ("Bad operation code.");
+                break;
+        }
+
+        return out;
+
+    }
+
+
+    template<typename T1, typename T2, std::size_t D>
+    IMAGEPLUS_INLINE
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], T2 trv, T2 fav) throw (ImagePlusError)
+    {
+        MultiArray<T2,D> out(ma1.dims());
+
+        int64 opp = (op[1] == 0) ? op[0] : op[0]*256+op[1];
+
+        const T1* da  = ma1.data();
+        const T1* end = da + ma1.num_elements();
+        T2* rd  = out.data();
+
+        switch(opp)
+        {
+            case ('='*256 + '='):
+                while(da != end)
+                {
+                    *rd = (*da == val) ? trv : fav;
+                    da++; rd++;
+                }
+                break;
+            case ('!'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da != val) ? trv : fav;
+                    da++; rd++;
+                }
+                break;
+            case ('>'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da >= val) ? trv : fav;
+                    da++; rd++;
+                }
+                break;
+            case ('<'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da <= val) ? trv : fav;
+                    da++; rd++;
+                }
+                break;
+            case '>': 
+                while(da != end)
+                {
+                    *rd = (*da > val) ? trv : fav;
+                    da++; rd++;
+                }
+                break;
+            case '<': 
+                while(da != end)
+                {
+                    *rd = (*da < val) ? trv : fav;
+                    da++; rd++;
+                }
+                break;
+            default: 
+                throw ImagePlusError ("Bad operation code.");
+                break;
+        }
+
+        return out;
+    }
+
+    template<typename T1, typename T2, std::size_t D>
+    IMAGEPLUS_INLINE
+    void ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], const MultiArray<T2,D>& tr, const MultiArray<T2,D>& fa, MultiArray<T2,D>& out) throw (ImagePlusError)
+    {
+        compatible(ma1, tr);
+        compatible(ma1, fa);
+        compatible(ma1, out);
+
+        int64 opp = (op[1] == 0) ? op[0] : op[0]*256+op[1];
+
+        const T1* da  = ma1.data();
+        const T1* end = da + ma1.num_elements();
+        const T2* dt  = tr.data();
+        const T2* df  = fa.data();
+        T2* rd  = out.data();
+
+        switch(opp)
+        {
+            case ('='*256 + '='):
+                while(da != end)
+                {
+                    *rd = (*da == val) ? *dt : *df;
+                    da++; dt++; df++; rd++;
+                }
+                break;
+            case ('!'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da != val) ? *dt : *df;
+                    da++; dt++; df++; rd++;
+                }
+                break;
+            case ('>'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da >= val) ? *dt : *df;
+                    da++; dt++; df++; rd++;
+                }
+                break;
+            case ('<'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da <= val) ? *dt : *df;
+                    da++; dt++; df++; rd++;
+                }
+                break;
+            case '>': 
+                while(da != end)
+                {
+                    *rd = (*da > val) ? *dt : *df;
+                    da++; dt++; df++; rd++;
+                }
+                break;
+            case '<': 
+                while(da != end)
+                {
+                    *rd = (*da < val) ? *dt : *df;
+                    da++; dt++; df++; rd++;
+                }
+                break;
+            default: 
+                throw ImagePlusError ("Bad operation code.");
+                break;
+        }
+    }
+
+    template<typename T1, typename T2, std::size_t D>
+    IMAGEPLUS_INLINE
+    MultiArray<T2,D> ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], T2 trv, const MultiArray<T2,D>& fa) throw (ImagePlusError)
+    {
+        MultiArray<T2,D> out(ma1.dims());
+
+        // Call in-place function
+        ma_compare (ma1, val, op, trv, fa, out);
+
+        return out;
+    }
+
+
+    template<typename T1, typename T2, std::size_t D>
+    IMAGEPLUS_INLINE
+    void ma_compare(const MultiArray<T1,D>& ma1, T1 val, const int8 op[3], T2 trv, const MultiArray<T2,D>& fa, MultiArray<T2,D>& out) throw (ImagePlusError)
+   {
+        compatible(ma1, fa);
+        compatible(ma1, out);
+
+        int64 opp = (op[1] == 0) ? op[0] : op[0]*256+op[1];
+
+        const T1* da  = ma1.data();
+        const T1* end = da + ma1.num_elements();
+        const T2* df  = fa.data();
+        T2*       rd  = out.data();
+
+        switch(opp)
+        {
+            case ('='*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da == val) ? trv : *df;
+                    da++; df++; rd++;
+                }
+                break;
+            case ('!'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da != val) ? trv : *df;
+                    da++; df++; rd++;
+                }
+                break;
+            case ('>'*256 + '='): 
+                while(da != end)
+                {
+                    *rd = (*da >= val) ? trv : *df;
+                    da++; df++; rd++;
+                }
+                break;
+            case ('<'*256 + '='):
+                while(da != end)
+                {
+                    *rd = (*da <= val) ? trv : *df;
+                    da++; df++; rd++;
+                }
+                break;
+            case '>':
+                while(da != end)
+                {
+                    *rd = (*da > val) ? trv : *df;
+                    da++; df++; rd++;
+                }
+                break;
+            case '<': 
+                while(da != end)
+                {
+                    *rd = (*da < val) ? trv : *df;
+                    da++; df++; rd++;
+                }
+                break;
+            default:
+                throw ImagePlusError ("Bad operation code.");
+                break;
+        }
+
+    }
+}
+
+
+#endif

@@ -1,0 +1,92 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file opening.cpp
+//!
+//!  Implementation for Opening operations on MultiArray and ImageGray objects
+//!
+
+#include <typeinfo>
+
+#include <imageplus/math/morphology/erosion.hpp>
+#include <imageplus/math/morphology/dilation.hpp>
+#include <imageplus/math/morphology/opening.hpp>
+
+using namespace imageplus;
+using namespace imageplus::math::morphology;
+
+
+
+template<std::size_t N>
+Opening<N>::Opening() :
+        Filter< Opening<N> >("Opening"), _se()
+{
+}
+
+template<std::size_t N>
+Opening<N>::Opening(uint64 connectivity, uint64 size) throw (ImagePlusError) :
+        Filter< Opening<N> >("Opening"), _se(size, connectivity)
+{
+    if (connectivity != 4 && connectivity != 8 && connectivity != 6 && connectivity != 18 && connectivity != 26)
+    {
+        throw ImagePlusError ("Connectivity must be 4 or 8 for Images and 6, 18 or 26 for Volumes");
+    }
+}
+
+template<std::size_t N>
+Opening<N>::Opening(const StructuringElement<N>& se) throw (ImagePlusError) :
+        Filter< Opening<N> >("Opening"), _se(se)
+{
+
+}
+
+
+template<std::size_t N>
+template<typename T, std::size_t D>
+MultiArray<T,D> Opening<N>::implementation( const MultiArray<T,D>& ma) const throw (ImagePlusError, ImagePlusNotImplemented)
+{
+    Erosion<N>  ero(_se);
+    Dilation<N> dil(_se);
+
+    return dil.filter(ero.filter(ma));
+}
+
+template<std::size_t N>
+template<typename T, std::size_t CHANNELS>
+ImaVol<T,CHANNELS,N> Opening<N>::implementation( const ImaVol<T,CHANNELS,N>& m ) const throw (ImagePlusError)
+{
+    Erosion<N>  ero(_se);
+    Dilation<N> dil(_se);
+
+    return dil.filter(ero.filter(m));
+}
+
+// opening instantiations
+namespace imageplus
+{
+    namespace math
+    {
+        namespace morphology
+        {
+            template class Opening<2>;
+            template class Opening<3>;
+
+            template MultiArray<uint8,2> Opening<2>::implementation(const MultiArray<uint8,2>&) const;
+            template MultiArray<int64,2> Opening<2>::implementation(const MultiArray<int64,2>&) const;
+            template MultiArray<bool,2>  Opening<2>::implementation(const MultiArray<bool,2>&) const;
+            template MultiArray<uint8,3> Opening<3>::implementation(const MultiArray<uint8,3>&) const;
+            template MultiArray<int64,3> Opening<3>::implementation(const MultiArray<int64,3>&) const;
+
+            // Instantiation for ImaVols
+            template ImaVol<uint8,1,2>    Opening<2>::implementation(const ImaVol<uint8,1,2>&) const;
+            template ImaVol<int64,1,2>    Opening<2>::implementation(const ImaVol<int64,1,2>&) const;
+            template ImaVol<bool,1,2>     Opening<2>::implementation(const ImaVol<bool,1,2>&)  const;
+
+            template ImaVol<uint8,1,3>    Opening<3>::implementation(const ImaVol<uint8,1,3>&) const;
+            template ImaVol<int64,1,3>    Opening<3>::implementation(const ImaVol<int64,1,3>&) const;
+        }
+    }
+}

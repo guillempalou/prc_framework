@@ -1,0 +1,14 @@
+num_regions_initial_partition = 1000
+num_regions_combined_partition = 80
+thres_amc_combined_partition = 0.12
+alpha = 0.05
+input_color_image = /imatge/seq/techs/3dtv/ballet/cam0/color-cam0-f%03d.bmp
+input_depth_image = /imatge/seq/techs/3dtv/ballet/cam0/depth-cam0-f%03d.bmp
+first_frame = 15
+last_frame = 100
+skip_frames = 14
+output_color_initial_partition = initial-%03d.prl
+output_ideal_partition = ideal-%03d.prl
+output_combined_partition = combined-%03d.prl
+output_non_merging_orders = nonmerging-%03d.bin
+quan_prob_0 = 8

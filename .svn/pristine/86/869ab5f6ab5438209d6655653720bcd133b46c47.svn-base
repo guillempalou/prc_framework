@@ -1,0 +1,395 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file multiarray_statistics.hpp
+//!
+//!  Statistical functions on multiarrays
+//!
+
+#ifndef IMAGEPLUS_MATH_STATISTICS_MULTIARRAY_STATISTICS_HPP
+#define IMAGEPLUS_MATH_STATISTICS_MULTIARRAY_STATISTICS_HPP
+
+
+#include <imageplus/core.hpp>
+#include <imageplus/math/statistics/random_generators.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        //!
+        //! \namespace imageplus::math::statistics
+        //!
+        //! \brief Module for computing statistics on data, including histograms, maximum and minimum values of multiarrays, means and variances, etc.
+        //!
+        namespace statistics
+        {
+            //!
+            //! \brief Computes maximum value of a multiarray and its location inside the multiarray
+            //!
+            //! \tparam T : Type of the data
+            //! \tparam D : Dimension of the multiarray
+            //!
+            //! \param[in]         m : Multiarray
+            //! \param[out] location : Index of the element with highest value in the multiarray (using linear 1D access)
+            //!
+            //! \return  Value of the maximum element in the multiarray
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 7-3-2008
+            //!
+            template<typename T, std::size_t D>
+            T maxval(const MultiArray<T,D>& m, int64* location = NULL);
+    
+            //!
+            //! \brief Computes mimimum value of a multiarray  and its location inside the multiarray
+            //!
+            //! \tparam T : Type of the data
+            //! \tparam D : Dimension of the multiarray
+            //!
+            //! \param[in]         m : Multiarray
+            //! \param[out] location : Index of the element with lowest value in the multiarray (using linear 1D access)
+            //!
+            //! \return  Value of the minimum element in the multiarray
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 7-3-2008
+            //!
+            template<typename T, std::size_t D>
+            T minval(const MultiArray<T,D>& m, int64* location = NULL);
+
+            //!
+            //! \brief Computes maximum and minimum values of a multiarray in one loop
+            //!
+            //! \tparam T : Type of the data
+            //! \tparam D : Dimension of the multiarray
+            //!
+            //! \param[in]         m : Multiarray
+            //!
+            //! \return  std::pair with the values of the (maximum,minimum) elements in the multiarray
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 01-4-2011
+            //!
+            template<typename T, std::size_t D>
+            std::pair<T,T> maxminval(const MultiArray<T,D>& m);
+    
+            //!
+            //! \brief Computes the sum of all elements in the multiarray
+            //!
+            //! \tparam T : Type of the data
+            //! \tparam D : Dimension of the multiarray
+            //!
+            //! \param[in] m : Multiarray
+            //!
+            //! \return  Sum of all elements in the multiarray
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 7-3-2008
+            //!
+            template<typename T, std::size_t D>
+            float64 sum(const MultiArray<T,D>& m);
+
+            //!
+            //! \brief Computes the arithmetic mean value of all elements in the multiarray
+            //!
+            //! The arithmetic mean (or simply the mean) of a list of numbers is the sum of 
+            //! all the members of the list divided by the number of items in the list.
+            //!
+            //! \tparam T : Type of the data
+            //! \tparam D : Dimension of the multiarray
+            //!
+            //! \param[in] m : Multiarray
+            //!
+            //! \return  Mean of all elements in the multiarray
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 7-3-2008
+            //!
+            template<typename T, std::size_t D>
+            float64 mean(const MultiArray<T,D>& m);
+
+            //!
+            //! \brief Computes the arithmetic mean value of the rows or columns of a 2D multiarray
+            //!
+            //! Horizontal mean:\n
+            //! X = 1 2 3     mean(X,0) = 2\n
+            //!     4 5 6                 5\n
+            //! Vertical mean:\n
+            //! X = 1 2 3     mean(X,1) = [2.5 3.5 4.5]   (or [3 4 5] if the type is integer)\n  
+            //!     4 5 6                 
+            //!
+            //! \tparam T : Type of the data
+            //!
+            //! \param[in] in  : Multiarray
+            //! \param[in] dim : Dimension along with the mean is computed (0: horizontal, 1: vertical)
+            //!
+            //! \return  Mean (vector) of all elements in the multiarray
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 4-6-2009
+            //!
+            template<typename T>
+            MultiArray<float64,1> mean (const MultiArray<T,2>& in, uint64 dim) throw (ImagePlusError);
+
+            //!
+            //! \brief Computes the variance of all elements in the multiarray
+            //!
+            //! The <a href="http://en.wikipedia.org/wiki/Variance">variance</a> 
+            //! is one measure of statistical dispersion, averaging the 
+            //! squared distance of its possible values from the expected value (mean). 
+            //! The unit of variance is the square of the unit of the original variable.\n 
+            //! By default, y = variance(X) or y = variance(X,true) computes the unbiased
+            //! estimation of the variance. It is normalized 
+            //! by N-1 if N>1, where N is the sample size and by N if N=1. If used as 
+            //! y = variance(X,false),  the normalization is by N and produces the second 
+            //! moment of the sample about its mean.
+            //! The two estimators only differ slightly as can be seen, and for larger values 
+            //! of the sample size N the difference is negligible.
+            //!
+            //! \tparam T : Type of the data
+            //! \tparam T : Dimension of the multiarray
+            //!
+            //! \param[in] m                  : Input multiarray
+            //! \param[in] unbiased_estimator : Whether the unbiased/biased estimator is computed.
+            //!
+            //! \return  Variance of all elements in the multiarray
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 7-3-2008
+            //!
+            template<typename T, std::size_t D>
+            float64 variance(const MultiArray<T,D>& m, bool unbiased_estimator = true);
+            
+            //!
+            //! \brief Checks for if the MultiArray vector represents a probability distribution
+            //!
+            //! \param[in] m : Multiarray
+            //!
+            //! \return  True if the vector is stochastic
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Adolfo Lopez <adolf.lopez@upc.edu>
+            //!
+            //! \date 7-5-2010
+            //!
+            template<typename T>
+            bool is_stochastic(const MultiArray<T,1>& m);
+            
+            /*!
+             * \brief Checks for if the MultiArray matrix represents probability distributions
+             *
+             * \param[in] m        : MultiArray to check
+             * \param[in] row_wise : true is the input data is row_wise
+             *
+             * \return  True if the matrix is stochastic
+             * 
+             * \relatedalso imageplus::MultiArray
+             *
+             * \author Adolfo Lopez <adolf.lopez@upc.edu>
+             * \date 7-5-2010
+             *
+             * \todo why we need this function? is this function for debug? or part of a concept?
+             */
+            template<typename T>
+            bool is_stochastic(const MultiArray<T,2>& m, bool row_wise=true);
+            
+            //!
+            //! \brief Randomly emits the index of a stochastic MultiArray vector
+            //!
+            //!
+            //! \param[in] m : Multiarray
+            //!
+            //! \return  Index of the emitted element
+            //!
+            //! \relatedalso imageplus::MultiArray
+            //!
+            //! \author Adolfo López <adolf.lopez@upc.edu>
+            //!
+            //! \date 7-5-2010
+            //!
+            template<typename T>
+            std::size_t emit(const MultiArray<T,1>& m);
+        }
+    }
+}
+
+/*
+ * IMPLEMENTATION
+ */
+namespace imageplus
+{
+    namespace math
+    {
+        namespace statistics
+        {
+            template<typename T, std::size_t D>
+            T maxval(const MultiArray<T,D>& m, int64* location)
+            {
+                const T* d1    = m.data();
+                uint64   nelem = m.num_elements();
+    
+                const T* maxval = std::max_element (d1, d1+nelem);
+                if (location)
+                {
+                    *location = std::distance (d1, maxval);
+                }
+    
+                return *maxval;
+            }
+
+            template<typename T, std::size_t D>
+            T minval(const MultiArray<T,D>& m, int64* location)
+            {
+                const T* d1    = m.data();
+                uint64   nelem = m.num_elements();
+    
+                const T* minval = std::min_element (d1, d1+nelem);
+                if (location)
+                {
+                    *location = std::distance (d1, minval);
+                }
+    
+                return *minval;
+            }
+
+            template<typename T, std::size_t D>
+            std::pair<T,T> maxminval(const MultiArray<T,D>& m)
+            {
+                const T* d1    = m.data();
+                uint64   nelem = m.num_elements();
+    
+                T minv = *d1;
+                T maxv = *d1;
+
+                for (const T* pdata = d1+1; pdata != d1+nelem; ++pdata)
+                {
+                    if (*pdata > maxv)
+                    {
+                        maxv = *pdata;
+                    }
+                    if (*pdata < minv)
+                    {
+                        minv = *pdata;
+                    }
+                }
+
+                return std::pair<T,T>(maxv,minv);
+            }
+
+            template<typename T, std::size_t D>
+            float64 sum(const MultiArray<T,D>& m)
+            {
+                return std::accumulate(m.data(), m.data()+m.num_elements(), static_cast<float64>(0.0));
+            }
+
+            template<typename T, std::size_t D>
+            float64 mean(const MultiArray<T,D>& m)
+            {
+                return std::accumulate(m.data(), m.data()+m.num_elements(), static_cast<float64>(0.0)) / (float64)m.num_elements();
+            }
+
+            template<typename T, std::size_t D>
+            float64 variance(const MultiArray<T,D>& m, bool unbiased_estimator)
+            {
+                const T* d1    = m.data();
+                uint64   nelem = m.num_elements();
+    
+                float64 sx  = 0.0;
+                float64 sx2 = 0.0;
+    
+                for (uint64 i = 0; i < nelem; i++)
+                {
+                    sx  += d1[i];
+                    sx2 += (d1[i]*d1[i]);
+                }
+
+                float64 norm_factor = static_cast<float64>(nelem);
+                if (unbiased_estimator == true && nelem > 1)
+                {
+                    norm_factor = norm_factor - 1;
+                }
+
+                double var = (sx2 - (sx * sx / static_cast<float64>(nelem)))/norm_factor;
+    
+                return (var);
+            }
+            
+            template<typename T>
+            bool is_stochastic(const MultiArray<T,1>& m)
+            {
+            	if (std::abs(sum(m)-1.0) < 1e-10) return true;
+            	else return false;
+            }
+            
+            template<typename T>
+            bool is_stochastic(const MultiArray<T,2>& m, bool row_wise)
+            {
+            	typedef MultiArray<T,2> array_type;
+            	typedef typename array_type::index_range range;
+            	std::size_t i=0;
+            	
+            	if (!row_wise)
+            	{
+            		for (i=0; i < m.dims(0); ++i)
+            		{
+            			typename array_type::template array_view<1>::type my_view = m[ boost::indices[i][range(0,m.dims(1))] ];
+            			if (!(std::abs(sum(my_view)-1.0) < 1e-10)) return false;
+            		}
+            	}
+            	else
+            	{
+             		for (i=0; i < m.dims(1); ++i)
+            		{
+            			typename array_type::template array_view<1>::type my_view = m [ boost::indices[range(0,m.dims(0))][i] ];
+            			if (!(std::abs(sum(my_view)-1.0) < 1e-10)) return false;
+            		}
+            	}
+            	return true;
+            }
+            
+            template<typename T>
+            std::size_t emit(const MultiArray<T,1>& m)
+            {
+            	float64 prob=imageplus::math::statistics::rand_uniform();
+            	float64 cumulative_prob=0.0;
+            	std::size_t CurrentStateIndex=0;
+            	for (; CurrentStateIndex!=m.dims(0); CurrentStateIndex++)
+            	{
+            		cumulative_prob+=m[CurrentStateIndex];
+            		if (cumulative_prob > prob) break;
+            	}
+            	if (CurrentStateIndex==m.dims(0)) CurrentStateIndex--;
+            	return CurrentStateIndex;
+            }
+        } // statistics
+    } // math
+} // imageplus
+
+#endif // IMAGEPLUS_MATH_STATISTICS_MULTIARRAY_STATISTICS_HPP

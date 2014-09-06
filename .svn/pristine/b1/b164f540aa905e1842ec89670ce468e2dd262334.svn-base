@@ -1,0 +1,302 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file camera.cpp
+//!
+//!  Implementation for Camera class
+//!
+
+
+#include <iostream>
+#include <fstream>
+#include <imageplus/core/camera.hpp>
+
+
+using namespace imageplus;
+
+
+Camera::Camera():
+        _rot(3,3),_trans(3),_k(3,3),_p(4,3),_distortion(4)
+{
+}
+
+
+Camera::~Camera()
+{
+}
+
+void Camera::read_parameters(const std::string& filename ) throw (ImagePlusError)
+{
+
+    int64 i;
+    int8 garbage[80];
+    float64 *pdata;
+
+    size_t read_size;
+
+    // Takes the return value of fgets so that compilers do not complain when the standard header files 
+    // declare fgets() with the warn_unused_result attribute to enforce a check of the return value. 
+    char* res;
+
+    //Open input file
+    FILE *fp=fopen(filename.c_str(), "r");
+    if (fp!=NULL)
+    {
+        //Image size
+        res       = fgets(garbage, 80, fp);
+        read_size = fscanf(fp,"%lld",&(_width));
+        if (read_size != 1 || res == NULL )
+        {
+            throw ImagePlusError( "ERROR(Camera::read_parameters) : Data read (width) is not consistent");
+        }
+        res       = fgets(garbage, 80, fp);
+        read_size = fscanf(fp,"%lld",&(_height));
+        if (read_size != 1 || res ==NULL )
+        {
+            throw ImagePlusError( "ERROR(Camera::read_parameters) : Data read (height) is not consistent");
+        }
+        if( fgets(garbage, 80, fp) == NULL ) throw ImagePlusError( "ERROR(Camera::read_parameters) : Error in fgets");
+        if( fgets(garbage, 80, fp) == NULL ) throw ImagePlusError( "ERROR(Camera::read_parameters) : Error in fgets");
+        //MultiArray<float64,2> _rot(3,3);
+
+        //Rotation matrix
+        if( fgets(garbage, 80, fp) == NULL ) throw ImagePlusError( "ERROR(Camera::read_parameters) : Error in fgets");
+        pdata = _rot.data();
+        for (i = 0; i < 3; i++)
+        {
+            read_size = fscanf(fp," %le   %le   %le\n",pdata +(i*3) +0,pdata +(i*3) +1,pdata +(i*3) +2 );
+            if (read_size != 3)
+            {
+                throw ImagePlusError( "ERROR(Camera::read_parameters) : Data read (rot) is not consistent");
+            }
+        }
+
+        //Translation vector
+        if( fgets(garbage, 80, fp) == NULL ) throw ImagePlusError( "ERROR(Camera::read_parameters) : Error in fgets");
+        pdata = _trans.data();
+        read_size = fscanf(fp," %le   %le   %le\n",pdata+0, pdata+1, pdata+2);
+        if (read_size != 3)
+        {
+            throw ImagePlusError( "ERROR(Camera::read_parameters) : Data read (trans) is not consistent");
+        }
+
+
+        //Calibration matrix
+        if( fgets(garbage, 80, fp) == NULL ) throw ImagePlusError( "ERROR(Camera::read_parameters) : Error in fgets");
+        pdata = _k.data();
+        for (i = 0; i < 3; i++)
+        {
+            read_size = fscanf(fp," %le   %le   %le\n",pdata+i*3+0, pdata+i*3+1, pdata+i*3+2);
+            if (read_size != 3)
+            {
+                throw ImagePlusError( "ERROR(Camera::read_parameters) : Data read (calibration) is not consistent");
+            }
+
+        }
+
+        //Projection matrix
+        if( fgets(garbage, 80, fp) == NULL ) throw ImagePlusError( "ERROR(Camera::read_parameters) : Error in fgets");
+        pdata = _p.data();
+        for (i = 0; i < 3; i++)
+        {
+            read_size = fscanf(fp," %le   %le   %le   %le\n",pdata+i*4+0, pdata+i*4+1, pdata+i*4+2, pdata+i*4+3);
+            if (read_size != 4)
+            {
+                throw ImagePlusError( "ERROR(Camera::read_parameters) : Data read (projection) is not consistent");
+            }
+        }
+
+
+        //distortion parameters
+        if( fgets(garbage, 80, fp) == NULL ) throw ImagePlusError( "ERROR(Camera::read_parameters) : Error in fgets");
+        pdata = _distortion.data();
+        for (i = 0; i < 4; i++)
+        {
+            read_size = fscanf(fp," %le\n",pdata+i);
+
+            if (read_size != 1)
+            {
+                //throw ImagePlusError( "ERROR(Camera::read_parameters) : Data read (distortion) is not consistent");
+            }
+
+            if( fgets(garbage, 80, fp) == NULL ) throw ImagePlusError( "ERROR(Camera::read_parameters) : Error in fgets");
+        }
+
+    }
+    else throw ImagePlusError( "ERROR(Camera.read_parameters) : Cannot open  " + filename );
+
+
+    fclose(fp);
+}
+
+
+
+
+void Camera::write_parameters (const std::string& filename) throw (ImagePlusFileNotFound)
+{
+    std::ofstream outFile;
+
+    // Open file with output mode
+    outFile.open( filename.c_str(), std::ofstream::out );
+    if (!outFile.is_open())
+    {
+        throw ImagePlusFileNotFound (filename);
+    }
+
+    outFile << "[Image size:]" << std::endl;
+    outFile << _width  << std::endl;
+    outFile << _height << std::endl;
+
+    outFile << std::endl;
+
+    outFile << "[Rotation matrix:]" << std::endl;
+
+    outFile.setf(std::ios::scientific, std::ios::floatfield);
+    outFile.precision(16);
+    outFile.setf(std::ios::showpoint);
+    //outFile.setf(std::ios::showpos);
+    outFile.setf(std::ios::right, std::ios::adjustfield);
+#if 0    
+    outFile.fill(' ');
+#endif
+
+	for (uint64 i=0;i<3;i++)
+	{
+        for (uint64 j=0;j<3;j++)
+        {
+            outFile.width(23);
+            outFile <<  _rot[j][i] << "   ";
+        }
+
+        outFile << std::endl;
+	}	
+    
+    outFile << std::endl;
+
+    outFile << "[Translation vector:]" << std::endl;
+    for (uint64 j=0;j<3;j++)
+    {
+        outFile.width(23);
+        outFile << _trans[j] << "   ";
+    }
+
+    outFile << std::endl << std::endl;
+
+
+	outFile << "[Calibration matrix:]" << std::endl;
+	for (uint64 i=0; i<3; i++)
+	{
+        for (uint64 j=0; j<3; j++)
+        {
+            outFile.width(23);
+            outFile << _k[j][i] << "   ";
+        }
+
+        outFile << std::endl;
+	}	
+
+    outFile << std::endl;
+
+
+	outFile << "[Projection matrix:]" << std::endl;
+	for (uint64 i=0; i < 3; i++)
+	{
+        for (uint64 j=0; j < 4; j++)
+        {
+            outFile.width(23);
+            outFile << _p[j][i] << "   ";
+        }
+
+        outFile << std::endl;
+	}	
+
+    outFile << std::endl;
+
+
+	outFile << "[Distortion parameters:]" << std::endl;
+    outFile.width(23);
+    outFile << _distortion[0] << "   //Kappa1" << std::endl;
+    outFile.width(23);
+    outFile << _distortion[1] << "   //Kappa2" << std::endl;
+    outFile.width(23);
+    outFile << _distortion[2] << "   //Tau1" << std::endl;
+    outFile.width(23);
+    outFile << _distortion[3] << "   //Tau2" << std::endl;
+
+}
+
+const MultiArray<float64,2>& Camera::rot() const
+{
+    return (_rot);
+}
+
+const MultiArray<float64,1>& Camera::trans() const
+{
+    return (_trans);
+}
+
+const MultiArray<float64,2>& Camera::k() const
+{
+    return (_k);
+}
+
+const MultiArray<float64,2>& Camera::p() const
+{
+    return (_p);
+}
+
+const MultiArray<float64,1>& Camera::distortion() const
+{
+    return (_distortion);
+}
+
+
+const uint32  Camera::im_width() const
+{
+    return (_width);
+}
+
+const uint32  Camera::im_height() const
+{
+    return (_height);
+}
+
+
+MultiArray<float64,2>& Camera::rot() 
+{
+    return (_rot);
+}
+
+MultiArray<float64,1>& Camera::trans() 
+{
+    return (_trans);
+}
+
+MultiArray<float64,2>& Camera::k() 
+{
+    return (_k);
+}
+
+MultiArray<float64,2>& Camera::p() 
+{
+    return (_p);
+}
+
+MultiArray<float64,1>& Camera::distortion() 
+{
+    return (_distortion);
+}
+
+
+int64& Camera::im_width() 
+{
+    return (_width);
+}
+
+int64& Camera::im_height() 
+{
+    return (_height);
+}

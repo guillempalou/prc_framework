@@ -1,0 +1,52 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Help and usage message                           #
+#                                                                            #
+# This script creates the help message.                                      #
+# This message is printed with "scons -h".                                   #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                                                                            #
+##############################################################################
+
+Import('*')
+
+##
+## Usage: help message + options message below 
+## 
+## Help message for the options are automatically generated below, but first 
+## we should define these options and configure the build environment.
+##
+Help("""
+
+ImagePlus Build System:
+
+Supported Targets:
+
+ main library     : scons
+ all the tests    : scons tests 
+ one module (mod) : scons modules/mod
+ 
+ (the module tests will be also built if the target is only one module)
+
+Cleaning Targets: add '-c' to your command (e.g. 'scons tests -c')
+
+
+Build Options:
+(see the 'user.build.template' file for more options and information)
+"""
+)
+
+##
+## Help Message: add the environment information
+## (this will add the Options information)
+##
+Help(opts.GenerateHelpText(env))

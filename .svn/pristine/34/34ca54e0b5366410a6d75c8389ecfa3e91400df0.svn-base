@@ -1,0 +1,135 @@
+/*
+ * k_means.hpp
+ *
+ *  Created on: Mar 7, 2012
+ *      Author: guillem
+ */
+
+#ifndef K_MEANS_HPP_
+#define K_MEANS_HPP_
+
+#include <opencv2/opencv.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/math/math_types.hpp>
+#include <vector>
+
+namespace imageplus {
+namespace math {
+	namespace statistics {
+
+	//! Struct containing the parameters for the K-means algorithm
+	//! \author Guillem Palou <guillem.palou@upc.edu>
+	//! \date 10-04-2012
+	struct KMeansParameters {
+
+		float64 min_change;
+		uint64 max_steps;
+
+		KMeansParameters() : min_change(1e-3),
+							max_steps(500)
+		{
+
+		}
+	};
+
+
+	//! Class implementing the K-means algorithm
+	//! \author Guillem Palou <guillem.palou@upc.edu>
+	//! \date 10-04-2012
+	template<class Point = Vector> // Eigen Vector
+	class KMeans {
+
+	public:
+
+		//!Default constructor
+		//! \param[in] pars: input parameters
+		KMeans(KMeansParameters& pars) : _pars(pars) {
+
+		}
+
+		inline bool is_nan(float x)
+		{
+		   return  ((x) != (x));
+		}
+
+		//! Main function. Calculates the k-means of a set of points
+		//! \param[in] points: vector of points to be clustered
+		//! \param[in] num_clusters: number of clusters to find
+		void calculate(std::vector<Point>& points, uint32 num_clusters) {
+
+			uint64 N = points.size();	// Number of points
+			uint64 D = points[0].size(); // Dimension of the space
+
+			//std::cout << "Size " << N << " " << D << std::endl;
+
+			cv::Mat pts(N,D, CV_32F);
+			cv::Mat labels(N,1,CV_32F),centers(num_clusters,D,CV_32F);
+
+			//std::cout << "Constructing matrix " << pts.rows <<" " << pts.cols << std::endl;
+			for (uint64 i = 0; i < N; i++) {
+				//std::cout << i << " " << points[i].transpose() << std::endl;
+				for (uint64 k = 0; k < D; k++)
+					pts.at<float>(i, k) = points[i](k);
+			}
+			int64 attempts = 5;
+			float64 eps = 0.001;
+
+			//std::cout << N << " " << D << std::endl; //exit(0);
+			//for (uint64 i = 0; i < N; i++)  { for (uint64 k = 0; k < D; k++)  std::cout << points[i](k) << " "; std::cout << std::endl; }
+			//std::cout << pts << std::endl;
+
+			//std::cout << "Doing kmeans" << std::endl;
+			cv::kmeans(pts, num_clusters, labels, cv::TermCriteria(CV_TERMCRIT_EPS+CV_TERMCRIT_ITER, attempts, eps), attempts, cv::KMEANS_PP_CENTERS, centers);
+
+
+			_weights = Vector(num_clusters); _weights.fill(0);
+			for (uint64 i = 0; i < N; i++) _weights(labels.at<uint32>(i,0))++; _weights /= N;
+
+			_centers = std::vector<Point>();
+			std::vector<float64> perc;
+
+			for (uint64 i = 0; i < num_clusters; i++) {
+				Point center(D);
+				bool nan = false;
+				for (uint64 k = 0; k < D; k++)  { center(k) = centers.at<float>(i,k); if (is_nan(center(k))) nan = true; }
+				if (!nan) {
+					_centers.push_back(center);
+					perc.push_back(_weights(i));
+				}
+			}
+
+			_weights = Vector(_centers.size());
+			for (uint64 i = 0; i < _centers.size(); i++) {
+				_weights(i) = perc[i];
+			}
+			_weights /= _weights.sum();
+		}
+
+		//! centers of the clusters
+		std::vector<Point> 	centers() {return _centers;}
+
+		//! weights of each cluster
+		Vector				weights() {return _weights;}
+
+	private:
+
+		//! parameters
+		KMeansParameters 	_pars;
+
+		//! centers
+		std::vector<Point>  _centers;
+
+		//! weights
+		Vector				_weights;
+
+		//! clustering error
+		float64 			_error;
+
+	};
+
+	}
+}
+}
+
+
+#endif /* K_MEANS_HPP_ */

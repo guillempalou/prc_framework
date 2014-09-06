@@ -1,0 +1,468 @@
+/*
+ * learning_bpt.cpp
+ *
+ *  Created on: Jan 11, 2013
+ *      Author: gpalou
+ */
+
+#define IL_STD
+
+#include <imageplus/segmentation/slic/slic.hpp>
+#include <imageplus/segmentation/measures/boundary_recall.hpp>
+#include <imageplus/segmentation/visualization/false_color.hpp>
+
+#include <imageplus/bpt/learning_bpt.hpp>
+#include <imageplus/bpt/binary_partition_tree.hpp>
+#include <imageplus/bpt/models/metric_model.hpp>
+
+#include <imageplus/core/colorspace_converter.hpp>
+
+#include <ilcplex/ilocplex.h>
+
+using namespace imageplus;
+#define uint64 imageplus::uint64
+
+typedef ImageSignal<float64,3> 																		ImageType;
+
+typedef ImageType::value_type																		lab_type;
+
+typedef bpt::LearningBPT<ImageType>																	BPTAlgorithm;
+typedef BPTAlgorithm::BPT																			BPT;
+typedef BPTAlgorithm::PartitionType																	PartitionType;
+
+typedef bpt::BinaryPartitionTree<ImageType>															BPTnoGTAlgorithm;
+typedef BPTnoGTAlgorithm::BPT																		BPTnoGT;
+
+typedef BPTAlgorithm::DescriptorType::type															DescriptorVector;
+typedef bpt::MetricModel<ImageType, BPT::RegionType> 												DistanceModelType;
+
+static const uint64 D = DescriptorVector::RowsAtCompileTime;
+//static const uint64 SIGMA = 1;
+//static const uint64 C = 1;
+
+void show_support_vectors(std::string support_path, ImageType& img, BPTnoGT& bpt, OptimizationStruct& opt) {
+	float64 threshold = 0.001;
+	float64 max_value = opt.kernel_w.maxCoeff();
+
+	//std::cout << "Getting support vectors from " << opt.kernel_w.rows() << " " << max_value << std::endl;
+	for (uint64 i = 0; i < (uint64)opt.kernel_w.rows(); i++) {
+		if (opt.kernel_w(i) < max_value*threshold) continue;
+
+		ImageType sup(img.sizes());
+
+		sup = img;
+		ImageType::ChannelType luminance = sup.channel(0);
+
+		luminance *= 0.4;
+
+		uint64 reg_id = opt.region_index[i];
+		std::cout << "Support " << i << " " << reg_id << " " << opt.region_descriptors.row(i).transpose().array()*opt.stddev.array() + opt.mean.array() << std::endl;
+		for (BPTnoGT::RegionType::iterator p = bpt(reg_id).begin(); p != bpt(reg_id).end(); ++p) {
+			sup(*p) = opt.region_descriptors.row(i).transpose().array()*opt.stddev.array() + opt.mean.array();
+		}
+
+		ColorSpaceConverter<ImageType> converter;
+		converter.convert(sup,ColorSpaceRGB);
+
+		std::ostringstream os;
+		os << support_path << "/" << reg_id << "_" << (int)(opt.kernel_w(i)*1000) << ".png";
+		//std::cout << os.str() << std::endl;
+		sup.write(os.str());
+	}
+}
+
+void preprocess_image(ImageType& img) {
+
+	// Normalize the image
+	/*lab_type mu;
+	lab_type var;
+
+	uint64 N = img.sizes().prod();
+	// Compute mean
+	mu(0) = img.channel(0).sum() / N;
+	mu(1) = img.channel(1).sum() / N;
+	mu(2) = img.channel(2).sum() / N;
+
+	for (ImageType::iterator p = img.begin(); p != img.end(); ++p) (*p)-=mu;
+	// compute variance
+
+	var(0) = img.channel(0).array().square().sum() / N;
+	var(1) = img.channel(1).array().square().sum() / N;
+	var(2) = img.channel(2).array().square().sum() / N;
+
+	lab_type stddev = var.cwiseSqrt();
+
+	for (ImageType::iterator p = img.begin(); p != img.end(); ++p) (*p)= (*p).array() / stddev.array();*/
+
+}
+
+void perform_bpt(std::string bpt_path, std::string img_path, bool use_kernel, OptimizationStruct& opt) {
+
+	ImageType img;
+	img.read(img_path);
+
+	ColorSpaceConverter<ImageType> converter;
+
+	segmentation::SLIC slic;
+
+	//std::cout << "NO groundtruth " <<  img(0,0).transpose() << std::endl;
+
+	PartitionType partition =  slic.segment_with_superpixel_number(img,1000,1);
+
+	// The SLIC algorithm does not conver to CIE Lab the original data
+	converter.convert(img, ColorSpaceLAB);
+
+	preprocess_image(img);
+
+	BPTnoGTAlgorithm::Parameters pars;
+	pars.debug = true;
+	pars.step = 1;
+	pars.update_roots_partition = false;
+
+	BPTnoGTAlgorithm bpt(pars);
+
+	bpt.init(img, partition);
+
+	DistanceModelType::Parameters model_pars;
+
+	model_pars.use_kernel = use_kernel;
+
+	model_pars.sigma 	= opt.sigma;
+	model_pars.w 		= opt.kernel_w;
+	model_pars.mean 	= opt.mean;
+	model_pars.stddev 	= opt.stddev;
+	model_pars.xi 		= opt.region_descriptors.transpose();
+
+	bpt.create<DistanceModelType>(img, model_pars);
+
+	BPT& bpt_tree = bpt.bpt();
+
+	boost::filesystem::path	result_path(bpt_path);
+	boost::filesystem::create_directory(result_path);
+
+	bpt_tree.save_to_files(bpt_path + "/leaves.sgm", bpt_path + "/mergings.txt");
+	bpt_tree.save_prl("", bpt_path + "/initial_partition.prl", bpt_path + "/mergings_prl.txt");
+}
+
+OptimizationStruct perform_bpt_with_groundtruth(std::string path, std::string img_path, PartitionType& gt, bool use_kernel, OptimizationStruct& opt) {
+	ImageType img;
+	img.read(img_path);
+
+	// The SLIC algorithm does not conver to CIE Lab the original data
+	ColorSpaceConverter<ImageType> converter;
+
+	segmentation::SLIC slic;
+
+	//std::cout << "With groundtruth " <<  img(0,0).transpose() << std::endl;
+
+	PartitionType partition =  slic.segment_with_superpixel_number(img,1000,1);
+
+	ImageType partition_image = segmentation::to_false_color<ImageType>(partition);
+	partition_image.write(path + "/initial_partition.png");
+
+	converter.convert(img, ColorSpaceLAB);
+
+	preprocess_image(img);
+
+	BPTAlgorithm::Parameters pars;
+	pars.debug = true;
+	pars.step = 1;
+	pars.update_roots_partition = false;
+	pars.num_constraints_per_level = 200;
+	BPTAlgorithm bpt_metric(pars);
+
+	bpt_metric.init(img, partition);
+
+	/*************************************************************/
+
+	partition = bpt_metric.bpt().leaves_partition();
+
+	//assign each superpixel to a region
+	PartitionType::iterator p = partition.begin();
+	PartitionType::iterator end = partition.end();
+	std::map<uint64, uint64> assignment;
+	std::map<uint64, std::map<uint64, uint64> > intersect;
+
+	for (; p != end; ++p) {
+		PartitionType::coord_type pos = p.pos();
+		intersect[partition(pos)(0)][gt(pos)(0)] +=1;
+	}
+	for (std::map<uint64, std::map<uint64, uint64> >::iterator r1 = intersect.begin(); r1 != intersect.end(); ++r1) {
+		uint64 assigned = r1->second.begin()->first;
+		assignment[r1->first] = assigned;
+		for (std::map<uint64,uint64>::iterator r2 = r1->second.begin(); r2 != r1->second.end(); ++r2) {
+			if (intersect[r1->first][assigned] < r2->second) {
+					assignment[r1->first] = r2->first;
+			}
+		}
+	}
+
+	bpt_metric.set_gt_assignments(assignment);
+
+
+	/*************************************************************/
+
+	DistanceModelType::Parameters model_pars;
+
+	model_pars.use_kernel = use_kernel;
+	model_pars.assignment = assignment;
+	model_pars.sigma = opt.sigma;
+
+	model_pars.w = opt.kernel_w;
+	model_pars.mean = opt.mean;
+	model_pars.stddev = opt.stddev;
+
+	model_pars.xi = opt.region_descriptors.transpose();
+
+	/*************************************************************/
+
+	bpt_metric.create<DistanceModelType>(img, model_pars);
+
+	uint64 Nreg = bpt_metric.pars().reg_index.size();
+	uint64 Ntri = bpt_metric.pars().triplets.size();
+
+	//std::cout << "Incompatibilities: " << bpt_metric.pars().incompatibilities << std::endl;
+	//std::cout << "------------------------" << std::endl;
+	//std::cout << "Regions: " <<  Nreg << std::endl;
+	//std::cout << "Triplets: " <<  Ntri << std::endl;
+	//std::cout << "------------------------" << std::endl;
+
+	OptimizationStruct incompatibilities;
+
+	incompatibilities.region_descriptors.resize(Nreg, DistanceModelType::dimensions);
+	incompatibilities.triplets.resize(Ntri, 3);
+	incompatibilities.region_index = bpt_metric.pars().rev_reg_index;
+	incompatibilities.sigma = opt.sigma;
+
+	uint64 i = 0;
+	for (std::list<DescriptorVector>::iterator it = bpt_metric.pars().descriptors.begin(); it != bpt_metric.pars().descriptors.end(); ++it, ++i) {
+		incompatibilities.region_descriptors.row(i) = (*it).transpose();
+	}
+	i = 0;
+	for (std::list<BPTAlgorithm::triplet>::iterator it = bpt_metric.pars().triplets.begin(); it != bpt_metric.pars().triplets.end(); ++it,++i) {
+		incompatibilities.triplets.row(i) = (*it).transpose().cast<float64>();
+	}
+
+	/*if (use_kernel) {
+		std::string dir_support = "/support";
+		boost::filesystem::path	support_path(path + dir_support);
+		boost::filesystem::create_directory(support_path);
+		show_support_vectors(support_path.string(), img, bpt_metric, opt);
+	}*/
+
+	return incompatibilities;
+}
+
+void single_train(std::string path_img, std::string path_gt, std::string path_result, float64 sigma=1, float64 C=1) {
+
+	uint64 MAX_ITERATIONS = 0;
+	bool stop = false;
+	uint64 iteration = 0;
+
+	OptimizationStruct opts;
+
+	while (!stop) {
+
+		// Perform the BPT with groundtruth once and optimize weights for each image
+		OptimizationStruct opts_now;
+
+		std::cout << "Doing " << iteration << std::endl;
+
+		std::string path_image  	= path_img;
+		std::string path_image_gt	= path_gt;
+
+		std::ostringstream os;
+		os << path_result;
+
+		boost::filesystem::path	result_path(os.str());
+		boost::filesystem::create_directories(os.str());
+
+		ImageType img, partition_img;
+		img.read(path_image);
+		partition_img.read(path_image_gt);
+
+		PartitionType part = segmentation::to_partition<PartitionType>(partition_img);
+
+		if (iteration == 0) {
+			std::ostringstream os2;
+			os2 << path_result << "/euclid";
+			std::cout << os2.str() << std::endl;
+			boost::filesystem::path	result_path(os2.str());
+			boost::filesystem::create_directories(os2.str());
+			perform_bpt(os2.str(),path_image, false, opts_now);
+		}
+
+		opts.sigma = sigma;
+		OptimizationStruct now_opt = perform_bpt_with_groundtruth(os.str(), path_image, part, iteration!=0, opts);
+
+		optimize_metric(now_opt, C, sigma);
+		opts_now = now_opt;
+
+		now_opt.save(os.str() + "/kernel.dat");
+
+		perform_bpt(os.str(),path_image, true, opts_now);
+		opts = opts_now;
+
+		if (iteration == MAX_ITERATIONS) stop = true;
+
+		iteration++;
+	}
+}
+
+void train_algorithm(std::string path_db, std::string path_list, std::string path_gt, std::string path_result, float64 sigma, float64 C) {
+	// read the list
+	std::vector<std::string> list;
+	std::ifstream flist(path_list.c_str());
+
+	while (!flist.eof()) {std::string s; flist >> s; if (s!="") list.push_back(s.substr(0,s.length()-4)); }
+	flist.close();
+
+	boost::filesystem::path	result_path(path_result);
+	boost::filesystem::create_directory(result_path);
+
+	uint64 MAX_ITERATIONS = 0;
+	bool stop = false;
+	uint64 N = list.size();
+	uint64 iteration = 0;
+
+	std::vector<OptimizationStruct> opts(N);
+
+	std::cout << "Training with " << N << " images" << std::endl;
+	while (!stop) {
+
+		// Perform the BPT with groundtruth once and optimize weights for each image
+		std::vector<OptimizationStruct> opts_now(N);
+
+
+		for (uint64 i = 0; i < N; i++) {
+			std::cout << "Doing " << list[i] << " " << iteration << std::endl;
+
+			std::string path_image  	= path_db	+ "/" + list[i] + ".jpg";
+			std::string path_image_gt	= path_gt 	+ "/" + list[i] + "_3.png";
+
+			std::ostringstream os;
+			os << path_result << "/" << list[i] << "/iter" << iteration;
+
+			boost::filesystem::path	result_path(os.str());
+			boost::filesystem::create_directories(os.str());
+
+			ImageType img, partition_img;
+			img.read(path_image);
+			partition_img.read(path_image_gt);
+
+			PartitionType part = segmentation::to_partition<PartitionType>(partition_img);
+
+			if (iteration == 0) {
+				std::ostringstream os2;
+				os2 << path_result << "/" << list[i] << "/euclid";
+				boost::filesystem::path	result_path(os2.str());
+				boost::filesystem::create_directories(os2.str());
+				perform_bpt(os2.str(),path_image, true, opts_now[i]);
+			}
+
+
+			OptimizationStruct now_opt = perform_bpt_with_groundtruth(os.str(), path_image, part, iteration!=0, opts[i]);
+
+			optimize_metric(now_opt, C, sigma);
+			opts_now[i] = now_opt;
+
+			now_opt.save(os.str() + "/kernel.dat");
+
+			perform_bpt(os.str(),path_image, true, opts_now[i]);
+		}
+
+		opts = opts_now;
+
+		if (iteration == MAX_ITERATIONS) stop = true;
+
+		iteration++;
+	}
+	//
+}
+
+void test(std::string path_img, std::string path_kernel, std::string path_result) {
+
+	boost::filesystem::path	result_path(path_result);
+	boost::filesystem::create_directories(result_path);
+
+	OptimizationStruct opt;
+
+	std::cout << "reading kernel" << std::endl;
+	opt.read(path_kernel);
+
+	std::cout << "Performing bpt" << std::endl;
+	perform_bpt(path_result,path_img,true,opt);
+}
+
+int main(int argc, char *argv[]) {
+
+	std::string algorithm_method	= argv[1];
+
+	if (algorithm_method == "train") {
+		std::string path_dataset		= argv[2];
+		std::string path_result 		= argv[3];
+		std::string path_groundtruth 	= argv[4];
+		float64 sigma 					= atof(argv[5]);
+		float64 C 						= atof(argv[6]);
+		train_algorithm(path_dataset + "/images", path_dataset + "/ids_train.txt", path_groundtruth, path_result, sigma, C);
+	}
+
+	if (algorithm_method == "single_train") {
+		std::string path_image			= argv[2];
+		std::string path_result 		= argv[3];
+		std::string path_groundtruth 	= argv[4];
+		float64 sigma 					= atof(argv[5]);
+		float64 C 						= atof(argv[6]);
+		single_train(path_image, path_groundtruth, path_result, sigma, C);
+	}
+
+	if (algorithm_method == "test") {
+		std::string path_img			= argv[2];
+		std::string path_kernel 		= argv[3];
+		std::string path_result 		= argv[4];
+		test(path_img, path_kernel, path_result);
+	}
+
+	/*if (algorithm_method == "val") {
+		std::string path_img		= argv[2];
+		std::string path_kernel 		= argv[3];
+		std::string path_result 		= argv[3];
+		test(path_img, path_kernel, path_result);
+	}*/
+
+	//std::cout << "Descriptors: " << std::endl;
+	//std::cout << opt..region_descriptors << std::endl;
+
+	//uint64 N = incompatibilities.triplets.rows();
+
+	//std::cout << "------------------------" << std::endl;
+
+	/*std::cout << "Conditions :" << std::endl;
+			for (uint64 i = 0; i < N; i++) {
+				uint64 ri = incompatibilities.triplets(i,0);
+				uint64 rj = incompatibilities.triplets(i,1);
+				uint64 rk = incompatibilities.triplets(i,2);
+
+				Eigen::Matrix<float64, 1, D> xi = incompatibilities.region_descriptors.row(ri);
+				Eigen::Matrix<float64, 1, D> xj = incompatibilities.region_descriptors.row(rj);
+				Eigen::Matrix<float64, 1, D> xk = incompatibilities.region_descriptors.row(rk);
+
+				float64 dij = distance(xi, xj, incompatibilities.region_descriptors, now_opt.kernel_w, sigma);
+				float64 dik = distance(xi, xk, incompatibilities.region_descriptors, now_opt.kernel_w, sigma);
+
+				std::cout << "(" << xi << ") (" << xj << ") (" << xk << ")" << " -- " << dij << " :: " << dik << " -- " << (dij < dik) << std::endl;
+			}
+
+			std::cout << "------------------------" << std::endl;
+			std::cout << "Kernel: " << now_opt.kernel_w.transpose() << std::endl;
+			std::string dist = path_result + "/distance.txt";
+			std::ofstream ofs(dist.c_str());
+			for (uint64 i = 0; i <= 100; i++) {
+				for (uint64 k = 0; k <= 100; k++) {
+					Eigen::Matrix<float64, 1, D> a; a(0)=i;
+					Eigen::Matrix<float64, 1, D> b; b(0)=k;
+					ofs << distance(a,b, incompatibilities.region_descriptors, now_opt.kernel_w, sigma) << " ";
+				}
+				ofs << std::endl;
+			}*/
+}

@@ -1,0 +1,312 @@
+/*
+ * nelder_mead.hpp
+ *
+ *  Created on: Dec 2, 2011
+ *      Author: guillem
+ */
+
+#ifndef NELDER_MEAD_HPP_
+#define NELDER_MEAD_HPP_
+
+#include <Eigen/Eigen>
+#include <imageplus/math/numeric/scalar_function.hpp>
+#include <imageplus/math/optimization/minimizer.hpp>
+#include <list>
+
+namespace imageplus {
+	namespace math {
+		namespace optimization {
+
+		//! Class implementing the non-linear optimization algorithm in
+		//! Nelder, John A.; R. Mead (1965). "A simplex method for function minimization".
+		//!
+		//! the algorithm is implemented using efficiency guidelines of:
+		//! Singer, Sasa and Singer, Sanja (2004), ÒEfficient Implementation of the Nelder-Mead Search Algorithm
+		//! \author Guillem Palou <guillem.palou@upc.edu>
+		//! \date 10-04-2012
+		class NelderMead : public Minimizer {
+
+			//! Internal typedef.
+			//! Stores a point x and the value f(x) with an std::pair
+			typedef std::pair<float64, Vector> ValueWithPoint;
+
+			//! Simplex point list
+			typedef std::list<ValueWithPoint> PointList;
+
+		public:
+
+			//! Function type
+			typedef numeric::ScalarFunction				FunctionType;
+
+			//! Variable type
+			typedef FunctionType::VariableType	VariableType;
+
+			//! Constructor
+			NelderMead(FunctionType& f) : Minimizer(f) {
+				_dimensions = f.dimensions();
+				_tol_f = 1e-10;
+				_tol_v = 1e-8;
+			}
+
+			//! Tolerance on value
+			void tolerance_v(float64 tolerance) {_tol_v = tolerance;}
+
+			//! Tolerance on the simplex volume
+			void tolerance_f(float64 tolerance) {_tol_f = tolerance;}
+
+			//! Main function that minimizes f
+			//!
+			//! The initial simplex is formed by: initial_point and D more points.
+			//! these points are created by: initial_point + R*e_i where e_i is one cardinal direction
+			//!
+			//! \param[in] intial_point : initial points of the algorithm
+			void minimize(const VariableType& initial_point) {
+				minimize(initial_point,1);
+			}
+
+			//! Main function that minimizes f
+			//!
+			//! The initial simplex is formed by: initial_point and D more points.
+			//! these points are created by: initial_point + R*e_i where e_i is one cardinal direction
+			//!
+			//! \param[in] intial_point : initial points of the algorithm
+			//! \param[in] R : radius of the simplex method
+			void minimize(const VariableType& initial_point, float64 R) {
+
+				// Volume to check the convergence
+				float64 volume = 0;
+				float64 initial_volume = volume;
+
+				// Generate initial points
+				float64 y_best 			= std::numeric_limits<float64>::max();
+				float64 y_worst 		= std::numeric_limits<float64>::min();
+				float64 y_second_worst 	= std::numeric_limits<float64>::min();
+
+				_centroid = Vector::Zero(_dimensions);
+
+				_simplex.push_back(ValueWithPoint(Minimizer::_f.value(initial_point),initial_point));
+
+				_centroid+=_simplex.begin()->second;
+
+				for (uint32 i = 0; i < _dimensions; i++) { // Generate a typical right-angled simplex.
+					VariableType r = Vector::Zero(_dimensions);
+					r(i) = R;
+					VariableType x = initial_point + r;
+
+					//std::cout << x.transpose() << std::endl;
+					float64 y = Minimizer::_f.value(x);
+
+					_centroid += x;
+					_simplex.push_back(ValueWithPoint(y,x));
+				}
+				_simplex.sort(_compare);
+				_get_best_and_worst_iterators(y_best, y_worst, y_second_worst);
+
+				// Update the centroid
+				_centroid -= _worst->second;
+				_centroid /= _dimensions;
+
+				float64 rho 	= 1;
+				float64 gamma 	= 0.5;
+				float64 xi 		= 2;
+				float64 sigma 	= 0.5;
+
+				float64 log_rho 	= std::log10(rho);
+				float64 log_gamma 	= std::log10(gamma);
+				float64 log_xi		= std::log10(xi);
+				float64 log_sigma 	= std::log10(sigma);
+				float64 log_tol_v 	= std::log10(_tol_v);
+
+				bool converged = false;
+
+				while (!converged) {
+
+					// Compute the reflected point
+					VariableType reflected = (1+rho)*_centroid - rho*_worst->second;
+					float64 y_reflected = Minimizer::_f.value(reflected);
+
+					if (y_best <= y_reflected && y_reflected < y_second_worst) {
+						// accept the reflected point
+						_accept_point(reflected,y_reflected);
+						volume += log_rho;
+					} else {
+						if (y_reflected < y_best) {
+							// Compute the Expanded point
+							VariableType expanded = (1+rho*xi)*_centroid - rho*xi*_worst->second;
+							float64 y_expanded = Minimizer::_f.value(expanded);
+							if (y_expanded < y_reflected) {
+								// accept the expanded point
+								_accept_point(expanded, y_expanded);
+								volume += log_rho+log_xi;
+							} else {
+								// accept the reflected point
+								_accept_point(reflected,y_reflected);
+								volume += log_rho;
+							}
+						} else {
+							if (y_second_worst <= y_reflected) {
+								if (y_reflected < y_worst) {
+									VariableType outside = (1+rho*gamma)*_centroid - rho*gamma*_worst->second;
+									float64 y_outside = Minimizer::_f.value(outside);
+									if (y_outside < y_reflected) {
+										// accept the outside point
+										_accept_point(outside,y_outside);
+										volume += log_rho + log_gamma;
+									} else {
+										_shrink(_best->second, y_best, sigma);
+										volume += log_sigma*_dimensions;
+									}
+								} else {
+									VariableType inside = (1-gamma)*_centroid + gamma*_worst->second;
+									float64 y_inside = Minimizer::_f.value(inside);
+									if (y_inside < y_worst) {
+										// accept the inside point
+										_accept_point(inside,y_inside);
+										volume += log_gamma;
+									} else {
+										_shrink(_best->second, y_best, sigma);
+										volume += log_sigma*_dimensions;
+									}
+								}
+							}
+						}
+					}
+					// Update the iterators
+					_get_best_and_worst_iterators(y_best, y_worst, y_second_worst);
+
+					// Check convergence
+					float64 test_f = y_worst - y_best;
+					float64 test_v = volume;
+
+					if (test_f < _tol_f) converged = true;
+					if (test_v < log_tol_v + initial_volume) converged = true;
+				}
+			}
+
+			//! Function returning the minimum point
+			//! \return Returns the minimum point
+			VariableType minimum_point() {
+				return _best->second;
+			}
+
+			//! Function returning the minimum value
+			//! \return Returns the minimum value
+			float64 mininum_value() {
+				return _best->first;
+			}
+
+		private:
+
+			//! Auxiliar function to sort the simplex point list
+			static bool _compare(const ValueWithPoint& a, const ValueWithPoint& b) {
+				return a.first < b.first;
+			}
+
+			//! Auxiliar function to maintain the important simplex points
+			//!
+			//! \param[in,out] y_best : actual best point in the simplex
+			//! \param[in,out] y_worst : actual worst point in the simplex
+			//! \param[in,out] y_second_worst : actual second worst point in the simplex
+			//!
+			//! At the output the values are updated
+			void _get_best_and_worst_iterators(float64& y_best, float64& y_worst, float64& y_second_worst) {
+				_best = _simplex.begin();
+				_second_worst = _simplex.end(); _second_worst--;
+				_worst = _second_worst;
+				_second_worst--;
+
+				y_best = _best->first;
+				y_worst = _worst->first;
+				y_second_worst = _second_worst->first;
+			}
+
+			//! Auxiliar function to efficiently incorporate a point into the simplex
+			//!
+			//! \param[in] x : new point for the simplex
+			//! \param[in] y : value of the point x
+			void _accept_point(VariableType& x, float64 y) {
+				// find the position
+				PointList::iterator it = _simplex.begin();
+				while (it->first < y && it != _simplex.end()) it++;
+
+				PointList::iterator ins = _simplex.insert(it,ValueWithPoint(y,x));
+				_simplex.erase(_worst);
+				ins++;
+
+				// update the centroid
+				_centroid *= _dimensions;
+				if (ins != _simplex.end()) {
+					_centroid +=  x - _second_worst->second; // add the new point and substract the worst of the next iteration(the current second worst)
+				}
+
+				_centroid /= _dimensions;
+
+				//std::cout << "Accepting " << x.transpose() << " " << y << std::endl;
+			}
+
+
+			//! Auxiliar function that performs the schrink step of the algorithm
+			//!
+			//! \param[in] : best simplex point
+			//! \param[in] : best simplex value
+			//! \param[in] : schrink factor
+			void _shrink(VariableType& x, float64 y, float64 sigma) {
+				//_simplex.clear();
+
+				//std::cout << "Shrink " << x.transpose() << std::endl;
+				PointList::iterator it = _best;
+
+				_centroid = x;
+				_simplex.push_back(ValueWithPoint(y, x));
+
+				it++;
+				for (uint32 i = 0; i < _dimensions; i++, it++) {
+					VariableType x_shrunk = (1-sigma)*x + sigma*it->second;
+					float64 y_shrunk = Minimizer::_f.value(x_shrunk);
+					_centroid += x_shrunk;
+					_simplex.push_back(ValueWithPoint(y_shrunk, x_shrunk));
+				}
+				_simplex.erase(_best,++_worst);
+				_simplex.sort(_compare);
+
+				float64 a=0,b=0,c=0;
+				_get_best_and_worst_iterators(a,b,c);
+
+				// Update the centroid
+				_centroid -= _worst->second;
+				_centroid /= _dimensions;
+			}
+
+		private:
+
+			//! dimensions of the problem
+			uint64 		_dimensions;
+
+			//! simplex (basic structure for the algorithm)
+			PointList 	_simplex;
+
+			//! centroid of the simplex using all but the worst points
+			Vector		_centroid;
+
+			//! iterator
+			PointList::iterator _best;
+			//! iterator
+			PointList::iterator _worst;
+			//! iterator
+			PointList::iterator _second_worst;
+
+			//! tolerance in value
+			float64 _tol_f;
+			//! tolerance in volume
+			float64 _tol_v;
+
+		};
+
+		}
+
+	}
+}
+
+
+
+#endif /* NELDER_MEAD_HPP_ */

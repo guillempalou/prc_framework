@@ -1,0 +1,115 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+
+#ifndef IMAGEPLUS_SEMANTIC_READWRITEONTOLOGY_HPP
+#define IMAGEPLUS_SEMANTIC_READWRITEONTOLOGY_HPP
+
+
+#include <imageplus/core.hpp>
+#include <imageplus/semantic/ontology.hpp>
+
+
+namespace imageplus
+{
+	namespace semantic
+	{
+		//!
+		//! \brief Class for reading and writing Ontology instances from/to
+		//! disk files in XML format.
+		//!
+		//! Usage with operators:
+		//! \code
+		//! Ontology my_ont1, my_ont2;
+		//! //... add some semantic classes to my_ont2 ontology
+		//!
+		//! semantic::ReadWriteOntology rwOntology("foo.xml");
+		//!
+		//! rwOntology >> my_ont1; // Read from disk
+		//! rwOntology << my_ont2; // Write to disk
+		//! \endcode
+		//!
+		//! Usage with functions:
+		//! \code
+		//! Ontology my_ont1, my_ont2;
+		//! //... add some semantic classes to my_ont2 ontology
+		//!
+		//! semantic::ReadWriteOntology rwOntology("foo.xml");
+		//!
+		//! rwOntology.read(my_ont1);  // Read from disk
+		//! rwOntology.write(my_ont2); // Write to disk
+		//! \endcode
+		//!
+		//! \author Pau Haro Negre
+		//!
+		//! \date 24-3-2011
+		//!
+		class ReadWriteOntology
+		{
+		public:
+
+			//! \brief Default constructor
+			ReadWriteOntology()
+			: _filename("") {}
+
+			//! \brief Constructor from file name.
+			//!
+			//! \param[in] filename Name of the file to store/read the Ontology.
+			//! 
+            //! \throw ImagePlusError When the file path is not found
+			explicit ReadWriteOntology(const std::string& filename) throw (ImagePlusError);
+
+			//! \brief Destructor
+			~ReadWriteOntology() {}
+
+            //! \brief Set the file name of the Ontology file.
+            //!
+            //! \param[in] filename Name of the file to store/read the Ontology.
+            //!
+            //! \throw ImagePlusError When the file path is not found
+            void open(const std::string& filename) throw (ImagePlusError);
+
+			//! \brief Read an ontology
+			//!
+			//! \param[out] ontology Ontology read from disk
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+			void read(Ontology& ontology) const throw (ImagePlusError);
+
+            //! \brief Operator to read an ontology
+            //!
+			//! \param[out] ontology Ontology read from disk
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+            void operator>>(Ontology& ontology) const throw (ImagePlusError);
+
+			//! \brief Write an ontology
+			//!
+			//! \param[in] ontology Ontology to be written
+            //!
+            //! \return True if the Ontology was correctly written to the file, otherwise False
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+			bool write(Ontology& ontology) const throw (ImagePlusError);
+
+            //! \brief Operator to write an ontology
+			//!
+			//! \param[in] ontology Ontology to be written
+            //!
+            //! \return True if the Ontology was correctly written to the file, otherwise False
+			//!
+			//! \throw ImagePlusError When the file is not found, or some error related to XML
+			bool operator<<(Ontology& ontology) const throw (ImagePlusError);
+
+		private:
+			//! Stores the file name of the ontology to read or write
+			std::string _filename;
+
+		};
+	}
+}
+
+#endif //IMAGEPLUS_SEMANTIC_READWRITEONTOLOGY_HPP

@@ -1,0 +1,138 @@
+/*
+ * features_descriptor.hpp
+ *
+ *  Created on: Jan 16, 2013
+ *      Author: gpalou
+ */
+
+#ifndef FEATURES_DESCRIPTOR_HPP_
+#define FEATURES_DESCRIPTOR_HPP_
+
+
+#include <imageplus/descriptors/descriptor_base.hpp>
+#include <imageplus/math/math_types.hpp>
+
+#include <imageplus/descriptors/color/color_mean.hpp>
+#include <imageplus/descriptors/color/color_histogram.hpp>
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Area visual descriptor
+        //!
+        //! \author Jordi Pont <jpont@gps.tsc.upc.edu>, Guillem Palou <guillem.palou@gmail.com>
+        //!
+        //! \date 02-06-2009
+    	template<class Signal>
+        class FeaturesDescriptor : public DescriptorBase
+        {
+        	typedef 		 ColorHistogram<Signal>			color_gaussian_histogram;
+        	typedef typename ColorHistogram<Signal>::type	color_gaussian_histogram_type;
+        	typedef typename ColorMean<Signal>::type				color_mean_type;
+
+        	typedef typename Area::type								area_type;
+
+        public:
+
+        	static const uint64 dimensions = 24;
+
+        	//! Type to refer to the type of data which will be returned by this descriptor
+        	typedef Eigen::Matrix<float64, dimensions, 1>					type;
+
+        	//! base structur for descriptors using parameters
+        	struct FeaturesDescriptorParameters {
+        		typedef typename color_gaussian_histogram::Parameters ColorParameters;
+
+        		ColorParameters color_pars;
+
+        		FeaturesDescriptorParameters(ColorParameters cpars) : color_pars(cpars) {
+
+        		}
+
+        		FeaturesDescriptorParameters() {
+
+        		}
+        	};
+
+        	typedef FeaturesDescriptorParameters 	Parameters;
+
+
+            //! function returning the id given a set of parameters
+            //! \param[in] pars: parameters to the descriptors (null in this case)
+            static const std::string id(const Parameters& pars = default_parameters()) {
+            	return "feature_descriptor";
+            }
+
+            //! Default parameters for descriptors
+            static const Parameters default_parameters() {
+            	return Parameters();
+            }
+
+            //!
+            //! \brief Default constructor
+            //!
+            FeaturesDescriptor(const Parameters& pars = default_parameters()) : DescriptorBase(true), _value(type::Zero()) {};
+
+            //! Virtual destructor
+            ~FeaturesDescriptor(){};
+
+            // compute the descriptor
+            template< class SignalModel, class RegionModel>
+            void compute_descriptor(SignalModel& signal, RegionModel& region, const Parameters& pars, typename DescriptorBase::ManagerType* manager) {
+
+            	_value = type::Zero();
+
+            	const color_gaussian_histogram_type& 	color_histogram = manager->calc_descriptor<ColorHistogram<Signal> >(signal, region, pars.color_pars);
+
+            	//const area_type& 			area 				= manager->calc_descriptor<Area>(signal, region);
+
+            	std::vector<uint64> bins = pars.color_pars.bins;
+
+            	_value.segment(0,bins[0]) 						= color_histogram.normalized(0);
+            	_value.segment(bins[0],bins[1]) 				= color_histogram.normalized(1);
+            	_value.segment(bins[0]+bins[1],bins[2])			= color_histogram.normalized(2);
+
+            	// construct the Descriptor
+            	//_value(0) = color_mean(0);
+            	//_value(1) = color_mean(1);
+            	//_value(2) = color_mean(2);
+            	//std::cout <<
+            }
+
+            //! \brief Calculates the area of a region, given a pair of iterators.
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class SignalModel, class RegionModel>
+            void calculate(SignalModel& signal, RegionModel& region, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+            	 compute_descriptor(signal,region,pars,manager);
+            }
+
+            //!
+            //! \brief Calculates recursively area of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template<class SignalModel, class RegionModel, class ChildContainer>
+            void recursive_calculate(SignalModel& signal, RegionModel& region, ChildContainer& childs, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+                compute_descriptor(signal,region,pars,manager);
+            }
+
+            const type& value() const {
+            	return _value;
+            }
+
+        private:
+            //! Area of the region
+            type _value;
+        };
+    }
+}
+
+#endif /* FEATURES_DESCRIPTOR_HPP_ */

@@ -1,0 +1,70 @@
+/*
+ * descriptors.cpp
+ *
+ *  Created on: Aug 30, 2012
+ *      Author: guillem
+ */
+
+#include <imageplus/core/image_signal.hpp>
+#include <imageplus/core/video_signal.hpp>
+#include <imageplus/core/regions/hierarchical_region.hpp>
+
+#include <imageplus/segmentation/partition/partition.hpp>
+#include <imageplus/segmentation/partition/hierarchical_region_partition.hpp>
+
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+using namespace imageplus;
+#define uint64 imageplus::uint64
+
+
+
+int main() {
+
+	typedef ImageSignal<float64,1> ImageType;
+	typedef VideoSignal<float64,1> VideoType;
+
+	typedef ImageType::coord_type coord2d;
+	typedef VideoType::coord_type coord3d;
+
+	typedef HierarchicalRegion<coord2d> Region2D;
+	typedef HierarchicalRegion<coord3d> Region3D;
+
+	uint64 N = 2;
+	ImageType img(N,N);
+
+	segmentation::Partition<uint64,2> p(N,N);
+
+	p.set_unique_labels();
+
+	segmentation::HierarchicalRegionPartition<Region2D> hp;
+
+	hp.init(p);
+
+	uint64 label = hp.max_label();
+	uint64 s = 0;
+	uint64 f = label+1;
+
+	std::cout << "Region 1 " << hp(1).coordinates().size() << std::endl;
+
+	for (; s+1 < f; f++, s+=2) {
+		std::cout <<  " merging " << s << " " <<s+1 << " to " << f << std::endl;
+		hp.merge_regions(s,s+1,f);
+	}
+	std::cout << "A total of " << label-1 << " mergings" << std::endl;
+
+	std::cout << "Region 1 " << hp(1).coordinates().size() << std::endl;
+	for (Region2D::iterator it = hp(6).begin(); it != hp(6).end(); ++it) {
+		std::cout << "coords " << (*it).transpose() << std::endl;
+	}
+
+	descriptors::DescriptorManager manager;
+	manager.set_max_number_of_regions(2*N*N-1);
+
+	for (uint64 i = 0; i <= hp.max_label(); i++) {
+		Region2D& reg = hp(i);
+		std::cout << "the area of " << i << " is " << manager.calc_descriptor<descriptors::Area>(img, reg) << std::endl;
+	}
+
+}

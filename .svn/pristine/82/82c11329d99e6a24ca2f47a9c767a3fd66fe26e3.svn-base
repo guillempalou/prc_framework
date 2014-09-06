@@ -1,0 +1,432 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file rectangles.cpp
+//!
+
+
+#if 0 // Moved to implementation
+
+#include <imageplus/core/convert_types.hpp>
+#include <imageplus/core/rectangles.hpp>
+
+namespace imageplus
+{
+    template<typename T>
+    MultiArray<T,1> copy_view( const MultiArray<T,1>& in, const BBox<int64,1>& bb )
+    {
+        return in[boost::indices[typename boost::multi_array<T,1>::index_range(bb.origin()[0], bb.opposite()[0]+1)]];
+    }
+
+    template<typename T>
+    MultiArray<T,2> copy_view( const MultiArray<T,2>& in, const BBox<int64,2>& bb )
+    {
+        return in[boost::indices[typename boost::multi_array<T,2>::index_range(bb.origin()[0], bb.opposite()[0]+1)]
+                  [typename boost::multi_array<T,2>::index_range(bb.origin()[1], bb.opposite()[1]+1)]];
+    }
+
+    template<typename T>
+    MultiArray<T,3> copy_view( const MultiArray<T,3>& in, const BBox<int64,3>& bb )
+    {
+        return in[boost::indices[typename boost::multi_array<T,3>::index_range(bb.origin()[0], bb.opposite()[0]+1)]
+                  [typename boost::multi_array<T,3>::index_range(bb.origin()[1], bb.opposite()[1]+1)]
+                  [typename boost::multi_array<T,3>::index_range(bb.origin()[2], bb.opposite()[2]+1)]];
+    }
+
+
+    template<typename T, std::size_t N>
+    Image<T,N> copy_view( const Image<T,N>& in, const BBox<int64,2>& bb )
+    {
+        Image<T,N> out( bb.side(0) , bb.side(1) );
+
+        for (uint64 channel = 0; channel < N; channel++)
+        {
+            out(channel) = copy_view( in(channel) , bb );
+        }
+
+        return out;
+    }
+
+
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,1>& in, const BBox<int64,1>& bb, MultiArray<T,1>& out,  const Coord<int64,1> & dest )
+    {
+        BBox<int64,1> ob(dest, bb.side(0));
+
+        out[boost::indices[typename boost::multi_array<T,1>::index_range(ob.origin()[0], ob.opposite()[0]+1)]] =
+            in[ boost::indices[typename boost::multi_array<T,1>::index_range(bb.origin()[0], bb.opposite()[0]+1)]];
+    }
+
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,2>& in, const BBox<int64,2>& bb, MultiArray<T,2>& out,  const Coord<int64,2> & dest )
+    {
+        BBox<int64,2> ob(dest, bb.side(0), bb.side(1));
+
+        out[boost::indices[typename boost::multi_array<T,2>::index_range(ob.origin()[0], ob.opposite()[0]+1)]
+            [typename boost::multi_array<T,2>::index_range(ob.origin()[1], ob.opposite()[1]+1)]] =
+                in[ boost::indices[typename boost::multi_array<T,2>::index_range(bb.origin()[0], bb.opposite()[0]+1)]
+                    [typename boost::multi_array<T,2>::index_range(bb.origin()[1], bb.opposite()[1]+1)]];
+    }
+
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,3>& in, const BBox<int64,3>& bb, MultiArray<T,3>& out,  const Coord<int64,3>& dest )
+    {
+        BBox<int64,3> ob(dest, bb.side(0), bb.side(1), bb.side(2));
+
+        out[boost::indices[typename boost::multi_array<T,3>::index_range(ob.origin()[0], ob.opposite()[0]+1)]
+            [typename boost::multi_array<T,3>::index_range(ob.origin()[1], ob.opposite()[1]+1)]
+            [typename boost::multi_array<T,3>::index_range(ob.origin()[2], ob.opposite()[2]+1)]] =
+                in[ boost::indices[typename boost::multi_array<T,3>::index_range(bb.origin()[0], bb.opposite()[0]+1)]
+                    [typename boost::multi_array<T,3>::index_range(bb.origin()[1], bb.opposite()[1]+1)]
+                    [typename boost::multi_array<T,3>::index_range(bb.origin()[2], bb.opposite()[2]+1)]];
+    }
+
+    template<typename T>
+    void copy_paste_row( const MultiArray<T,1>& in, uint64 line, MultiArray<T,2>& out) throw(ImagePlusError)
+    {
+        if (line >= out.dims(1))
+        {
+            throw ImagePlusError ("imageplus::copy_paste_row: row out of range");
+        }
+        if (in.dims(0) > out.dims(0))
+        {
+            throw ImagePlusError ("imageplus::copy_paste_row: row too long");
+        }
+
+
+        for (uint64 i = 0; i < in.dims(0); i++)
+        {
+            out[i][line] = in[i];
+        }
+    }
+
+
+    template<typename T>
+    void copy_paste_column( const MultiArray<T,1>& in, uint64 col, MultiArray<T,2>& out) throw(ImagePlusError)
+    {
+        if (col >= out.dims(0))
+        {
+            throw ImagePlusError ("imageplus::copy_paste_column: column out of range");
+        }
+        if (in.dims(0) > out.dims(1))
+        {
+            throw ImagePlusError ("imageplus::copy_paste_column: column too long");
+        }
+
+        for (uint64 i = 0; i < in.dims(0); i++)
+        {
+            out[col][i] = in[i];
+        }
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> slice_z(const MultiArray<T,3>& in, uint64 z)  throw(ImagePlusError)
+    {
+        if (z >= in.dims(2))
+        {
+            throw ImagePlusError ("imageplus::slice_z: z out of range");
+        }
+
+        return in[boost::indices[typename boost::multi_array<T,3>::index_range(0,in.dims(0))]
+                  [typename boost::multi_array<T,3>::index_range(0,in.dims(1))]
+                  [z]];
+    }
+
+
+    template<typename T>
+    MultiArray<T,1> row (const MultiArray<T,2>& in, uint64 line) throw(ImagePlusError)
+    {
+        if (line >= in.dims(1))
+        {
+            throw ImagePlusError ("imageplus::row: row out of range");
+        }
+
+        return in[boost::indices[typename boost::multi_array<T,2>::index_range(0,in.dims(0))][line]];
+    }
+
+
+    template<typename T>
+    MultiArray<T,1> column (const MultiArray<T,2>& in, uint64 col) throw(ImagePlusError)
+    {
+        if (col >= in.dims(0))
+        {
+            throw ImagePlusError ("imageplus::column: column out of range");
+        }
+
+        return in[boost::indices[col][typename boost::multi_array<T,2>::index_range(0,in.dims(1))]];
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,2>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError)
+    {
+        uint64 w1 = in1.dims(0);
+        uint64 w2 = in2.dims(0);
+        uint64 h1 = in1.dims(1);
+        uint64 h2 = in2.dims(1);
+
+        if (h1 != h2)
+        {
+            throw ImagePlusError ("Input multiarrays must have same vertical dimensions");
+        }
+                    
+        MultiArray<T,2> out(w1+w2, h1);
+
+        Coord<int64,2> ori (0,  0);
+        Coord<int64,2> mid (w1, 0);
+
+        imageplus::copy_paste (in1, out, ori);
+        imageplus::copy_paste (in2, out, mid);
+
+        return out;
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,2>& in1, const MultiArray<T,1>& in2 ) throw (ImagePlusError)
+    {
+        uint64 w1 = in1.dims(0);
+        uint64 w2 = in2.dims(0);
+        uint64 h1 = in1.dims(1);
+
+
+        if (h1 != w2)
+        {
+            throw ImagePlusError ("Input multiarrays must have same vertical dimensions");
+        }
+                    
+        MultiArray<T,2> out(w1+1, h1);
+
+        Coord<int64,2> ori (0,0);
+
+        imageplus::copy_paste (in1, out, ori);
+        imageplus::copy_paste_column (in2, w1, out);
+
+        return out;
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,1>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError)
+    {
+        uint64 w1 = in1.dims(0);
+        uint64 w2 = in2.dims(0);
+        uint64 h2 = in2.dims(1);
+
+
+        if (h2 != w1)
+        {
+            throw ImagePlusError ("Input multiarrays must have same vertical dimensions");
+        }
+                    
+        MultiArray<T,2> out(w2+1, h2);
+
+        Coord<int64,2> ori (1,0);
+
+        imageplus::copy_paste_column (in1, 0, out);
+        imageplus::copy_paste (in2, out, ori);
+
+        return out;
+    }
+
+    template<typename T>
+    MultiArray<T,2> vertcat ( const MultiArray<T,2>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError)
+    {
+        uint64 w1 = in1.dims(0);
+        uint64 w2 = in2.dims(0);
+        uint64 h1 = in1.dims(1);
+        uint64 h2 = in2.dims(1);
+
+        if (w1 != w2)
+        {
+            throw ImagePlusError ("Input multiarrays must have same horizontal dimensions");
+        }
+                    
+        MultiArray<T,2> out(w1, h1+h2);
+
+        Coord<int64,2> ori (0,  0);
+        Coord<int64,2> mid (0, h1);
+
+        imageplus::copy_paste (in1, out, ori);
+        imageplus::copy_paste (in2, out, mid);
+
+        return out;
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> flip ( const MultiArray<T,2>& in1, FlipType fl) throw (ImagePlusError)
+    {
+        MultiArray<T,2> out(in1);
+        uint64 dim_y = out.dims(1);
+
+        switch (fl)
+        {
+            case HORIZONTAL_FLIP:
+                for (uint64 row = 0; row < dim_y; ++row)
+                {
+                    typename MultiArray<T,1>::view rowview = out[boost::indices[typename boost::multi_array<T,2>::index_range(0,out.dims(0))][row]];
+
+                    std::reverse(rowview.begin(), rowview.end());
+                }
+                break;
+            case VERTICAL_FLIP:
+                for (uint64 col = 0; col < dim_y; ++col)
+                {
+                    typename MultiArray<T,1>::view colview = out[boost::indices[col][typename boost::multi_array<T,2>::index_range(0,out.dims(1))]];
+
+                    std::reverse(colview.begin(), colview.end());
+                }
+                break;
+            case HORIZONTAL_VERTICAL_FLIP:
+                for (uint64 col = 0; col < dim_y; ++col)
+                {
+                    std::reverse(out.data(), out.data()+out.num_elements());
+                }
+                break;
+            default:
+                throw ImagePlusError("flip(): Invalid operation code");
+                break;
+        }
+
+        return out;
+    }
+
+    /*
+     * Template Instances
+     */
+
+    template MultiArray<uint8,1>   copy_view( const MultiArray<uint8,1>&,   const BBox<int64,1>& );
+    template MultiArray<uint16,1>  copy_view( const MultiArray<uint16,1>&,   const BBox<int64,1>& );
+    template MultiArray<uint32,1>  copy_view( const MultiArray<uint32,1>&,   const BBox<int64,1>& );
+    template MultiArray<uint64,1>  copy_view( const MultiArray<uint64,1>&,   const BBox<int64,1>& );
+    template MultiArray<int8,1>    copy_view( const MultiArray<int8,1>&,   const BBox<int64,1>& );
+    template MultiArray<int16,1>   copy_view( const MultiArray<int16,1>&,   const BBox<int64,1>& );
+    template MultiArray<int32,1>   copy_view( const MultiArray<int32,1>&,   const BBox<int64,1>& );
+    template MultiArray<int64,1>   copy_view( const MultiArray<int64,1>&,   const BBox<int64,1>& );
+    template MultiArray<float64,1> copy_view( const MultiArray<float64,1>&, const BBox<int64,1>& );
+
+
+    template MultiArray<uint8,2>   copy_view( const MultiArray<uint8,2>&,   const BBox<int64,2>& );
+    template MultiArray<uint16,2>  copy_view( const MultiArray<uint16,2>&,   const BBox<int64,2>& );
+    template MultiArray<uint32,2>  copy_view( const MultiArray<uint32,2>&,   const BBox<int64,2>& );
+    template MultiArray<uint64,2>  copy_view( const MultiArray<uint64,2>&,   const BBox<int64,2>& );
+    template MultiArray<int8,2>    copy_view( const MultiArray<int8,2>&,   const BBox<int64,2>& );
+    template MultiArray<int16,2>   copy_view( const MultiArray<int16,2>&,   const BBox<int64,2>& );
+    template MultiArray<int32,2>   copy_view( const MultiArray<int32,2>&,   const BBox<int64,2>& );
+    template MultiArray<int64,2>   copy_view( const MultiArray<int64,2>&,   const BBox<int64,2>& );
+    template MultiArray<float64,2> copy_view( const MultiArray<float64,2>&, const BBox<int64,2>& );
+
+
+    template Image<uint8,1>   copy_view( const Image<uint8,1>&,   const BBox<int64,2>& );
+    template Image<uint32,1>  copy_view( const Image<uint32,1>&,  const BBox<int64,2>& );
+    template Image<int64,1>   copy_view( const Image<int64,1>&,   const BBox<int64,2>& );
+
+    template Image<uint8,3>   copy_view( const Image<uint8,3>&,   const BBox<int64,2>& );
+    template Image<uint32,3>  copy_view( const Image<uint32,3>&,  const BBox<int64,2>& );
+    template Image<int64,3>   copy_view( const Image<int64,3>&,   const BBox<int64,2>& );
+
+
+    template MultiArray<uint8,3>   copy_view( const MultiArray<uint8,3>&,   const BBox<int64,3>& );
+    template MultiArray<uint16,3>  copy_view( const MultiArray<uint16,3>&,   const BBox<int64,3>& );
+    template MultiArray<uint32,3>  copy_view( const MultiArray<uint32,3>&,   const BBox<int64,3>& );
+    template MultiArray<uint64,3>  copy_view( const MultiArray<uint64,3>&,   const BBox<int64,3>& );
+    template MultiArray<int8,3>    copy_view( const MultiArray<int8,3>&,   const BBox<int64,3>& );
+    template MultiArray<int16,3>   copy_view( const MultiArray<int16,3>&,   const BBox<int64,3>& );
+    template MultiArray<int32,3>   copy_view( const MultiArray<int32,3>&,   const BBox<int64,3>& );
+    template MultiArray<int64,3>   copy_view( const MultiArray<int64,3>&,   const BBox<int64,3>& );
+    template MultiArray<float64,3> copy_view( const MultiArray<float64,3>&, const BBox<int64,3>& );
+
+    template void copy_paste_view( const MultiArray<bool,1>&,    const BBox<int64,1>&, MultiArray<bool,1>&,    const Coord<int64,1> & );
+    template void copy_paste_view( const MultiArray<uint8,1>&,   const BBox<int64,1>&, MultiArray<uint8,1>&,   const Coord<int64,1> & );
+    template void copy_paste_view( const MultiArray<int16,1>&,   const BBox<int64,1>&, MultiArray<int16,1>&,   const Coord<int64,1> & );
+    template void copy_paste_view( const MultiArray<uint16,1>&,  const BBox<int64,1>&, MultiArray<uint16,1>&,  const Coord<int64,1> & );
+    template void copy_paste_view( const MultiArray<int32,1>&,   const BBox<int64,1>&, MultiArray<int32,1>&,   const Coord<int64,1> & );
+    template void copy_paste_view( const MultiArray<uint32,1>&,  const BBox<int64,1>&, MultiArray<uint32,1>&,  const Coord<int64,1> & );
+    template void copy_paste_view( const MultiArray<int64,1>&,   const BBox<int64,1>&, MultiArray<int64,1>&,   const Coord<int64,1> & );
+    template void copy_paste_view( const MultiArray<float64,1>&, const BBox<int64,1>&, MultiArray<float64,1>&, const Coord<int64,1> & );
+    template void copy_paste_view( const MultiArray<uint64,1>&,  const BBox<int64,1>&, MultiArray<uint64,1>&, const Coord<int64,1> & );
+
+    template void copy_paste_view( const MultiArray<bool,2>&,    const BBox<int64,2>&, MultiArray<bool,2>&,    const Coord<int64,2> & );
+    template void copy_paste_view( const MultiArray<uint8,2>&,   const BBox<int64,2>&, MultiArray<uint8,2>&,   const Coord<int64,2> & );
+    template void copy_paste_view( const MultiArray<int16,2>&,   const BBox<int64,2>&, MultiArray<int16,2>&,   const Coord<int64,2> & );
+    template void copy_paste_view( const MultiArray<uint16,2>&,  const BBox<int64,2>&, MultiArray<uint16,2>&,  const Coord<int64,2> & );
+    template void copy_paste_view( const MultiArray<int32,2>&,   const BBox<int64,2>&, MultiArray<int32,2>&,   const Coord<int64,2> & );
+    template void copy_paste_view( const MultiArray<uint32,2>&,  const BBox<int64,2>&, MultiArray<uint32,2>&,  const Coord<int64,2> & );
+    template void copy_paste_view( const MultiArray<int64,2>&,   const BBox<int64,2>&, MultiArray<int64,2>&,   const Coord<int64,2> & );
+    template void copy_paste_view( const MultiArray<float64,2>&, const BBox<int64,2>&, MultiArray<float64,2>&, const Coord<int64,2> & );
+    template void copy_paste_view( const MultiArray<uint64,2>&,  const BBox<int64,2>&, MultiArray<uint64,2>&, const Coord<int64,2> & );
+
+    template void copy_paste_view( const MultiArray<bool,3>&,    const BBox<int64,3>&, MultiArray<bool,3>&,    const Coord3D<> & );
+    template void copy_paste_view( const MultiArray<uint8,3>&,   const BBox<int64,3>&, MultiArray<uint8,3>&,   const Coord3D<> & );
+    template void copy_paste_view( const MultiArray<int16,3>&,   const BBox<int64,3>&, MultiArray<int16,3>&,   const Coord3D<> & );
+    template void copy_paste_view( const MultiArray<int64,3>&,   const BBox<int64,3>&, MultiArray<int64,3>&,   const Coord3D<> & );
+    template void copy_paste_view( const MultiArray<float64,3>&, const BBox<int64,3>&, MultiArray<float64,3>&, const Coord3D<> & );
+
+    template void copy_paste( const MultiArray<bool,2>&,    MultiArray<bool,2>&,    const Coord<int64,2> & );
+    template void copy_paste( const MultiArray<uint8,2>&,   MultiArray<uint8,2>&,   const Coord<int64,2> & );
+    template void copy_paste( const MultiArray<int16,2>&,   MultiArray<int16,2>&,   const Coord<int64,2> & );
+    template void copy_paste( const MultiArray<uint16,2>&,  MultiArray<uint16,2>&,  const Coord<int64,2> & );
+    template void copy_paste( const MultiArray<int32,2>&,   MultiArray<int32,2>&,   const Coord<int64,2> & );
+    template void copy_paste( const MultiArray<uint32,2>&,  MultiArray<uint32,2>&,  const Coord<int64,2> & );
+    template void copy_paste( const MultiArray<int64,2>&,   MultiArray<int64,2>&,   const Coord<int64,2> & );
+    template void copy_paste( const MultiArray<float64,2>&, MultiArray<float64,2>&, const Coord<int64,2> & );
+
+    template void copy_paste( const MultiArray<bool,3>&,    MultiArray<bool,3>&,    const Coord3D<> & );
+    template void copy_paste( const MultiArray<uint8,3>&,   MultiArray<uint8,3>&,   const Coord3D<> & );
+    template void copy_paste( const MultiArray<int16,3>&,   MultiArray<int16,3>&,   const Coord3D<> & );
+    template void copy_paste( const MultiArray<int64,3>&,   MultiArray<int64,3>&,   const Coord3D<> & );
+    template void copy_paste( const MultiArray<float64,3>&, MultiArray<float64,3>&, const Coord3D<> & );
+
+    template void copy_paste_row( const MultiArray<uint8,1>& ,   uint64 , MultiArray<uint8,2>& );
+    template void copy_paste_row( const MultiArray<int64,1>& ,   uint64 , MultiArray<int64,2>& );
+    template void copy_paste_row( const MultiArray<float64,1>& , uint64 , MultiArray<float64,2>& );
+
+    template void copy_paste_column( const MultiArray<uint8,1>& ,   uint64 , MultiArray<uint8,2>& );
+    template void copy_paste_column( const MultiArray<int64,1>& ,   uint64 , MultiArray<int64,2>& );
+    template void copy_paste_column( const MultiArray<float64,1>& , uint64 , MultiArray<float64,2>& );
+
+    template MultiArray<uint8,2>   slice_z(const MultiArray<uint8,3>&,   uint64);
+    template MultiArray<int64,2>   slice_z(const MultiArray<int64,3>&,   uint64);
+    template MultiArray<float64,2> slice_z(const MultiArray<float64,3>&, uint64);
+
+    template MultiArray<uint8,1>   row (const MultiArray<uint8,2>& ,   uint64 );
+    template MultiArray<int64,1>   row (const MultiArray<int64,2>& ,   uint64 );
+    template MultiArray<float64,1> row (const MultiArray<float64,2>& , uint64 );
+
+    template MultiArray<uint8,1>   column (const MultiArray<uint8,2>& ,   uint64 );
+    template MultiArray<int64,1>   column (const MultiArray<int64,2>& ,   uint64 );
+    template MultiArray<float64,1> column (const MultiArray<float64,2>& , uint64 );
+
+    template MultiArray<bool,2>    horzcat<bool>    (const MultiArray<bool,2>& ,    const MultiArray<bool,2>&);
+    template MultiArray<uint8,2>   horzcat<uint8>   (const MultiArray<uint8,2>& ,   const MultiArray<uint8,2>&);
+    template MultiArray<int64,2>   horzcat<int64>   (const MultiArray<int64,2>& ,   const MultiArray<int64,2>&);
+    template MultiArray<float64,2> horzcat<float64> (const MultiArray<float64,2>& , const MultiArray<float64,2>&);
+
+    template MultiArray<bool,2>    horzcat<bool>    (const MultiArray<bool,2>& ,    const MultiArray<bool,1>&);
+    template MultiArray<uint8,2>   horzcat<uint8>   (const MultiArray<uint8,2>& ,   const MultiArray<uint8,1>&);
+    template MultiArray<int64,2>   horzcat<int64>   (const MultiArray<int64,2>& ,   const MultiArray<int64,1>&);
+    template MultiArray<float64,2> horzcat<float64> (const MultiArray<float64,2>& , const MultiArray<float64,1>&);
+
+    template MultiArray<bool,2>    horzcat<bool>    (const MultiArray<bool,1>& ,    const MultiArray<bool,2>&);
+    template MultiArray<uint8,2>   horzcat<uint8>   (const MultiArray<uint8,1>& ,   const MultiArray<uint8,2>&);
+    template MultiArray<int64,2>   horzcat<int64>   (const MultiArray<int64,1>& ,   const MultiArray<int64,2>&);
+    template MultiArray<float64,2> horzcat<float64> (const MultiArray<float64,1>& , const MultiArray<float64,2>&);
+
+    template MultiArray<bool,2>    vertcat (const MultiArray<bool,2>& ,    const MultiArray<bool,2>&);
+    template MultiArray<uint8,2>   vertcat (const MultiArray<uint8,2>& ,   const MultiArray<uint8,2>&);
+    template MultiArray<int64,2>   vertcat (const MultiArray<int64,2>& ,   const MultiArray<int64,2>&);
+    template MultiArray<float64,2> vertcat (const MultiArray<float64,2>& , const MultiArray<float64,2>&);
+
+
+    template MultiArray<uint8,2>   flip (const MultiArray<uint8,  2>&, FlipType);
+    template MultiArray<int64,2>   flip (const MultiArray<int64,  2>&, FlipType);
+    template MultiArray<float64,2> flip (const MultiArray<float64,2>&, FlipType);
+
+
+}
+#endif

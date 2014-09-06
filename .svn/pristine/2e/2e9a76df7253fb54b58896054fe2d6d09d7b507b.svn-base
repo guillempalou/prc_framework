@@ -1,0 +1,64 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file readvolume.test
+//!
+//! Tests for class ReadVolume 
+//!
+
+#include <iostream>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readvolume.hpp>
+#include <imageplus/io/writevolume.hpp>
+#include <imageplus/compress/rle.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ReadVolumeSuite );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace imageplus::compress;
+
+typedef boost::mpl::list<int64,float64> DataTypes;
+
+BOOST_AUTO_TEST_CASE( ReadVolumeGeneral)
+{
+
+	ReadVolume rvol;
+	VolumeGray<uint8> vol;
+	
+	rvol.open(string(TEST_DATA_PATH_R) + "/vol_002000.rle");
+	
+	rvol >> vol;
+		
+	BOOST_CHECK_EQUAL(vol.size_x(),(uint32)200);
+	BOOST_CHECK_EQUAL(vol.size_y(),(uint32)250);
+	BOOST_CHECK_EQUAL(vol.size_z(),(uint32)100);
+	
+}
+BOOST_AUTO_TEST_CASE_TEMPLATE( ReadVolumeDataSize, T, DataTypes)
+{
+
+	ReadVolume rvol;
+	VolumeGray<T> vol;
+	
+	rvol.open(string(TEST_DATA_PATH_R) + "/vol_002000.rle");
+	
+	BOOST_CHECK_THROW(rvol >> vol,ImagePlusError);
+	
+}
+typedef boost::mpl::list<uint8, int64,float64> DataTypes2;
+BOOST_AUTO_TEST_CASE_TEMPLATE( ReadVolumeException, T, DataTypes2 )
+{
+
+	ReadVolume rvol;
+	VolumeGray<T> vol;
+	
+	BOOST_CHECK_THROW(rvol.open(string(TEST_DATA_PATH_R) + "/this_file_never_existed.rle"),ImagePlusError);	
+	
+}
+BOOST_AUTO_TEST_SUITE_END ();

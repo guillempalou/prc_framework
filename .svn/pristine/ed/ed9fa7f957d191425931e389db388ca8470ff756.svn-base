@@ -1,0 +1,148 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \example bst_example.cpp
+//!
+//! This is an example of how to use the Binary Search Tree class (BST)
+//!
+
+
+/*! \cond SKIP_DOC */
+
+#include <imageplus/core.hpp>
+#include <imageplus/core/b_search_tree.hpp>
+
+using namespace imageplus;
+
+// Data contained in the nodes of the tree. Note the mandatory inheritance from bst_base_node.
+struct node : public bst_base_node<node>
+{
+    // Population of the country
+    uint64 population_;
+    
+    // Name of the country
+    std::string country_;
+
+    // Capital of the country
+    std::string capital_;
+    
+    // Constructor, with default values
+    node(uint64 population=0, std::string country="",  std::string capital="")
+    {
+        population_ = population;
+        country_ = country;
+        capital_ = capital;
+    }   
+};
+
+// Definition of the comparison function
+struct compare_function
+{
+    // The comparison is defined as the () operator (Trick to allow a function as template parameter)
+    bool operator()(node *a, node *b)
+    {  
+        return a->population_ < b->population_;  
+    }    
+};
+
+
+
+
+int main ()
+{  
+
+    BST<node, compare_function> queue;
+    
+    node * france = new node(59765983, "France", "Paris");
+    queue.put(france);
+
+    node * germany  = new node(83251851, "Germany", "Berlin");
+    queue.put(germany);
+    
+    node * spain  = new node(45061274, "Spain", "Madrid");
+    queue.put(spain);
+
+    std::cout << std::endl;
+    
+    // How to use the size() function
+    std::cout << "There are " << queue.size() << " elements in the queue." << std::endl << std::endl;
+
+    // How to use the find() function
+    node key;
+    key.population_ = 59765983;
+    node * out = queue.find(&key);
+    if (out!=0x0)
+        std::cout << "Found country with 59765983 people: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    else
+        std::cout << "The country with 59765983 people was not found." << std::endl;
+    
+    key.population_ = 50000000;
+    out = queue.find(&key);
+    if (out!=0x0)
+        std::cout << "Found country with 50000000 people: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    else
+        std::cout << "The country with 50000000 people was not found." << std::endl;
+    
+    std::cout << std::endl;
+    
+    
+    // How to use the strict_upper_bound() function
+    key.population_ = 59765983;
+    out = queue.strict_upper_bound(&key);
+    if (out!=0x0)
+        std::cout << "Found country with stricly more than 59765983 people: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    else
+        std::cout << "The country with stricly more than 59765983 people was not found." << std::endl;
+    
+    key.population_ = 50000000;
+    out = queue.strict_upper_bound(&key);
+    if (out!=0x0)
+        std::cout << "Found country with stricly more than 50000000 people: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    else
+        std::cout << "The country with stricly more than 50000000 people was not found." << std::endl;
+
+    key.population_ = 500000000;
+    out = queue.strict_upper_bound(&key);
+    if (out!=0x0)
+        std::cout << "Found country with stricly more than 500000000 people: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    else
+        std::cout << "The country with stricly more than 500000000 people was not found." << std::endl;
+    
+    std::cout << std::endl;
+    
+    // How to use the upper_bound() function
+    key.population_ = 59765983;
+    out = queue.upper_bound(&key);
+    if (out!=0x0)
+        std::cout << "Found country with more than or exactly 59765983 people: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    else
+        std::cout << "The country with more than or exactly 59765983 people was not found." << std::endl;
+    
+    std::cout << std::endl;
+    
+    
+    // How to use the get_first() and erase() function
+    out = queue.get_first();
+    queue.erase(out);
+    std::cout << "First element: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    
+    out = queue.get_first();
+    queue.erase(out);
+    std::cout << "Second element: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    
+    out = queue.get_first();
+    queue.erase(out);
+    std::cout << "Third element: " << out->country_ << " (" << out->capital_ << ")" << std::endl;
+    
+    std::cout << std::endl;
+    
+    delete(spain);
+    delete(france);
+    delete(germany);
+}
+
+
+/*! \endcond SKIP_DOC */

@@ -1,0 +1,33 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file map.hpp
+//!
+//!  Map
+//!
+//!  Auxiliary functions for working with std::map
+
+
+#ifndef IMAGEPLUS_MAP_HPP
+#define IMAGEPLUS_MAP_HPP
+
+#include <map>
+
+namespace imageplus {
+	namespace semantic {
+
+		//! Auxiliary function to get the value from a map item (pair)
+		template <typename K, typename V>
+		V get_value(std::pair<K, V> const& p) { return p.second; }
+
+		//! Auxiliary function to get the key from a map item (pair)
+		template <typename K, typename V>
+		K get_key(std::pair<K, V> const& p) { return p.first; }
+
+	}
+}
+
+#endif //IMAGEPLUS_MAP_HPP

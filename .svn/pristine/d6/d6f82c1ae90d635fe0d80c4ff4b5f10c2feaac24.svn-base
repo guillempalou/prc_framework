@@ -1,0 +1,248 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+/*!
+ *
+ * \file capture_oni.cpp
+ *
+ * \author Albert Gil
+ */
+
+#ifdef USE_OPENNI
+
+
+#define IMAGEPLUS_CLIENT_CONFIG_NAME  process_oni
+
+#include <imageplus/toolbox/client_config.hpp>
+
+#include <imageplus/io/capture_kinect.hpp>
+#include <imageplus/core/timestamp.hpp>
+
+#include <imageplus/toolbox/draw_in_image.hpp>
+
+//
+// Used namespaces
+//
+using namespace imageplus;
+using namespace imageplus::io;
+using namespace std;
+
+
+IMAGEPLUS_CLIENT_CONFIG_BRIEF()
+
+    "This client process some kinect data: video and depth\n";
+
+IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()
+
+    "This client process some kinect data: video and depth\n";
+
+IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()
+
+    // options
+
+	// flags
+
+    // arguments
+
+    // flows
+    VideoInputFlow video_in;
+    VideoInputFlow depth_in;
+    VideoInputFlow point_in;
+
+    VideoOutputFlow video_out;
+    VideoOutputFlow depth_out;
+    VideoOutputFlow point_out;
+
+
+IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description.
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLOWS()
+
+    //
+    // Here you have to define your FLOWS
+    //
+	CLIENT_CONFIG_VIDEO_IN( video_in );
+	CLIENT_CONFIG_VIDEO_IN( depth_in );
+	CLIENT_CONFIG_VIDEO_IN( point_in );
+
+	CLIENT_CONFIG_VIDEO_OUT( video_out );
+	CLIENT_CONFIG_VIDEO_OUT( depth_out );
+	CLIENT_CONFIG_VIDEO_OUT( point_out );
+
+IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_METADATAS()
+
+    //
+    // Here you can get the metadatas from the input flows
+    // And you MUST set the metadata of your output flows
+    //
+    // Note that from now on you can access to the previously
+    // defined config parameters with the "cfg" object.
+    //
+
+    VideoMetadata video_metadata = cfg.video_in->getMetadata();
+	VideoMetadata depth_metadata = cfg.depth_in->getMetadata();
+	VideoMetadata point_metadata = cfg.point_in->getMetadata();
+
+
+	std::cout << "width:  " << video_metadata.width  << std::endl;
+	std::cout << "height: " << video_metadata.height << std::endl;
+
+    cfg.video_out->setMetadata( video_metadata );
+    cfg.depth_out->setMetadata( depth_metadata );
+    cfg.point_out->setMetadata( point_metadata );
+
+//
+// This is the "main" function of your client.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the client with "--help" to see your configuration.
+//
+IMAGEPLUS_CLIENT_CONFIG_MAIN()
+{
+    //
+    // Here you can declare and initialize the variables that
+    // will be used in the main loop
+    //
+    std::size_t bsize_video = video_metadata.width*video_metadata.height*3*sizeof(uint8);
+    std::size_t bsize_depth = video_metadata.width*video_metadata.height*1*sizeof(uint16);
+
+    CaptureKinect::Frame  frame(video_metadata.width, video_metadata.height);
+
+    std::cout << "bsize_video:  " << bsize_video  << std::endl;
+
+    //
+    // Also you should define pointers to the flow buffer
+    //
+    const uint8*    buffer_video_in;
+    const int16*    buffer_depth_in;
+    const float32*  buffer_point_in;
+
+          uint8*    buffer_video_out;
+          int16*    buffer_depth_out;
+          float32*  buffer_point_out;
+
+    //
+    // This is the main loop of you client.
+    // You can think on it as a "while(running)" loop.
+    // It ends only when the SmartFlow server send the "kill" signal
+    // or if you execute "running=false"
+    //
+    CLIENT_CONFIG_WHILE_RUNNING()
+    {
+    	/*
+    	 * get data
+    	 */
+    	frame.ts_image = cfg.video_in->get_buffer( buffer_video_in );
+    	frame.ts_depth = cfg.depth_in->get_buffer( buffer_depth_in );
+    	frame.ts_point = cfg.point_in->get_buffer( buffer_point_in );
+
+    	import_from(frame.image,           buffer_video_in , bsize_video, RGB);
+    	import_from(frame.depth, (uint16*)(buffer_depth_in), bsize_depth, GRAY);
+
+        float64* ppoint = frame.point.data();
+        for(std::size_t ii=0; ii < frame.point.num_elements(); ++ii)
+        {
+            *ppoint++ = *buffer_point_in++;
+        }
+
+    	/*
+    	 * process data
+    	 *
+    	 * just drawing a circle to the image (rgb) data and a hole in the points...
+    	 */
+
+        toolbox::draw_circle( frame.image, 20.0, Coord<int16,2>(100,100), 255,0,0 );
+
+        for(std::size_t yy=100; yy < 200; ++yy)
+        for(std::size_t xx= 50; xx < 250; ++xx)
+        {
+            frame.point[xx][yy][0] = 0.0;
+            frame.point[xx][yy][1] = 0.0;
+            frame.point[xx][yy][2] = 0.0;
+        }
+
+
+		/*
+		 * send data
+		 */
+		cfg.video_out->get_buffer( buffer_video_out );
+		cfg.depth_out->get_buffer( buffer_depth_out );
+		cfg.point_out->get_buffer( buffer_point_out );
+
+		export_to(frame.image,           buffer_video_out,  bsize_video, RGB);
+		export_to(frame.depth, (uint16*)(buffer_depth_out), bsize_depth, GRAY);
+
+        ppoint = frame.point.data();
+        for(std::size_t ii=0; ii < frame.point.num_elements(); ++ii)
+        {
+            *buffer_point_out++ =  *ppoint++;
+        }
+
+		send_buffer(cfg.video_out, frame.ts_image);
+		send_buffer(cfg.depth_out, frame.ts_depth);
+		send_buffer(cfg.point_out, frame.ts_point);
+    }
+
+    return (0);
+}
+
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_CLIENT_CONFIG_END()
+
+
+#else
+
+#include <iostream>
+
+int main(int argc, char* argv[])
+{
+    std::cout << "Please, to run this client you should build it with the flag USE_OPENNI." << std::endl;
+}
+
+#endif // USE_VIDEO4LINUX

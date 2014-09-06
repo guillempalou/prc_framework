@@ -1,0 +1,416 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file color_statistics.hpp
+//!
+
+#ifndef IMAGEPLUS_DESCRIPTORS_COLOR_COLOR_STATISTICS_HPP
+#define IMAGEPLUS_DESCRIPTORS_COLOR_COLOR_STATISTICS_HPP
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+#include <imageplus/descriptors/color/auxiliar.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Class for visual descriptor that contains the mean of the own region.
+        //!
+        //! \author Ekaterina Zaytseva <zaytseva@gps.tsc.upc.edu>
+        //! \author Jordi Pont <jordi.pont@upc.edu>
+        //!
+        //! \date 20-7-2009  
+        template<class InputModel>
+        class ColorMean : public DescriptorBase,
+                          public boost::array<float64,  InputModel::channels>
+        {
+        public:
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef boost::array<float64,  InputModel::channels>  vd_type;
+            
+            //!
+            //! \brief Default constructor
+            //!
+            ColorMean() :  DescriptorBase("ColorMean",true), vd_type()
+            {
+            };
+                
+            //! \brief Calculates the mean value of a region given a pair of iterators. 
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {
+                ASSERT(peer_descs!=0x0, "ColorMean calculate: peer_descs must be non null");
+                const ColorVolume<InputModel>& segment_color_volume = peer_descs->calculate(new ColorVolume<InputModel>(), first, last);
+                Area segment_area = peer_descs->calculate(new Area(), first, last);
+                
+                if(segment_area != 0)
+                {
+                    for (std::size_t ch=0; ch!=InputModel::channels; ++ch)
+                    {
+                        (*this)[ch] = (float64)segment_color_volume[ch] / (float64)segment_area;
+                    }
+                }
+            }
+            
+            
+            //! \brief Calculates mean value of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            { 
+                ASSERT(peer_descs!=0x0, "ColorMean recursive_calculate: peer_descs must be non null");
+                const ColorVolume<InputModel>& segment_color_volume = peer_descs->recursive_calculate(new ColorVolume<InputModel>(), son1_descs, son2_descs);
+                Area segment_area = peer_descs->recursive_calculate(new Area(), son1_descs, son2_descs);
+
+                if(segment_area != 0)
+                {
+                    for (std::size_t ch=0; ch!=InputModel::channels; ++ch)
+                    {
+                        (*this)[ch] = (float64)segment_color_volume[ch] / (float64)segment_area;
+                    }
+                }
+            }
+                
+#ifdef USE_XML
+    //! Returns the name of the descriptor to be written to the XML descriptors file
+    //! \return Name of the identifier
+    std::string xml_name() const
+    {
+        return "ColorMeanType";
+    }
+    //! Writes the value of the descriptor. 
+    //! \param[in] doc: Pointer to the XML document we are writing 
+    //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+    void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+    {
+
+    }
+#endif
+
+        };
+    
+    
+    
+    
+        //!
+        //! \brief Class for visual descriptor that contains the variance of color values of the own region.
+        //!
+        //! \author Ekaterina Zaytseva <zaytseva@gps.tsc.upc.edu>
+        //! \author Jordi Pont <jordi.pont@upc.edu>
+        //!
+        //! \date 20-7-2009 
+        template<class InputModel>
+        class ColorVariance : public DescriptorBase,
+                              public boost::array<float64, InputModel::channels>
+        {
+        public:
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef boost::array<float64,  InputModel::channels>  vd_type;
+            
+            //!
+            //! \brief Default constructor
+            //!
+            ColorVariance() :  DescriptorBase("ColorVariance",true), vd_type()
+            {
+            };  
+            
+            //! \brief Calculates the variance of color values of a region given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the region
+            //! \param[in] last : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {
+                ASSERT(peer_descs!=0x0, "ColorVariance calculate: peer_descs must be non null");
+                Area segment_area = peer_descs->calculate(new Area(), first, last);
+                const ColorMean<InputModel>&  segment_mean = peer_descs->calculate(new ColorMean<InputModel>(), first, last);
+                const SquaredColorVolume<InputModel>& segment_color_volume_2 = peer_descs->calculate(new SquaredColorVolume<InputModel>(),  first,  last);
+
+                if(segment_area != 0)
+                {
+                    for (std::size_t ch=0; ch!=InputModel::channels; ++ch)
+                    {
+                        (*this)[ch] = (float64)segment_color_volume_2[ch] / (float64)segment_area - segment_mean[ch]*segment_mean[ch];
+                    }
+                }
+            }
+                   
+            //! \brief Calculates mean value of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            {
+                ASSERT(peer_descs!=0x0, "ColorVariance recursive_calculate: peer_descs must be non null");
+                Area segment_area =
+                    peer_descs->recursive_calculate(new Area(), son1_descs, son2_descs);
+                const SquaredColorVolume<InputModel>& segment_color_volume_2 =
+                    peer_descs->recursive_calculate(new SquaredColorVolume<InputModel>(), son1_descs, son2_descs);
+                const ColorMean<InputModel>& segment_mean =
+                    peer_descs->recursive_calculate(new ColorMean<InputModel>(), son1_descs, son2_descs);
+                    
+                if(segment_area != 0)
+                {
+                    for (std::size_t ch=0; ch!=InputModel::channels; ++ch)
+                    {
+                        (*this)[ch] = segment_color_volume_2[ch] / segment_area - segment_mean[ch] * segment_mean[ch];
+                    }
+                }
+            }
+        };
+        
+        
+        
+
+        
+        
+        //!
+        //! \brief Class for visual descriptor that contains the variance of color values of the own region.
+        //!
+        //! \author Ekaterina Zaytseva <zaytseva@gps.tsc.upc.edu>
+        //!
+        //! \date 20-7-2009 
+        template<class InputModel>
+        class ColorMeanVariance : public DescriptorBase
+        {
+        public:
+            
+        	//! Container for ColorMeanVariance
+            struct ColorMeanVarValue
+            {
+            	//! Mean of color values of the region
+            	boost::array<float64,  InputModel::channels> mean;
+            	
+            	//! Variance of color values of the region
+            	boost::array<float64,  InputModel::channels> var;
+            };
+            
+            //!
+            //! \brief Default constructor
+            //!
+            ColorMeanVariance() :  DescriptorBase("ColorMeanVariance",true)
+            {
+                std::size_t num = InputModel::channels;    
+                for (std::size_t i=0; i!= num ; i++)
+                {
+                    _value.mean[i]=0;
+                    _value.var[i]=0;
+                }
+            };  
+            
+            //!
+            //! \param[in] first : Iterator to the beginning of the region
+            //! \param[in] last : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            //! \returns the variance of color values of a region given a pair of iterators.
+            //!
+            template< class IteratorModel >
+            const ColorMeanVarValue& calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {     
+                std::size_t num = InputModel::channels;
+                for (std::size_t i=0; i!= num ; i++)
+                {
+                	_value.mean[i]=0;
+                	_value.var[i]=0;                      
+                }
+
+                Area segment_area     = peer_descs->calculate(new Area(), first, last);
+                ColorMean<InputModel> segment_mean     = peer_descs->calculate(new ColorMean<InputModel>(), first, last);
+                _value.mean = segment_mean;
+                SquaredColorVolume<InputModel> segment_color_volume_2 = peer_descs->calculate(new SquaredColorVolume<InputModel>(),  first,  last);
+                
+                if(segment_area != 0)
+                {
+                    for (std::size_t i=0; i!=num; i++)
+                    {
+                        _value.var[i] = (float64)segment_color_volume_2[i] / (float64)segment_area - segment_mean[i]*segment_mean[i];
+                    }
+                }
+                
+                return _value;
+            }
+                   
+            //! \brief Calculates mean value of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            void recursive_calculate(CollaborativeDescriptors& son1_descs, CollaborativeDescriptors& son2_descs, CollaborativeDescriptors* peer_descs)
+            {                    
+                Area segment_area =
+                    peer_descs->recursive_calculate(new Area(), son1_descs, son2_descs);
+                const SquaredColorVolume<InputModel>& segment_color_volume_2 =
+                    peer_descs->recursive_calculate(new SquaredColorVolume<InputModel>(), son1_descs, son2_descs);
+                const ColorMean<InputModel>& segment_mean =
+                    peer_descs->recursive_calculate(new ColorMean<InputModel>(), son1_descs, son2_descs);
+                _value.mean = segment_mean;
+
+                if(segment_area != 0)
+                {
+                    for (std::size_t i=0; i!=InputModel::channels; i++)
+                    {
+                        _value.var[i] = segment_color_volume_2[i] / segment_area - segment_mean[i] * segment_mean[i];
+                    }
+                }
+            }
+            
+            //! \brief Returns the mean and variance values of the region
+            //!
+            //! \return the mean and variance values of the region
+            //! 
+            const ColorMeanVarValue& value() const
+            {
+                return _value;
+            }
+            
+            
+
+            
+#ifdef USE_XML
+    //! Returns the name of the descriptor to be written to the XML descriptors file
+    //! \return Name of the identifier
+    std::string xml_name() const
+    {
+        return "ColorMeanVarianceType";
+    }
+    
+    //! Writes the value of the descriptor. 
+    //! \param[in] doc: Pointer to the XML document we are writing 
+    //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+    void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+    {
+        XERCES_CPP_NAMESPACE::DOMElement* dataElem, *dataElem2;
+        XERCES_CPP_NAMESPACE::DOMText* textElem;
+        std::string append, append2;
+        std::string space(" ");
+        
+        dataElem = doc->createElement(io::fromNative("Value").c_str());
+        vdElem->appendChild(dataElem);
+        
+        dataElem2 = doc->createElement(io::fromNative("Percentage").c_str());
+        dataElem->appendChild(dataElem2);
+        append = boost::lexical_cast<std::string>(100);
+        textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+        dataElem2->appendChild(textElem);
+        
+        dataElem2 = doc->createElement(io::fromNative("Index").c_str());
+        dataElem->appendChild(dataElem2);
+        append = boost::lexical_cast<std::string>((uint16)_value.mean[0]);
+        append2 = boost::lexical_cast<std::string>((uint16)_value.mean[1]);
+        append = append + space + append2;
+        append2 = boost::lexical_cast<std::string>((uint16)_value.mean[2]);
+        append = append + space + append2;
+        textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+        dataElem2->appendChild(textElem);
+        
+        dataElem2 = doc->createElement(io::fromNative("ColorVariance").c_str());
+        dataElem->appendChild(dataElem2);
+        append = boost::lexical_cast<std::string>((uint16)_value.var[0]);
+        append2 = boost::lexical_cast<std::string>((uint16)_value.var[1]);
+        append = append + space + append2;
+        append2 = boost::lexical_cast<std::string>((uint16)_value.var[2]);
+        append = append + space + append2;
+        textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+        dataElem2->appendChild(textElem);
+
+    }
+
+    /*!
+     * Reads the value of the descriptor.
+     *
+     * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+     *
+     * \returns true if the descriptor is read
+     */
+    bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+    {
+        bool read = false;
+        XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "ColorMeanVarianceType");
+        if (curr_node==0x0)
+        {
+//            throw ImagePlusError("ColorMeanVarianceType not found");
+        }
+        else
+        {
+            curr_node = io::xml_get_check_son(curr_node, "Value");
+            XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = io::xml_get_check_son(curr_node, "Index");
+            std::string text = io::xml_get_text_son(curr_node2, curr_node2);
+            uint32 j = 0;
+            int pos = 0;
+            for(j=0; j < 2; j++)
+            {
+                std::string value;
+                value.push_back(text[pos]);
+                pos++;
+                while(text[pos]!=' ')
+                {
+                    value.push_back(text[pos]);
+                    pos++;
+                }
+                pos++;
+                sscanf(value.c_str(), "%lf", &_value.mean[j]);
+            }
+            std::string value_aux;
+            std::string::iterator it;
+            for(it=text.begin()+pos;it!=text.end();++it)
+            {
+                value_aux.push_back(*it);
+            }
+            sscanf(value_aux.c_str(), "%lf", &_value.mean[2]);
+            curr_node2 = io::xml_get_check_son(curr_node, "ColorVariance");
+            text = io::xml_get_text_son(curr_node2, curr_node2);
+            j = 0;
+            pos = 0;
+            for(j=0; j < 2; j++)
+            {
+                std::string value;
+                value.push_back(text[pos]);
+                pos++;
+                while(text[pos]!=' ')
+                {
+                    value.push_back(text[pos]);
+                    pos++;
+                }
+                pos++;
+                sscanf(value.c_str(), "%lf", &_value.var[j]);
+            }
+            value_aux.resize(0);
+            for(it=text.begin()+pos;it!=text.end();++it)
+            {
+                value_aux.push_back(*it);
+            }
+            sscanf(value_aux.c_str(), "%lf", &_value.var[2]);
+            read = true;
+        }
+        return read;
+    }
+#endif
+
+        private:
+            //! Mean and Variance of color values of the region
+        	ColorMeanVarValue _value;
+        };
+        
+    } 
+}
+
+#endif
+
+

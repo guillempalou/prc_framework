@@ -1,0 +1,570 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file timestamp.hpp
+//!
+//!  Definition of the Timestamp class
+//!
+
+#ifndef IMAGEPLUS_CORE_TIMESTAMP_HPP
+#define IMAGEPLUS_CORE_TIMESTAMP_HPP
+
+
+// Boost.Date_Time
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/date_time/gregorian/gregorian.hpp>
+
+#include <imageplus/core/imageplus_types.hpp>
+#include <boost/lexical_cast.hpp>
+
+namespace imageplus
+{
+    /*!
+     * \brief Class to handle temporal markers for data.
+     * 
+     * This class is just a wrapper of the 
+     * <a href="http://www.boost.org/doc/libs/1_41_0/doc/html/date_time/posix_time.html#date_time.posix_time.time_duration"> 
+     * time_duration class of the Boost.Date_Time library</a>.
+     * 
+     * Main features:
+     * - Fixed resolution of microseconds.
+     * - Arithemtic and logic operators: "+", "-", ">", "<"...
+     * - Input/Output operators: "<<" and ">>".
+     * - Get a %Timestamp from the system clock with clock_ts()
+     * 
+     * Also note that a %Timestamp can be used as a normal timespec because it has a copy constructor and and implicit cast to. \n
+     * This is necessary in order to use the %Timestamp class within a SmartFlow flow.
+     * 
+     * See the \ref timestamp_example.hpp "timestamp example" for more details on how to use this class.
+     * 
+     * \author Albert Gil Moreno <albert.gil@upc.edu>
+     * \date   01-2010
+     * 
+     * \todo Add control to the boost resolution (micro/nano seconds)
+     */
+    class Timestamp : public boost::posix_time::time_duration
+    {
+        /*! Base type, just for internal convenience. */
+        typedef boost::posix_time::time_duration BaseType;
+    public:
+        
+        /*!
+         * Class to be used as a Date. \n
+         * It is directly the 
+         * <a href= "http://www.boost.org/doc/libs/1_41_0/doc/html/date_time/gregorian.html#date_time.gregorian.date_class">
+         * Boost.Date </a> class.
+         */
+        typedef boost::gregorian::date Date;
+        
+        /*!
+         * \brief Default constructor
+         * 
+         * It sets the timestamp to 0.0 seconds.
+         */
+        Timestamp()
+                : BaseType(0,0,0,0)
+        {}
+        
+        /*!
+         * \brief Constructor by time
+         * 
+         * \param[in] hours : The hours of the timestamp
+         * \param[in] min   : The minutes of the timestamp
+         * \param[in] sec   : The seconds of the timestamp
+         * \param[in] usec  : The micro-seconds of the timestamp
+         */
+        Timestamp( int64 hours, int64 min, int64 sec, int64 usec)
+                : BaseType(hours, min, sec, usec)
+        {}
+        
+        /*!
+         * \brief Copy constructor
+         * 
+         * \param[in] cpy : The timestamp to copy from 
+         */
+        Timestamp(const BaseType& cpy)
+                : BaseType(cpy)
+        {}
+
+        /*!
+         * \brief Constructor by seconds with fractions
+         * 
+         * \param[in] sec : The seconds of the timestamp
+         */
+        Timestamp( float64 sec )
+                : BaseType(0,0,  static_cast<int64>(sec), static_cast<int64>(1000000*(sec-static_cast<int64>(sec))) )
+        {
+        }
+        
+        /*!
+         * \brief Constructor by string that repressents a float, the same format than operator>>.
+         * 
+         * \param[in] sec : The seconds of the timestamp
+         */
+        Timestamp( std::string sec )
+                : BaseType()
+        {
+        	*this= boost::lexical_cast<float64>(sec);
+        }
+
+        
+#ifndef MSVC
+        /*!
+         * \brief Copy contructor from a timespec
+         * 
+         * \param[in] ts : The timespec to copy from. 
+         */
+        Timestamp( timespec ts )
+        		: BaseType(0,0,ts.tv_sec, ts.tv_nsec/1000)
+        {
+        }
+
+        /*!
+         * \brief Implicit cast to a timespec
+         */
+        operator const timespec() const
+        {
+        	timespec ts;
+        	ts.tv_sec  = (*this).total_seconds();
+        	ts.tv_nsec = (*this).fractional_seconds()*1000;
+        	
+        	return ts;
+        }
+#endif
+        
+        /*!
+         * \brief Copy assignment
+         * 
+         * \param[in] cpy : The timestamp to copy from
+         *
+         * \return cpy, to concatenate assignments
+         */
+        const BaseType& operator=( const BaseType& cpy)
+        {
+            BaseType::operator=(cpy);
+            return cpy;
+        }
+        
+        /*!
+         * \brief Assignment from seconds
+         * 
+         * \param[in] sec : The seconds of the timestamp
+         *
+         * \return sec, to concatenate assignments
+         */
+        float64 operator=( float64 sec )
+        {
+            *this = Timestamp(sec);
+            return sec;
+        }
+        
+        /*!
+         * \brief Assignment from string
+         * 
+         * \param[in] ts : String representing the timestamp ("XXXXXXXXXX.XXX")
+         *
+         * \return ts, to concatenate assignments
+         */
+        std::string operator=( std::string & ts )
+        {
+            *this = Timestamp(ts);
+            return ts;
+        }
+        
+        friend 
+        std::ostream& operator<<( std::ostream& os, const Timestamp& ts );
+
+        /*!
+         * \brief Get an string from the Timestamp
+         * 
+         * Using the same format than the operator<<
+         *
+         * \return a string representing the Timestamp in the same format of operator<<
+         */
+        std::string str() const
+        {
+            std::stringstream ss;
+            ss << *this;
+            return ss.str();
+        }
+        
+        /*!
+         * \brief Access to the hours
+         *
+         * \return the number of hours of the Timestamp
+         */
+        int64 hours()
+        {
+            return BaseType::hours();
+        }
+        
+        /*!
+         * \brief Access to the minutes
+         *
+         * \return the number of minutes of the Timestamp
+         */
+        int64 minutes()
+        {
+            return BaseType::minutes();
+        }
+
+        /*!
+         * \brief Access to the seconds
+         *
+         * \return the number of seconds of the Timestamp
+         */
+        int64 seconds()
+        {
+            return BaseType::seconds();
+        }
+        
+        /*!
+         * \brief Access to the fractions of the seconds, in milliseconds resolution
+         *
+         * \return the fractions of the seconds, in milliseconds resolution
+         */
+        int64 millis()
+        {
+            return BaseType::fractional_seconds()/1000;
+        }
+        
+        /*!
+         * \brief Access to the fractions of the seconds, in microseconds resolution
+         *
+         * \return the fractions of the seconds, in microseconds resolution
+         */
+        int64 micros()
+        {
+            return BaseType::fractional_seconds();
+        }
+    };
+
+    /*!
+     * \brief Get a Timestamp based on the system clock.
+     *
+     * \return  a Timestamp based on the system clock
+     */
+    inline
+    Timestamp clock_ts()
+    {
+    	return Timestamp( boost::posix_time::microsec_clock::local_time() - 
+    			          boost::posix_time::ptime( Timestamp::Date(1970, boost::gregorian::Jan, 1)));
+    }
+    
+    
+    /*!
+     * \brief To sum two Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return the sum of ts and sec
+     */
+    inline
+    Timestamp operator+( float64 sec, const Timestamp& ts )
+    {
+        return Timestamp(sec) + ts;
+    }
+
+    /*!
+     * \brief To sum two Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return the sum of ts and sec
+     */
+    inline
+    Timestamp operator+( const Timestamp& ts, float64 sec )
+    {
+        return ts + Timestamp(sec);
+    }
+    
+    /*!
+     * \brief To substract two Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return the subtraction of ts from sec
+     */
+    inline
+    Timestamp operator-( float64 sec, const Timestamp& ts )
+    {
+        return Timestamp(sec) - ts;
+    }
+
+    /*!
+     * \brief To substract two Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return the subtraction of sec from ts
+     */
+    inline
+    Timestamp operator-( const Timestamp& ts, float64 sec )
+    {
+        return ts - Timestamp(sec);
+    }
+
+
+    
+    
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if seq!=ts
+     */
+    inline
+    bool operator!=( float64 sec, const Timestamp& ts )
+    {
+        return Timestamp(sec) != ts;
+    }
+
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if ts!=sec
+     */
+    inline
+    bool operator!=( const Timestamp& ts, float64 sec )
+    {
+        return ts != Timestamp(sec);
+    }
+
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if sec==ts
+     */
+    inline
+    bool operator==( float64 sec, const Timestamp& ts ) 
+    {
+        return Timestamp(sec) == ts;
+    }
+
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if ts==sec
+     */
+    inline
+    bool operator==( const Timestamp& ts, float64 sec ) 
+    {
+        return ts == Timestamp(sec);
+    }
+
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true is sec<ts
+     */
+    inline
+    bool operator< ( float64 sec, const Timestamp& ts )
+    {
+        return Timestamp(sec) < ts; 
+    }
+    
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if ts<sec
+     */
+    inline
+    bool operator< ( const Timestamp& ts, float64 sec )
+    {
+        return ts < Timestamp(sec); 
+    }
+    
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if sec<=ts
+     */
+    inline
+    bool operator<= ( float64 sec, const Timestamp& ts )
+    {
+        return Timestamp(sec) <= ts; 
+    }
+    
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if ts<=sec
+     */
+    inline
+    bool operator<= ( const Timestamp& ts, float64 sec )
+    {
+        return ts <= Timestamp(sec); 
+    }
+
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if sec>ts
+     */
+    inline
+    bool operator> ( float64 sec, const Timestamp& ts )
+    {
+        return Timestamp(sec) > ts; 
+    }
+    
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if ts>sec
+     */
+    inline
+    bool operator> ( const Timestamp& ts, float64 sec )
+    {
+        return ts > Timestamp(sec); 
+    }
+    
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if sec>=ts
+     */
+    inline
+    bool operator>= ( float64 sec, const Timestamp& ts )
+    {
+        return Timestamp(sec) >= ts; 
+    }
+    
+    /*!
+     * \brief To compare Timestamps
+     * 
+     * \param[in] sec : Timestamp in floating-point seconds
+     * \param[in] ts  : Timestamp variable
+     *
+     * \return true if ts>=sec
+     */
+    inline
+    bool operator>= ( const Timestamp& ts, float64 sec )
+    {
+        return ts >= Timestamp(sec); 
+    }
+    
+    /*!
+     * \brief Get the absolute value of a Timestamp
+     * 
+     * \param[in] ts : The timestamp to get the absolute value
+     * 
+     * \return The absolute value of ts
+     */
+    inline
+    Timestamp abs( const Timestamp& ts )
+    {
+        if( ts.is_negative() ) return ts.invert_sign();
+        return ts;
+    }
+
+    /*!
+     * \brief Compare similar Timestamps
+     * 
+     * This functions is just a helper function to check if two Timestamps are similar. \n
+     * This is useful whe you have diferent cameras or views and their Timestamps are not exactly the same, but still correspond
+     * to the same (multi)frame.
+     * 
+     * \param[in] ts1     : The first Timestamp to check.
+     * \param[in] ts2     : The second Timestamp to check.
+     * \param[in] epsilon : The difference in seconds accepted between frames.
+     *
+     * \return true if abs(ts1 - ts2) < epsilon;
+     */
+    inline
+    bool are_similars( const Timestamp& ts1, const Timestamp& ts2, const Timestamp& epsilon = 0.0001 )
+    {
+        return abs(ts1 - ts2) < epsilon;  
+    }
+    
+    /*!
+     * \brief To print out a Timestamp
+     * 
+     * This operator prints the number of seconds with 12 digits, and with milliseconds decimals. \n
+     * This format was forced for backguard compatibility reasons. 
+     * 
+     * \param[in] os : Any standard ostream to write the Timestamp. A file (ofstream) or the console (cout).
+     * \param[in] ts : Timestamp to print out.
+     *
+     * \return os
+     */
+    inline
+    std::ostream& operator<<( std::ostream& os, const Timestamp& ts )
+    {
+        std::string sign;
+        if( ts.is_negative() ) sign = "-";
+        
+        Timestamp abs_ts = abs(ts);
+        
+        return os << sign << std::setfill('0') << std::setw(12) << abs_ts.total_seconds()      << "." 
+                          << std::setfill('0') << std::setw(3)  << abs_ts.fractional_seconds() / 1000;
+    }
+    
+    /*!
+     * \brief To read a Timestamp
+     * 
+     * This operator expect the number of seconds with 12 digits, and 3 milliseconds digits. \n
+     * This format was forces for backguard compatibility reasons. 
+     *  
+     * \param[in] is : Any standrad istream to read a Timestamp. A file (ifstream) or the console (cin).
+     * \param[in] ts : Timestamp save the read data.
+     *
+     * \return is
+     */
+    inline
+    std::istream& operator>>( std::istream& is, Timestamp& ts )
+    {
+        int64 sec;
+        int64 frac;
+        char  dot;
+        
+        is >> sec >> dot >> frac;
+        
+        /* AGIL - TODO: We are assuming microseconds resolution and input in milliseconds */
+        ts = Timestamp(0,0,sec,frac*1000);
+        
+        return is;
+    }
+}
+
+#endif // IMAGEPLUS_CORE_TIMESTAMP_HPP
+
+

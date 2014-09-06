@@ -1,0 +1,155 @@
+/*
+ * bidirectional_projective_cost.hpp
+ *
+ *  Created on: Dec 18, 2012
+ *      Author: gpalou
+ */
+
+#ifndef BIDIRECTIONAL_PROJECTIVE_COST_HPP_
+#define BIDIRECTIONAL_PROJECTIVE_COST_HPP_
+
+#include <imageplus/bpt/energy_minimization/optimal_pruner.hpp>
+#include <imageplus/math/algebra/robust_regression.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+	template <class BPT, class OpticalFlowModel>
+	class BidirectionalProjectiveCost : public RegionCostFunction<BPT,OpticalFlowModel> {
+
+		typedef RegionCostFunction<BPT,OpticalFlowModel> 	BaseClassType;
+		typedef typename OpticalFlowModel::ImageType		OpticalFlowFrameType;
+
+	public:
+
+		BidirectionalProjectiveCost(descriptors::DescriptorManager& manager, uint64 max_label, float64 lambda = 0.001) : BaseClassType(manager,max_label,lambda) {
+		}
+
+		void set_flows(OpticalFlowModel& forward, OpticalFlowModel& backward) {
+			_forward = &forward;
+			_backward = &backward;
+		}
+
+		float64 region_cost(BPT& bpt, OpticalFlowModel& video, uint64 region_id) {
+
+			typedef typename BPT::RegionType	RegionType;
+			RegionType& reg = bpt(region_id);
+
+			float64 e = 0; //region_id;
+
+			if (_costs.find(region_id) == _costs.end()) {
+
+				//std::cout << "Computing region cost " << region_id << " " << reg.frame_begin() << " to " << reg.frame_end() << std::endl;
+				for (int64 r = reg.frame_begin(); r <= reg.frame_end(); r++) {
+					OpticalFlowFrameType forward_frame = _forward->frame(r);
+					OpticalFlowFrameType backward_frame = _backward->frame(r);
+					e += fit_flow_model(bpt, forward_frame, r, region_id);
+					e += fit_flow_model(bpt, backward_frame, r, region_id);
+				}
+				_costs[region_id] = e;
+			} else
+				e = _costs[region_id];
+
+			//std::cout << "Computing region cost " << region_id << " " << e << " " << BaseClassType::_lambda << std::endl;
+			//std::cout << region_id << " from " << reg.frame_begin() << " to " << reg.frame_end() << std::endl;
+
+			return e + BaseClassType::_lambda;
+		}
+
+	protected:
+
+		float64 fit_flow_model(BPT& bpt, OpticalFlowFrameType& img, uint64 frame, uint64 id) {
+
+			uint64 N = 0;
+
+			for (typename BPT::RegionType::iterator c = bpt(id).begin(); c != bpt(id).end(); ++c) {
+				uint64 t = (*c)(2);
+				if (t != frame) continue;
+				N++;
+			}
+
+			if (N < 9) return 0;
+
+			typedef math::algebra::RobustRegression<math::numeric::L1Robust> RobustRegression; // We fit 8 parameters, hence the dimension is 8
+
+			uint64 p = 0;
+			math::Matrix A = math::Matrix::Zero(2*N,8);
+			math::Vector b = math::Vector::Zero(2*N);
+
+			for (typename BPT::RegionType::iterator c = bpt(id).begin(); c != bpt(id).end(); ++c) {
+				uint64 x = (*c)(0);
+				uint64 y = (*c)(1);
+				uint64 t = (*c)(2);
+
+				if (t != frame) continue;
+
+				// Each point contributes to 2 equations
+				b(p)  = img(x,y)(0);
+				b(p+1) = img(x,y)(1);
+
+				A(p,0) = 1; A(p,1) = x; A(p,2) = y; A(p,6) = x*x; A(p,7) = x*y;
+				A(p+1,3) = 1; A(p+1,4) = x; A(p+1,5) = y; A(p+1,6) = x*y; A(p+1,7) = y*y;
+
+				p+=2;
+			}
+
+			//std::cout << b.transpose() << " " << std::endl;
+			//std::cout << A << std::endl;
+
+			//
+			// Fitting:
+			//
+			// vx = a0 + a1 * x + a2 * y + a6 * x^2 +   a7 * x * y
+			// vy = a3 + a4 * x + a5 * y + a6 * x * y + a7 * y * y
+			//
+			//
+
+			math::numeric::L1Robust f;
+			RobustRegression rr;
+			rr.fit(A,b);
+
+			math::Vector a = rr.solution();
+
+			float64 e = 0;
+			float64 tn = 0;
+			// Compute the error
+			for (typename BPT::RegionType::iterator c = bpt(id).begin(); c != bpt(id).end(); ++c) {
+				uint32 x = (*c)(0);
+				uint32 y = (*c)(1);
+
+				uint64 t = (*c)(2);
+				if (t != frame) continue;
+
+				float64 u = a(0) + a(1)*x + a(2)*y + a(6)*x*x + a(7)*x*y;
+				float64 v = a(3) + a(4)*x + a(5)*y + a(6)*x*y + a(7)*y*y;
+
+				float64 u0 = img(x,y)(0);
+				float64 v0 = img(x,y)(1);
+
+				float64 dx = img(x,y)(0)-u;
+				float64 dy = img(x,y)(1)-v;
+
+				float64 n = u0*u0+v0*v0;
+
+				tn += std::sqrt(n);
+
+				e += std::sqrt(dx*dx+dy*dy);
+			}
+
+			return e;
+		}
+
+	private:
+
+		std::map<uint64,float64> _costs;
+
+		OpticalFlowModel*		_forward;
+		OpticalFlowModel*		_backward;
+	};
+
+	}
+}
+
+
+#endif /* BIDIRECTIONAL_PROJECTIVE_COST_HPP_ */

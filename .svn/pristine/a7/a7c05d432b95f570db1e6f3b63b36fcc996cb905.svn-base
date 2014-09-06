@@ -1,0 +1,66 @@
+/*****************************************************************************/
+/*                                                                           */
+/* Copyright (C)				       		             */
+/* Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain            */
+/*                                                                           */
+/*****************************************************************************/
+
+/**
+ * \file
+ *
+ * \brief Add brief description of the file here
+ *        Brief description continues until blank line is found
+ *
+ * \author Josep Ramon Morros (JRMR) -- morros@gps.tsc.upc.edu
+ *
+ * \date 5-May-06
+ *
+ * Insert detailed description here
+ *
+ */
+
+/*******************        INCLUDE FILES       *******************************/
+
+#include <iostream>
+
+#include <imageplus/core.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/writeimage.hpp>
+
+using namespace imageplus;
+using namespace std;
+
+
+int main()
+{
+  cout << "Test class ReadImage" << endl;
+
+  ImageRGB<uint8> image (10,10);
+  imageplus::random (image(0),   static_cast<uint8>(10));
+  imageplus::random (image(1), static_cast<uint8>(10));
+  imageplus::random (image(2),  static_cast<uint8>(10));
+
+
+
+  io::WriteImage writeImage(string(TEST_DATA_PATH_W) + "/test_io.bmp");
+  writeImage << image;
+
+
+  ImageRGB<uint8> image2;
+  io::ReadImage readImage(string(TEST_DATA_PATH_W) + "/test_io.bmp");
+  readImage >> image2;
+
+
+
+  if (!(image == image2))
+  {
+      std::cout << "Not same!" << std::endl;
+  }
+  else
+  {
+      std::cout << "Same!" << std::endl;
+  }
+
+
+  return 0;
+}

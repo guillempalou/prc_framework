@@ -1,0 +1,148 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file shortest_paths.test
+//!
+//!  Tests for the math operations on Graphs
+//!
+
+#include <imageplus/math/graphs/graph.hpp>
+#include <imageplus/math/graphs/graph_io.hpp>
+#include <imageplus/math/graphs/algorithms/shortest_paths.hpp>
+
+BOOST_AUTO_TEST_SUITE ( test_shortest_paths );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::graphs;
+
+BOOST_AUTO_TEST_CASE( dijkstra_test )
+{
+	typedef BoostGraph<kGraphUndirected> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	ReadGraph<Graph> rg;
+
+	rg.read(std::string(TEST_DATA_PATH_R) + "/math/graphs/test.graph", g, true);
+
+	Dijkstra<Graph> dijkstra;
+
+	Graph::node_iterator n = g.nodes_begin();
+
+	dijkstra.calculate(g, *n);
+
+	std::string file = std::string(TEST_DATA_PATH_R) + "/math/graphs/test_graph_distances.txt";
+	std::ifstream ifs(file.c_str());
+	MultiArray<float64,2> d(g.num_nodes(), g.num_nodes());
+
+	for (uint64 i = 0; i < g.num_nodes(); i++) {
+		for (uint64 k = 0; k < g.num_nodes(); k++) {
+			ifs >> d[i][k];
+		}
+	}
+
+	for (uint64 i = 0; i < g.num_nodes(); i++)
+		BOOST_CHECK_CLOSE(dijkstra.distance(i), d[*n][i], 0.01);
+}
+
+BOOST_AUTO_TEST_CASE( bellman_ford_test )
+{
+	typedef BoostGraph<kGraphUndirected> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	ReadGraph<Graph> rg;
+
+	rg.read(std::string(TEST_DATA_PATH_R) + "/math/graphs/test.graph", g, true);
+
+	BellmanFord<Graph> bellman;
+
+	Graph::node_iterator n = g.nodes_begin();
+
+	bellman.calculate(g, *n);
+
+	std::string file = std::string(TEST_DATA_PATH_R) + "/math/graphs/test_graph_distances.txt";
+	std::ifstream ifs(file.c_str());
+	MultiArray<float64,2> d(g.num_nodes(), g.num_nodes());
+
+	for (uint64 i = 0; i < g.num_nodes(); i++) {
+		for (uint64 k = 0; k < g.num_nodes(); k++) {
+			ifs >> d[i][k];
+		}
+	}
+
+	for (uint64 i = 0; i < g.num_nodes(); i++)
+		BOOST_CHECK_CLOSE(bellman.distance(i), d[*n][i], 0.01);
+}
+
+BOOST_AUTO_TEST_CASE( floyd_warshall_test )
+{
+	typedef BoostGraph<kGraphUndirected> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	ReadGraph<Graph> rg;
+
+	rg.read(std::string(TEST_DATA_PATH_R) + "/math/graphs/test.graph", g, true);
+
+	FloydWarshall<Graph> floyd;
+
+	Graph::node_iterator n = g.nodes_begin();
+
+	floyd.calculate(g);
+
+	std::string file = std::string(TEST_DATA_PATH_R) + "/math/graphs/test_graph_distances.txt";
+	std::ifstream ifs(file.c_str());
+	MultiArray<float64,2> d(g.num_nodes(), g.num_nodes());
+
+	for (uint64 i = 0; i < g.num_nodes(); i++) {
+		for (uint64 k = 0; k < g.num_nodes(); k++) {
+			ifs >> d[i][k];
+			BOOST_CHECK_CLOSE(floyd.distance(i,k), d[i][k], 0.01);
+		}
+	}
+
+}
+
+BOOST_AUTO_TEST_CASE( johnsons_test )
+{
+	typedef BoostGraph<kGraphUndirected> Graph;
+	typedef Graph::Node Node;
+	typedef Graph::Edge Edge;
+
+	Graph g;
+
+	ReadGraph<Graph> rg;
+
+	rg.read(std::string(TEST_DATA_PATH_R) + "/math/graphs/test.graph", g, true);
+
+	JohnsonAllPairs<Graph> johnson;
+
+	Graph::node_iterator n = g.nodes_begin();
+
+	johnson.calculate(g);
+
+	std::string file = std::string(TEST_DATA_PATH_R) + "/math/graphs/test_graph_distances.txt";
+	std::ifstream ifs(file.c_str());
+	MultiArray<float64,2> d(g.num_nodes(), g.num_nodes());
+
+	for (uint64 i = 0; i < g.num_nodes(); i++) {
+		for (uint64 k = 0; k < g.num_nodes(); k++) {
+			ifs >> d[i][k];
+			BOOST_CHECK_CLOSE(johnson.distance(i,k), d[i][k], 0.01);
+		}
+	}
+
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

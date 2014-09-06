@@ -1,0 +1,850 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file rectangles.hpp
+//!
+
+#ifndef IMAGEPLUS_CORE_RECTANGLES_HPP
+#define IMAGEPLUS_CORE_RECTANGLES_HPP
+
+
+#include <algorithm>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+#include <imageplus/core/bbox.hpp>
+#include <imageplus/core/bbox.hpp>
+#include <imageplus/core/image.hpp>
+#include <imageplus/core/image.hpp>
+
+namespace imageplus
+{
+    //!
+    //! \brief Get a subrectangle
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in : Input multiarray from where to get the subrectangle
+    //! \param[in] bb : Rectangle defining the subarea to return
+    //!
+    //! \return A multiarray with the data from in defined by the rectangle bb
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 8-2-2008
+    //!
+    template<typename T>
+    MultiArray<T,1> copy_view( const MultiArray<T,1>& in, const BBox<int64,1>& bb);
+
+    //!
+    //! \brief Get a subrectangle
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in : Input multiarray from where to get the subrectangle
+    //! \param[in] bb : Rectangle defining the subarea to return
+    //!
+    //! \return A multiarray with the data from in defined by the rectangle bb
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 8-2-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> copy_view( const MultiArray<T,2>& in, const BBox<int64,2>& bb);
+
+
+    //!
+    //! \brief Get a subcube
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in : Input multiarray from where to get the subcube
+    //! \param[in] bb : Cube defining the subvolume to return
+    //!
+    //! \return A multiarray with the data from in defined by the cube bb
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 8-2-2008
+    //!
+    template<typename T>
+    MultiArray<T,3> copy_view( const MultiArray<T,3>& in, const BBox<int64,3>& bb);
+
+
+    //!
+    //! \brief Get a subrectangle
+    //!
+    //! \tparam T : Type of the data
+    //! \tparam N : Number of color channels
+    //!
+    //! \param[in] in : Input image from where to get the subrectangle
+    //! \param[in] bb : Rectangle defining the subarea to return
+    //!
+    //! \return An image with the data from in defined by the rectangle bb
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //! \date   18-12-2009
+    //!
+    template<typename T, std::size_t N>
+    Image<T,N> copy_view( const Image<T,N>& in, const BBox<int64,2>& bb );
+
+    //!
+    //! \brief Get a rectangle from input multiarray (1D) and paste it into the output multiarray
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in   : Input multiarray from where to get the subrectangle
+    //! \param[in] bb   : Rectangle defining the area to copy
+    //! \param[out] out : Output multiarray where to paste data
+    //! \param[in] dest : Coordinate defining where to paste the data
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,1>& in, const BBox<int64,1>& bb, MultiArray<T,1>& out, const Coord<int64,1> & dest);
+
+    //!
+    //! \brief Get a rectangle from input multiarray (2D) and paste it into the output multiarray
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in   : Input multiarray from where to get the subrectangle
+    //! \param[in] bb   : Rectangle defining the area to copy
+    //! \param[out] out : Output multiarray where to paste data
+    //! \param[in] dest : Coordinate defining where to paste the data
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 11-2-2008
+    //!
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,2>& in, const BBox<int64,2>& bb, MultiArray<T,2>& out, const Coord<int64,2> & dest);
+
+    //!
+    //! \brief Get a cube from input 3D multiarray and paste it into the output multiarray
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in   : Input multiarray from where to get the subcube
+    //! \param[in] bb   : Cube defining the area to copy
+    //! \param[out] out : Output multiarray where to paste data
+    //! \param[in] dest : Coordinate in the output multiarray defining where to paste the data
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 11-2-2008
+    //!
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,3>& in, const BBox<int64,3>& bb, MultiArray<T,3>& out, const Coord<int64,3> & dest);
+
+
+    //!
+    //! \brief Paste the input multiarray (1D) into the output multiarray
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in   : Input multiarray
+    //! \param[out] out : Output multiarray where to paste data
+    //! \param[in] dest : Coordinate defining where to paste the data
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-7-2010
+    //!
+    template<typename T, typename TC>
+    void copy_paste( const MultiArray<T,1>& in, MultiArray<T,1>& out, const Coord<TC,1> & dest);
+
+    //!
+    //! \brief Paste the input multiarray (2D) into the output multiarray
+    //!
+    //! \tparam T : Type of the data
+    //! \tparam TC : Data type for the coordinate components
+    //!
+    //! \param[in] in   : Input multiarray
+    //! \param[out] out : Output multiarray where to paste data
+    //! \param[in] dest : Coordinate defining where to paste the data
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 13-2-2008
+    //!
+    template<typename T, typename TC>
+    void copy_paste( const MultiArray<T,2>& in, MultiArray<T,2>& out, const Coord<TC,2> & dest);
+
+    
+    //!
+    //! \brief Paste the input multiarray (3D) into the output multiarray
+    //!
+    //! \tparam T : Type of the data
+    //! \tparam TC : Data type for the coordinate components
+    //!
+    //! \param[in] in   : Input multiarray
+    //! \param[out] out : Output multiarray where to paste data
+    //! \param[in] dest : Coordinate in the output multiarray defining where to paste the data
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 13-2-2008
+    //!
+    template<typename T, typename TC>
+    void copy_paste( const MultiArray<T,3>& in, MultiArray<T,3>& out, const Coord<TC,3> & dest);
+
+
+
+
+    //!
+    //! \brief Paste the input image (2D) into the output image
+    //!
+    //! \tparam T  : Type of the data
+    //! \tparam N  : Number of color channels of the image
+    //! \tparam TC : Data type for the coordinate components
+    //!
+    //! \param[in] in   : Input image
+    //! \param[out] out : Output image where to paste data
+    //! \param[in] dest : Coordinate defining where to paste the data
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 24-02-2011
+    //!
+    template<typename T, std::size_t N, typename TC>
+    void copy_paste( const Image<T,N>& in, Image<T,N>& out, const Coord<TC,2> & dest);
+
+
+    //!
+    //! \brief Copy a 1D multiarray and paste it into a row of the output 2D multiarray
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in   : Input multiarray
+    //! \param[in] line : Row where to paste the data
+    //! \param[out] out : Output multiarray where to paste data
+    //!
+    //! \exception ImageplusError : Multiarrays dimensions do not match or row out of range.
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 08-4-2008
+    //!
+    template<typename T>
+    void copy_paste_row( const MultiArray<T,1>& in, uint64 line, MultiArray<T,2>& out) throw(ImagePlusError);
+
+
+    //!
+    //! \brief Copy a 1D multiarray and paste it into a column of the output 2D multiarray
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in   : Input multiarray
+    //! \param[in] col  : Column where to paste the data
+    //! \param[out] out : Output multiarray where to paste data
+    //!
+    //! \exception ImageplusError : Multiarrays dimensions do not match or column out of range.
+    //!
+    //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 08-4-2008
+    //!
+    template<typename T>
+    void copy_paste_column( const MultiArray<T,1>& in, uint64 col, MultiArray<T,2>& out) throw(ImagePlusError);
+
+
+    //!
+    //! \brief slice a 3 dimensional multiarray with a plane paralel to the Z dimension
+    //!
+    //! This functions returns a 2 dimensional MultiArray with the values of the input
+    //! 3d multiarray for a specific z
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in : Input 3 dimensional multiarray
+    //! \param[in]  z : Z value to get the slice
+    //!
+    //! \return A 2 dimensional multiarray with copied values
+    //!
+    //! \exception ImageplusError : Z value out of range.
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //!
+    //! \date 8-2-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> slice_z(const MultiArray<T,3>& in, uint64 z) throw(ImagePlusError);
+
+
+    //!
+    //! \brief slice a 2 dimensional multiarray and return a line
+    //!
+    //! This functions returns a 1 dimensional MultiArray with the values of the input
+    //! 2d multiarray for a specific row
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in   : Input 2 dimensional multiarray
+    //! \param[in] line : row value to get the slice
+    //!
+    //! \return A 1 dimensional multiarray with copied values
+    //!
+    //! \exception ImageplusError : row value out of range.
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 13-3-2008
+    //!
+    template<typename T>
+    MultiArray<T,1> row(const MultiArray<T,2>& in, uint64 line) throw(ImagePlusError);
+
+
+     //!
+    //! \brief slice a 2 dimensional multiarray and return a column
+    //!
+    //! This functions returns a 1 dimensional MultiArray with the values of the input
+    //! 2d multiarray for a specific column
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in  : Input 2 dimensional multiarray
+    //! \param[in] col : column value to get the slice
+    //!
+    //! \return A 1 dimensional multiarray with copied values
+    //!
+    //! \exception ImageplusError : column value out of range.
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 13-3-2008
+    //!
+    template<typename T>
+    MultiArray<T,1> column(const MultiArray<T,2>& in, uint64 col) throw(ImagePlusError);
+
+
+    //!
+    //! \brief 2D multiarray (matrix) concatenation (horizontal)
+    //!
+    //! Horizontal concatenation or joining of two 2D multiarrays. 
+    //! Useful for image concatenation or matrix concatenation. 
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in1 : First multiarray
+    //! \param[in] in2 : Second multiarray
+    //!
+    //! \return Concatenated multiarray
+    //!
+    //! \exception ImageplusError : Input multiarrays do not have same vertical dimensions
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-07-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,2>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError);
+
+
+    //!
+    //! \brief Multiarray 2D & 1D (matrix & vector) concatenation (horizontal)
+    //!
+    //! Horizontal concatenation or joining of one 2D (matrix) plus one 1D (column vector) multiarrays. 
+    //! The 1D multiarray is considered as a column vector.\n
+    //! Useful for matrix & vector concatenation. 
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in1 : 2D multiarray
+    //! \param[in] in2 : 1D multiarray (column)
+    //!
+    //! \return Concatenated multiarray
+    //!
+    //! \exception ImageplusError : Input multiarrays do not have same vertical dimensions
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-07-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,2>& in1, const MultiArray<T,1>& in2 ) throw (ImagePlusError);
+
+    //!
+    //! \brief Multiarray 1D & 2D (vector & matrix) concatenation (horizontal)
+    //!
+    //! Horizontal concatenation or joining of one 1D (column vector) plus one 2D (matrix) multiarrays. 
+    //! The 1D multiarray is considered as a column vector.\n
+    //! Useful for matrix & vector concatenation. 
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in1 : 1D multiarray (column)
+    //! \param[in] in2 : 2D multiarray
+    //!
+    //! \return Concatenated multiarray
+    //!
+    //! \exception ImageplusError : Input multiarrays do not have same vertical dimensions
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-07-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,1>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError);
+
+
+    //!
+    //! \brief 2D multiarray (matrix) concatenation (vertical)
+    //!
+    //! Vertical concatenation or joining of two 2D multiarrays. 
+    //! Useful for image concatenation or matrix concatenation. 
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in1 : First multiarray
+    //! \param[in] in2 : Second multiarray
+    //!
+    //! \return Concatenated multiarray
+    //!
+    //! \exception ImageplusError : Input multiarrays do not have same horizontal dimensions
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-07-2008
+    //!
+    template<typename T>
+    MultiArray<T,2> vertcat ( const MultiArray<T,2>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError);
+
+
+    //! Enumerated type defining the behaviour of flip function
+    enum FlipType
+    {
+        HORIZONTAL_FLIP,          //!< Flip in the horizontal direction (left/right)
+        VERTICAL_FLIP,            //!< Flip in the vertical direction (up/down)
+        HORIZONTAL_VERTICAL_FLIP  //!< Flip in the horizontal & vertical directions (left/right & up/down)
+    };
+
+
+    //!
+    //! \brief Flip a 2D multiarray in left/right or up/down directions
+    //!
+    //! Flips (reverses) a multiarray with row preserved and columns flipped in the left/right direction or
+    //! with column preserved and rows flipped in the up/down directions.\n
+    //! Equivalent to Matlab commands fliplr and flipud.\n
+    //! Behaviour of the function is controlled second parameter (flip type). HORIZONTAL_FLIP (left/right), 
+    //! VERTICAL_FLIP (up/down) and HORIZONTAL_VERTICAL_FLIP (both).\n
+    //! Left/right:\n
+    //! X = 1 2 3     becomes  3 2 1\n
+    //!     4 5 6              6 5 4\n
+    //! Up/down:\n
+    //! X = 1 4      becomes  3 6\n
+    //!     2 5               2 5\n
+    //!     3 6               1 4\n
+    //! Left/right & up/down:\n
+    //! X = 1 2 3     becomes  6 5 4\n
+    //!     4 5 6              3 2 1\n
+    //!
+    //! \tparam T : Type of the data
+    //!
+    //! \param[in] in1 : Input multiarray
+    //! \param[in] fl  : Type of transformation (valid values: HORIZONTAL_FLIP, VERTICAL_FLIP, HORIZONTAL_VERTICAL_FLIP)
+    //!
+    //! \return Flipped 2D multiarray
+    //!
+    //! \exception ImageplusError : Invalid type of transformation
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-03-2010
+    //!
+    template<typename T>
+    MultiArray<T,2> flip ( const MultiArray<T,2>& in1, FlipType fl) throw (ImagePlusError);
+
+    //!
+    //! \brief Converts a multi-dimensional multiarray to a 1-dimensional multiarray. 
+    //! 
+    //! The content of the input multiarray is preserved.
+    //! Similar to multi_array resize() or matlab reshape
+    //!
+    //! \tparam T : Type of the data
+    //! \tparam N : Number of dimensions of the input multi array
+    //!
+    //! \param[in] in : Input multiarray
+    //!
+    //! \return One-dimensional multiarray
+    //!
+    //! \exception ImageplusError : Input multiarrays do not have same horizontal dimensions
+    //!
+    //! \author Ramon Morros <ramon.morros@upc.edu>
+    //!
+    //! \date 23-03-2010
+    //!
+    template<typename T, std::size_t N>
+    MultiArray<T,1> to_1d ( const MultiArray<T,N>& in );
+
+
+} // namespace ImagePlus
+
+
+
+//
+//  Implementation of template functions
+//
+namespace imageplus
+{
+    template<typename T>
+    MultiArray<T,1> copy_view( const MultiArray<T,1>& in, const BBox<int64,1>& bb )
+    {
+        return in[boost::indices[typename boost::multi_array<T,1>::index_range(bb.origin()[0], bb.opposite()[0]+1)]];
+    }
+
+    template<typename T>
+    MultiArray<T,2> copy_view( const MultiArray<T,2>& in, const BBox<int64,2>& bb )
+    {
+        return in[boost::indices[typename boost::multi_array<T,2>::index_range(bb.origin()[0], bb.opposite()[0]+1)]
+                  [typename boost::multi_array<T,2>::index_range(bb.origin()[1], bb.opposite()[1]+1)]];
+    }
+
+    template<typename T>
+    MultiArray<T,3> copy_view( const MultiArray<T,3>& in, const BBox<int64,3>& bb )
+    {
+        return in[boost::indices[typename boost::multi_array<T,3>::index_range(bb.origin()[0], bb.opposite()[0]+1)]
+                  [typename boost::multi_array<T,3>::index_range(bb.origin()[1], bb.opposite()[1]+1)]
+                  [typename boost::multi_array<T,3>::index_range(bb.origin()[2], bb.opposite()[2]+1)]];
+    }
+
+
+    template<typename T, std::size_t N>
+    Image<T,N> copy_view( const Image<T,N>& in, const BBox<int64,2>& bb )
+    {
+        Image<T,N> out( bb.side(0) , bb.side(1) );
+
+        for (uint64 channel = 0; channel < N; channel++)
+        {
+            out(channel) = copy_view( in(channel) , bb );
+        }
+
+        return out;
+    }
+
+
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,1>& in, const BBox<int64,1>& bb, MultiArray<T,1>& out,  const Coord<int64,1> & dest )
+    {
+        BBox<int64,1> ob(dest, bb.side(0));
+
+        out[boost::indices[typename boost::multi_array<T,1>::index_range(ob.origin()[0], ob.opposite()[0]+1)]] =
+            in[ boost::indices[typename boost::multi_array<T,1>::index_range(bb.origin()[0], bb.opposite()[0]+1)]];
+    }
+
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,2>& in, const BBox<int64,2>& bb, MultiArray<T,2>& out,  const Coord<int64,2> & dest )
+    {
+        BBox<int64,2> ob(dest, bb.side(0), bb.side(1));
+
+        out[boost::indices[typename boost::multi_array<T,2>::index_range(ob.origin()[0], ob.opposite()[0]+1)]
+            [typename boost::multi_array<T,2>::index_range(ob.origin()[1], ob.opposite()[1]+1)]] =
+                in[ boost::indices[typename boost::multi_array<T,2>::index_range(bb.origin()[0], bb.opposite()[0]+1)]
+                    [typename boost::multi_array<T,2>::index_range(bb.origin()[1], bb.opposite()[1]+1)]];
+    }
+
+    template<typename T>
+    void copy_paste_view( const MultiArray<T,3>& in, const BBox<int64,3>& bb, MultiArray<T,3>& out,  const Coord<int64,3>& dest )
+    {
+        BBox<int64,3> ob(dest, bb.side(0), bb.side(1), bb.side(2));
+
+        out[boost::indices[typename boost::multi_array<T,3>::index_range(ob.origin()[0], ob.opposite()[0]+1)]
+            [typename boost::multi_array<T,3>::index_range(ob.origin()[1], ob.opposite()[1]+1)]
+            [typename boost::multi_array<T,3>::index_range(ob.origin()[2], ob.opposite()[2]+1)]] =
+                in[ boost::indices[typename boost::multi_array<T,3>::index_range(bb.origin()[0], bb.opposite()[0]+1)]
+                    [typename boost::multi_array<T,3>::index_range(bb.origin()[1], bb.opposite()[1]+1)]
+                    [typename boost::multi_array<T,3>::index_range(bb.origin()[2], bb.opposite()[2]+1)]];
+    }
+
+
+    template<typename T, typename TC>
+    void copy_paste( const MultiArray<T,1>& in, MultiArray<T,1>& out, const Coord<TC,1> & dest)
+    {
+        BBox<TC,1> ob(dest,           in.dims(0));
+        BBox<TC,1> bb(Coord<TC,1>(0), in.dims(0));
+
+        out[boost::indices[typename boost::multi_array<T,2>::index_range(ob.origin()[0], ob.opposite()[0]+1)]] =
+            in[ boost::indices[typename boost::multi_array<T,2>::index_range(bb.origin()[0], bb.side(0))]];
+    }
+
+
+    template<typename T, typename TC>
+    void copy_paste( const MultiArray<T,2>& in, MultiArray<T,2>& out, const Coord<TC,2> & dest)
+    {
+        BBox<TC,2> ob(dest,           in.dims(0), in.dims(1));
+        BBox<TC,2> bb(Coord<TC,2>(0,0), in.dims(0), in.dims(1));
+
+        out[boost::indices[typename boost::multi_array<T,2>::index_range(ob.origin()[0], ob.opposite()[0]+1)]
+                          [typename boost::multi_array<T,2>::index_range(ob.origin()[1], ob.opposite()[1]+1)]] =
+            in[ boost::indices[typename boost::multi_array<T,2>::index_range(bb.origin()[0], bb.side(0))]
+                              [typename boost::multi_array<T,2>::index_range(bb.origin()[1], bb.side(1))]];
+    }
+
+
+    template<typename T, typename TC>
+    void copy_paste( const MultiArray<T,3>& in, MultiArray<T,3>& out, const Coord<TC,3> & dest)
+    {
+        BBox<TC,3> ob(dest,                in.dims(0), in.dims(1), in.dims(2));
+        BBox<TC,3> bb(Coord<TC,3>(0,0,0),  in.dims(0), in.dims(1), in.dims(2));
+
+        out[boost::indices[typename boost::multi_array<T,3>::index_range(ob.origin()[0], ob.opposite()[0]+1)]
+            [typename boost::multi_array<T,3>::index_range(ob.origin()[1], ob.opposite()[1]+1)]
+            [typename boost::multi_array<T,3>::index_range(ob.origin()[2], ob.opposite()[2]+1)]]=
+        in[ boost::indices[typename boost::multi_array<T,3>::index_range(bb.origin()[0], bb.side(0))]
+            [typename boost::multi_array<T,3>::index_range(bb.origin()[1], bb.side(1))]
+            [typename boost::multi_array<T,3>::index_range(bb.origin()[2], bb.side(2))]];
+    }
+
+
+    template<typename T, std::size_t N, typename TC>
+    void copy_paste( const Image<T,N>& in, Image<T,N>& out, const Coord<TC,2> & dest)
+    {
+        for (uint64 ii = 0 ; ii < N ; ++ii)
+        {
+            copy_paste (in(ii), out(ii), dest);
+        }
+    }
+
+
+
+
+    template<typename T>
+    void copy_paste_row( const MultiArray<T,1>& in, uint64 line, MultiArray<T,2>& out) throw(ImagePlusError)
+    {
+        if (line >= out.dims(1))
+        {
+            throw ImagePlusError ("imageplus::copy_paste_row: row out of range");
+        }
+        if (in.dims(0) > out.dims(0))
+        {
+            throw ImagePlusError ("imageplus::copy_paste_row: row too long");
+        }
+
+
+        for (uint64 i = 0; i < in.dims(0); i++)
+        {
+            out[i][line] = in[i];
+        }
+    }
+
+
+    template<typename T>
+    void copy_paste_column( const MultiArray<T,1>& in, uint64 col, MultiArray<T,2>& out) throw(ImagePlusError)
+    {
+        if (col >= out.dims(0))
+        {
+            throw ImagePlusError ("imageplus::copy_paste_column: column out of range");
+        }
+        if (in.dims(0) > out.dims(1))
+        {
+            throw ImagePlusError ("imageplus::copy_paste_column: column too long");
+        }
+
+        for (uint64 i = 0; i < in.dims(0); i++)
+        {
+            out[col][i] = in[i];
+        }
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> slice_z(const MultiArray<T,3>& in, uint64 z)  throw(ImagePlusError)
+    {
+        if (z >= in.dims(2))
+        {
+            throw ImagePlusError ("imageplus::slice_z: z out of range");
+        }
+
+        return in[boost::indices[typename boost::multi_array<T,3>::index_range(0,in.dims(0))]
+                  [typename boost::multi_array<T,3>::index_range(0,in.dims(1))]
+                  [z]];
+    }
+
+
+    template<typename T>
+    MultiArray<T,1> row (const MultiArray<T,2>& in, uint64 line) throw(ImagePlusError)
+    {
+        if (line >= in.dims(1))
+        {
+            throw ImagePlusError ("imageplus::row: row out of range");
+        }
+
+        return in[boost::indices[typename boost::multi_array<T,2>::index_range(0,in.dims(0))][line]];
+    }
+
+
+    template<typename T>
+    MultiArray<T,1> column (const MultiArray<T,2>& in, uint64 col) throw(ImagePlusError)
+    {
+        if (col >= in.dims(0))
+        {
+            throw ImagePlusError ("imageplus::column: column out of range");
+        }
+
+        return in[boost::indices[col][typename boost::multi_array<T,2>::index_range(0,in.dims(1))]];
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,2>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError)
+    {
+        uint64 w1 = in1.dims(0);
+        uint64 w2 = in2.dims(0);
+        uint64 h1 = in1.dims(1);
+        uint64 h2 = in2.dims(1);
+
+        if (h1 != h2)
+        {
+            throw ImagePlusError ("Input multiarrays must have same vertical dimensions");
+        }
+                    
+        MultiArray<T,2> out(w1+w2, h1);
+
+        Coord<int64,2> ori (0,  0);
+        Coord<int64,2> mid (w1, 0);
+
+        imageplus::copy_paste (in1, out, ori);
+        imageplus::copy_paste (in2, out, mid);
+
+        return out;
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,2>& in1, const MultiArray<T,1>& in2 ) throw (ImagePlusError)
+    {
+        uint64 w1 = in1.dims(0);
+        uint64 w2 = in2.dims(0);
+        uint64 h1 = in1.dims(1);
+
+
+        if (h1 != w2)
+        {
+            throw ImagePlusError ("Input multiarrays must have same vertical dimensions");
+        }
+                    
+        MultiArray<T,2> out(w1+1, h1);
+
+        Coord<int64,2> ori (0,0);
+
+        imageplus::copy_paste (in1, out, ori);
+        imageplus::copy_paste_column (in2, w1, out);
+
+        return out;
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> horzcat ( const MultiArray<T,1>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError)
+    {
+        uint64 w1 = in1.dims(0);
+        uint64 w2 = in2.dims(0);
+        uint64 h2 = in2.dims(1);
+
+
+        if (h2 != w1)
+        {
+            throw ImagePlusError ("Input multiarrays must have same vertical dimensions");
+        }
+                    
+        MultiArray<T,2> out(w2+1, h2);
+
+        Coord<int64,2> ori (1,0);
+
+        imageplus::copy_paste_column (in1, 0, out);
+        imageplus::copy_paste (in2, out, ori);
+
+        return out;
+    }
+
+    template<typename T>
+    MultiArray<T,2> vertcat ( const MultiArray<T,2>& in1, const MultiArray<T,2>& in2 ) throw (ImagePlusError)
+    {
+        uint64 w1 = in1.dims(0);
+        uint64 w2 = in2.dims(0);
+        uint64 h1 = in1.dims(1);
+        uint64 h2 = in2.dims(1);
+
+        if (w1 != w2)
+        {
+            throw ImagePlusError ("Input multiarrays must have same horizontal dimensions");
+        }
+                    
+        MultiArray<T,2> out(w1, h1+h2);
+
+        Coord<int64,2> ori (0,  0);
+        Coord<int64,2> mid (0, h1);
+
+        imageplus::copy_paste (in1, out, ori);
+        imageplus::copy_paste (in2, out, mid);
+
+        return out;
+    }
+
+
+    template<typename T>
+    MultiArray<T,2> flip ( const MultiArray<T,2>& in1, FlipType fl) throw (ImagePlusError)
+    {
+        MultiArray<T,2> out(in1);
+        uint64 dim_y = out.dims(1);
+
+        switch (fl)
+        {
+            case HORIZONTAL_FLIP:
+                for (uint64 row = 0; row < dim_y; ++row)
+                {
+                    typename MultiArray<T,1>::view rowview = out[boost::indices[typename boost::multi_array<T,2>::index_range(0,out.dims(0))][row]];
+
+                    std::reverse(rowview.begin(), rowview.end());
+                }
+                break;
+            case VERTICAL_FLIP:
+                for (uint64 col = 0; col < dim_y; ++col)
+                {
+                    typename MultiArray<T,1>::view colview = out[boost::indices[col][typename boost::multi_array<T,2>::index_range(0,out.dims(1))]];
+
+                    std::reverse(colview.begin(), colview.end());
+                }
+                break;
+            case HORIZONTAL_VERTICAL_FLIP:
+                for (uint64 col = 0; col < dim_y; ++col)
+                {
+                    std::reverse(out.data(), out.data()+out.num_elements());
+                }
+                break;
+            default:
+                throw ImagePlusError("flip(): Invalid operation code");
+                break;
+        }
+
+        return out;
+    }
+
+
+    template<typename T, std::size_t N>
+    MultiArray<T,1> to_1d ( const MultiArray<T,N>& in )
+    {
+        //uint64 num_elements = 1;
+        //for (uint64 i=0; i < N; ++i)
+        //{
+        //    num_elements *= in.dims(i);
+        //}
+
+        uint64 num_elements = in.num_elements();
+        MultiArray<T,1> out(num_elements);
+
+        std::copy (in.data(), in.data()+num_elements, out.data());
+
+        return out;
+    }
+
+}
+
+
+#endif /* IMAGEPLUS_CORE_RECTANGLES_HPP */
+

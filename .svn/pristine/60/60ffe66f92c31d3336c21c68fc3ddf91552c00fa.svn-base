@@ -1,0 +1,117 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imagemask.test
+//!
+
+#include <imageplus/core.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ImageMaskSuite );
+
+using namespace imageplus;
+
+/*!
+ * \cond TestStructures
+ */
+struct ImageMaskFixture {
+	
+	ImageMaskFixture() :
+		size(10),
+		ig1(size,size),
+		ig2(size,size),
+		iv(size,size),
+		im(size,size)
+		{BOOST_TEST_MESSAGE("setting up the test...");}
+	~ImageMaskFixture() {BOOST_TEST_MESSAGE("tear down the test..."); }
+
+	int8 size;
+	ImageMask ig1, ig2;
+	ImaVol<bool,1,2> iv;
+	ImaVolMask<2> im;
+	Image<uint8,1> im2;
+};
+/*!
+ * \endcond
+ */
+BOOST_AUTO_TEST_CASE( ImageMask_Constructors )
+{
+	ImageMaskFixture f;
+	
+	// Check constructor for imavol
+	f.iv=true;
+    f.ig1=ImageMask(f.iv);    
+    BOOST_CHECK_EQUAL( f.ig1(0), f.iv(0) );
+    
+	// Check constructor for Image
+    f.im=true;
+    f.ig1=ImageMask(f.im);
+    BOOST_CHECK_EQUAL( f.ig1(0), f.im(0) );
+    
+    // Check constructor for imageMask
+    f.ig1 = ImageMask(f.ig2);
+    BOOST_CHECK_EQUAL( f.ig1(0), f.ig2(0) );    
+}
+
+BOOST_AUTO_TEST_CASE( ImageMask_Access )
+{
+	ImageMaskFixture f;
+    
+    // Check access
+    for( int8 i= 0; i< f.size; i++) 
+    {
+    	f.ig1(0)[0][0] = (bool)i;
+    	f.ig1[0][0]    = (bool)i;
+    	
+    	BOOST_CHECK_EQUAL( f.ig1(0)[0][0], (bool)i );
+    }
+}
+
+BOOST_AUTO_TEST_CASE( ImageMask_Operations )
+{	
+	ImageMaskFixture f;
+    ImageMask im1(2,2);
+    ImageMask im2(2,2);
+    ImageMask res(2,2);
+    ImageMask out(2,2);
+    
+    im1[0][0] = false; im2[0][0] = false;
+    im1[0][1] = false; im2[0][1] = true;
+    im1[1][0] = true;  im2[1][0] = false;
+    im1[1][1] = true;  im2[1][1] = true;
+    
+    // Check operations + (OR)
+    out[0][0] = false;
+    out[0][1] = true;
+    out[1][0] = true;  
+    out[1][1] = true;
+	res=im1+im2;
+	BOOST_CHECK(res==out);
+	
+	
+    // Check operation - (Abjunction)
+	out[0][0] = false;
+    out[0][1] = false;
+    out[1][0] = true;  
+    out[1][1] = false;
+	res=im1-im2;
+	BOOST_CHECK(res==out);
+	
+	// Check operation *
+    for( int8 i= 0; i< f.size; i++) 
+    {
+    	bool b = (std::rand()%10 < 5);
+    	f.ig1 = b;
+	    f.im2 = i + 1;
+	    f.im2 = f.im2 * f.ig1;
+	    uint8 prod = b * ( i + 1 );
+	    
+	    BOOST_CHECK( f.im2(0) == prod );
+    }
+    // Check operation /
+    BOOST_CHECK_THROW(im1/im2, ImagePlusInternalError);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

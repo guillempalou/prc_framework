@@ -1,0 +1,25 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+#include <imageplus/math/statistics/gaussian_mixture_model.hpp>
+
+BOOST_AUTO_TEST_SUITE ( suite_gmm );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::math::statistics;
+
+BOOST_AUTO_TEST_CASE( test_gmm )
+{
+    GMM<float64, 2> gmm(3);
+    BOOST_CHECK(gmm.num_gaussians() == 3);
+    
+    /*
+     * add more tests here...
+     */
+    BOOST_WARN_MESSAGE(false, "GMM: TEST NOT YET IMPLEMENTED");
+}
+
+BOOST_AUTO_TEST_SUITE_END();

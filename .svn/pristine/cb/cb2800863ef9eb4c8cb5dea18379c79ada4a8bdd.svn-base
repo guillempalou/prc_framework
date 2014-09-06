@@ -1,0 +1,105 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file clipping.hpp
+//!
+//!  Interface for clipping operations on MultiArray and ImageGray objects
+//!
+
+#ifndef IMAGEPLUS_CORE_CLIPPING_HPP
+#define IMAGEPLUS_CORE_CLIPPING_HPP
+
+#include <imageplus/core/exceptions.hpp>
+#include <imageplus/core/imageplus_types.hpp>
+#include <imageplus/core/multiarray.hpp>
+#include <imageplus/core/imavol.hpp>
+#include <imageplus/core/filter.hpp>
+
+
+namespace imageplus
+{
+    //!
+    //! \brief Clipping operation
+    //!
+    //! \author Josep Ramon Morros <morros@gps.tsc.upc.edu>
+    //!
+    //! \date 10-1-2008
+    //!
+    //! If the input image is between the two threshold, the output will be the same.  
+    //! Else, the output value will be lout or hout.
+    //!
+    //! \code
+    //!    ImageGray<uint8> g1(100,100);
+    //!    ...
+    //!    Clipping clip(0,255,0,255);
+    //!    g2 = clip.filter(g1);
+    //! \endcode
+    //!
+    //!
+    class Clipping : public Filter<Clipping>
+    {
+        public:
+
+            //!
+            //! \brief Default constructor
+            //!
+            Clipping( );
+
+            //!
+            //! \brief Constructor
+            //!
+            //! \param[in] lo    : Lower threshold for "valid" values
+            //! \param[in] hi    : Upper threshold for "valid" values
+            //! \param[in] lout  : Output value under threshold
+            //! \param[in] hout  : Output value over threshold
+            //!
+            Clipping(float64 lo, float64 hi, float64 lout, float64 hout) throw (ImagePlusError);
+
+            //!
+            //! \brief Constructor
+            //!
+            //! \param[in] lo    : Lower threshold for "valid" values. Output value under threshold
+            //! \param[in] hi    : Higher "valid" value in input/output images. Output value over threshold
+            //!
+            Clipping(float64 lo, float64 hi) throw (ImagePlusError);
+
+            //!
+            //! \brief Overloading of method implementation() for a MultiArray object
+            //!
+            //! WARNING!: Never use this method. Use filter() instead.
+            //!
+            //! \param[in] m: MultiArray object to be filtered
+            //!
+            //! \return Filtered object
+            //!
+            template<typename T>
+            MultiArray<T,2> implementation(const MultiArray<T,2>& m) const throw (ImagePlusError);
+
+            //!
+            //! \brief Overloading of method implementation() for an ImaVol object (and derived classes)
+            //!
+            //! WARNING!: Never use this method. Use filter() instead.
+            //!
+            //! \param[in] iv: ImaVol object to be filtered
+            //!
+            //! \return Filtered object
+            //!
+            template<typename T, std::size_t N, std::size_t D>
+            ImaVol<T,N,D> implementation(const ImaVol<T,N,D>& iv) const throw (ImagePlusError);
+
+        private:
+            //! Lower threshold for "valid" values
+            float64 _lo;
+            //! Higher threshold for "valid" values
+            float64 _hi;
+            //! Output value under threshold
+            float64 _lout;
+            //! Output value over threshold
+            float64 _hout;
+    };
+}
+
+#endif

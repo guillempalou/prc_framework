@@ -1,0 +1,50 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file steepest_descent.test
+//!
+//!  Tests for the math operations
+//!
+
+#include <imageplus/math/numeric/quadratic_function.hpp>
+#include <imageplus/math/optimization/steepest_descent.hpp>
+
+BOOST_AUTO_TEST_SUITE ( steepest_descent );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::optimization;
+
+
+BOOST_AUTO_TEST_CASE( test_steepest_descent )
+{
+	Matrix A(3,3);
+	Vector b(3);
+
+	A << 2, -1, 0,
+		 -1, 2, -1,
+		 0, -1, 2;
+
+	b << 1,
+		 0,
+		 1;
+
+	numeric::QuadraticFunction qf(A,b,Vector::Zero(3));
+	SteepestDescentMinimizer minimizer(qf);
+
+	minimizer.step(0.1);
+	minimizer.minimize(Vector::Zero(3));
+
+	Vector solution = A.inverse() * b;
+
+	Vector minimum_point = minimizer.minimum_point();
+
+	float64 error = (solution - minimum_point).norm();
+
+	BOOST_CHECK(error < 1e-4);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

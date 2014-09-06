@@ -1,0 +1,154 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file readwritemodel.test
+ * 
+ * Tests for ReadWriteModel class
+ */ 
+
+#ifdef USE_XML
+
+#include <boost/filesystem.hpp>
+#include <imageplus/machine_learning/svm/svm_adaptors.hpp>
+#include <imageplus/semantic/model.hpp>
+#include <imageplus/semantic/readwritemodel.hpp>
+#include <imageplus/semantic/trainer.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ReadWriteModel_Suite );
+
+using namespace imageplus;
+using namespace semantic;
+using namespace machine_learning::svm;
+using namespace std;
+
+void create_model();
+void check_model(const Model<SVM>&);
+
+BOOST_AUTO_TEST_CASE( readwritemodel_functions_test )
+{
+	// Create a Model using the Trainer class
+	create_model();
+
+    // Load the written model from the file
+	boost::filesystem::path model_file = string(TEST_DATA_PATH_W);
+	model_file /= "semantic";
+	model_file /= "models";
+	model_file /= "0001.xml";
+
+    Model<SVM> read_model(1);
+    ReadWriteModel rw_model_in(model_file.string());
+    rw_model_in.read(read_model);
+
+	// check that the model can be retrieved
+    check_model(read_model);
+}
+
+BOOST_AUTO_TEST_CASE( readwritemodel_operators_test )
+{
+	// Create a Model using the Trainer class
+	create_model();
+
+    // Load the written model from the file
+	boost::filesystem::path model_file = string(TEST_DATA_PATH_W);
+	model_file /= "semantic";
+	model_file /= "models";
+	model_file /= "0001.xml";
+
+    Model<SVM> read_model(1);
+    ReadWriteModel rw_model_in(model_file.string());
+    rw_model_in >> read_model;
+
+	// check that the model can be retrieved
+    check_model(read_model);
+}
+
+BOOST_AUTO_TEST_CASE( readwritemodel_open_test )
+{
+	// Create a Model using the Trainer class
+	create_model();
+
+    // Load the written model from the file
+	boost::filesystem::path model_file = string(TEST_DATA_PATH_W);
+	model_file /= "semantic";
+	model_file /= "models";
+	model_file /= "0001.xml";
+
+    Model<SVM> read_model(1);
+    ReadWriteModel rw_model_in;
+    BOOST_CHECK_THROW(rw_model_in.open("/non/existent/model.xml"), ImagePlusError);
+    BOOST_CHECK_NO_THROW(rw_model_in.open(model_file.string()));
+    rw_model_in >> read_model;
+
+	// check that the model can be retrieved
+    check_model(read_model);
+}
+
+BOOST_AUTO_TEST_CASE( readwritemodel_read_test )
+{
+	boost::filesystem::path model_file = string(TEST_DATA_PATH_R);
+	model_file /= "semantic";
+	model_file /= "6_models";
+	model_file /= "image";
+	model_file /= "F1_publi";
+	model_file /= "0001.xml";
+
+    Model<SVM> read_model(1);
+    ReadWriteModel rw_model_in(model_file.string());
+    rw_model_in >> read_model;
+
+	// Check that the model can be retrieved
+	// > Check file URI correctly stored
+	BOOST_CHECK_EQUAL(read_model.get_file_uri(), "file:"+model_file.string());
+
+	// > Check there is only one model part in the model
+	Model<SVM>::ModelPartsType model_parts = read_model.get_parts();
+	BOOST_CHECK(model_parts.size() == 1);
+}
+
+BOOST_AUTO_TEST_CASE( readwritemodel_notfound_test )
+{
+    ReadWriteModel rw_model_in;
+    Model<SVM> read_model(1);
+    BOOST_CHECK_THROW(rw_model_in >> read_model, ImagePlusError);
+}
+
+
+// AUX FUNCTIONS
+void create_model()
+{
+	boost::filesystem::path annotation_file = string(TEST_DATA_PATH_R);
+	annotation_file /= "semantic";
+	annotation_file /= "5_semantic";
+	annotation_file /= "2_annotations";
+	annotation_file /= "image";
+	annotation_file /= "F1_publi.xml";
+
+	boost::filesystem::path models_dir = string(TEST_DATA_PATH_W);
+	models_dir /= "semantic";
+	models_dir /= "models";
+	boost::filesystem::create_directories(models_dir);
+
+	Trainer trainer(annotation_file.string(), models_dir.string());
+	BOOST_CHECK_NO_THROW(trainer.train());
+}
+
+void check_model(const Model<SVM>& model)
+{
+	// Check file URI correctly stored
+	boost::filesystem::path file_uri = string(TEST_DATA_PATH_W);
+	file_uri /= "semantic";
+	file_uri /= "models";
+	file_uri /= "0001.xml";
+	BOOST_CHECK_EQUAL(model.get_file_uri(), "file:"+file_uri.string());
+
+	// Check there is only one model part in the model
+	Model<SVM>::ModelPartsType model_parts = model.get_parts();
+	BOOST_CHECK(model_parts.size() == 1);
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+#endif // USE_XML

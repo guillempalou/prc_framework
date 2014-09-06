@@ -1,0 +1,166 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file updownsample.test
+//!
+
+#include <iostream>
+#include <imageplus/core.hpp>
+
+BOOST_AUTO_TEST_SUITE ( updownsample_suite );
+
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+typedef boost::mpl::list<uint8,int64,float64> DataTypes;
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_downsample, T, DataTypes )
+{
+    uint64 size = 10;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> vin(size);
+    vin = val;
+
+    MultiArray<T,1> vout(size);
+    vout = static_cast<T>(0);
+
+    vout = downsample(vin);
+    BOOST_CHECK(vout.dims(0) == (uint64)(size/2));
+    BOOST_CHECK(vout == val);
+    
+    vout = downsample(vin,2);
+    BOOST_CHECK(vout.dims(0) == (uint64)(size/2));
+    BOOST_CHECK(vout == val);
+
+    vout = downsample(vin,1);
+    BOOST_CHECK(vout.dims(0) == (uint64)(size));
+    BOOST_CHECK(vout == val);
+
+    vout = downsample(vin,5);
+    BOOST_CHECK(vout.dims(0) == (uint64)(size/5));
+    BOOST_CHECK(vout == val);
+
+
+    MultiArray<T,2> vin2(size,size);
+    vin2 = val;
+    MultiArray<T,2> vout2(size,size);
+    vout2 = static_cast<T>(0);
+
+    vout2 = downsample(vin2);
+    BOOST_CHECK(vout2.dims(0) == (uint64)(size/2));
+    BOOST_CHECK(vout2.dims(1) == (uint64)(size/2));
+    BOOST_CHECK(vout2 == val);
+
+    vout2 = downsample(vin2,2,1);
+    BOOST_CHECK(vout2.dims(0) == (uint64)(size/2));
+    BOOST_CHECK(vout2.dims(1) == (uint64)(size));
+    BOOST_CHECK(vout2 == static_cast<T>(val));
+    
+    vout2 = downsample(vin2,1,2);
+    BOOST_CHECK(vout2.dims(0) == (uint64)(size));
+    BOOST_CHECK(vout2.dims(1) == (uint64)(size/2));
+    BOOST_CHECK(vout2 == static_cast<T>(val));
+
+    vout2 = downsample(vin2,5,5);
+    BOOST_CHECK(vout2.dims(0) == (uint64)(size/5));
+    BOOST_CHECK(vout2.dims(1) == (uint64)(size/5));
+    BOOST_CHECK(vout2 == static_cast<T>(val));
+
+    MultiArray<T,3> vin3(size,size,size);
+    vin3 = static_cast<T>(val);
+    MultiArray<T,3> vout3(size,size,size);
+    vout3 = static_cast<T>(0);
+
+    vout3 = downsample(vin3);
+    BOOST_CHECK(vout3.dims(0) == (uint64)(size/2));
+    BOOST_CHECK(vout3.dims(1) == (uint64)(size/2));
+    BOOST_CHECK(vout3.dims(2) == (uint64)(size/2));
+    BOOST_CHECK(vout3 == static_cast<T>(val));
+
+    vout3 = downsample(vin3,2,1,1);
+    BOOST_CHECK(vout3.dims(0) == (uint64)(size/2));
+    BOOST_CHECK(vout3.dims(1) == (uint64)(size));
+    BOOST_CHECK(vout3.dims(2) == (uint64)(size));
+    BOOST_CHECK(vout3 == static_cast<T>(val));
+    
+    vout3 = downsample(vin3,1,1,2);
+    BOOST_CHECK(vout3.dims(0) == (uint64)(size));
+    BOOST_CHECK(vout3.dims(1) == (uint64)(size));
+    BOOST_CHECK(vout3.dims(2)== (uint64)(size/2));
+    BOOST_CHECK(vout3 == static_cast<T>(val));
+
+    vout3 = downsample(vin3,5,5,5);
+    BOOST_CHECK(vout3.dims(0) == (uint64)(size/5));
+    BOOST_CHECK(vout3.dims(1) == (uint64)(size/5));
+    BOOST_CHECK(vout3.dims(2) == (uint64)(size/5));
+    BOOST_CHECK(vout3 == static_cast<T>(val));
+
+}
+
+
+BOOST_AUTO_TEST_CASE_TEMPLATE( testcase_upsample, T, DataTypes )
+{
+    uint64 size = 10;
+    T val = static_cast<T>(10);
+    
+    MultiArray<T,1> vin(size);
+    vin = static_cast<T>(val);
+
+    MultiArray<T,1> vout(size);
+    vout = static_cast<T>(val+1);
+
+    vout = upsample(vin);
+    BOOST_CHECK(vout.dims(0) == (uint64)(size*2));
+    for (uint64 i = 0; i < vout.dims(0); i+=2)
+    {
+    BOOST_CHECK(vout[i] == static_cast<T>(val));
+    }
+    for (uint64 i = 1; i < vout.dims(0); i+=2)
+    {
+        BOOST_CHECK(vout[i] == static_cast<T>(0));
+    }
+
+    vout = upsample(vin,2);
+    BOOST_CHECK(vout.dims(0) == (uint64)(size*2));
+    for (uint64 i = 0; i < vout.dims(0); i+=2)
+    {
+        BOOST_CHECK(vout[i] == static_cast<T>(val));
+    }
+    for (uint64 i = 1; i < vout.dims(0); i+=2)
+    {
+        BOOST_CHECK(vout[i] == static_cast<T>(0));
+    }
+
+    vout = upsample(vin,1);
+    BOOST_CHECK(vout.dims(0) == (uint64)(size));
+    BOOST_CHECK(vout == static_cast<T>(val));
+
+    vout = upsample(vin,5);
+    BOOST_CHECK(vout.dims(0) == (uint64)(size*5));
+
+
+    MultiArray<T,2> vin2(size,size);
+    vin2 = static_cast<T>(val);
+    MultiArray<T,2> vout2(size,size);
+    vout2 = static_cast<T>(0);
+
+    vout2 = upsample(vin2);
+    BOOST_CHECK(vout2.dims(0) == (uint64)(size*2));
+    BOOST_CHECK(vout2.dims(1) == (uint64)(size*2));
+
+    vout2 = upsample(vin2,2,1);
+    BOOST_CHECK(vout2.dims(0) == (uint64)(size*2));
+    BOOST_CHECK(vout2.dims(1) == (uint64)(size));
+
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+
+
+  

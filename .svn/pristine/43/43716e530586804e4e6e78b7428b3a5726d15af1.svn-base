@@ -1,0 +1,302 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file control_ptz.cpp
+ */
+
+#ifdef USE_SMARTFLOW
+
+#define IMAGEPLUS_TOOL_CONFIG_NAME  control_ptz
+#define IMAGEPLUS_TOOL_CONFIG_GROUP capture
+#include <imageplus/toolbox/tool_config.hpp>
+
+
+/*
+ * STL includes
+ */
+#include <iostream>
+#include <sstream>
+#include <vector>
+#include <queue>
+
+/*
+ * Boost includes
+ */
+#include <boost/thread/thread.hpp>
+#include <boost/bind.hpp>
+#include <boost/filesystem.hpp>
+
+/*
+ * KSC and PTZ includes
+ */
+#include <smartroom/ksc/ksc.hpp>
+#include <smartroom/video/recording/recording_client.hpp>
+#include <smartroom/video/recording/ptz.hpp>
+
+/*
+ * ImagePlus includes
+ */
+#include <imageplus/toolbox/camera_ptz.hpp>
+#include <imageplus/core/timestamp.hpp>
+
+
+/*
+ * Namespaces
+ */
+//using namespace std;
+using namespace imageplus;
+using namespace imageplus::toolbox;
+//namespace bf = boost::filesystem;
+//namespace mn = math::numeric;
+
+
+// Global variables
+static volatile bool    running = true;
+std::queue<Point3D>     movements_queue;
+
+/*!
+ * Thread-Function used to receive the XYZ positions where the camera has to point
+ */
+void receive_movements( KSC* const ksc )
+{
+    Point3D    xyz_to_move;
+
+    Message  message;
+    Message* mptr;
+
+    while(running)
+    {
+        if( ( ksc->recvMessage( &message, 1000000 )) > 0 )
+        {
+            mptr = message.next;
+
+            while( mptr != NULL )
+            {
+                ptzMessage *ptz_msg= (ptzMessage *) mptr->msg;
+
+                movements_queue.push(Point3D( ptz_msg->x, ptz_msg->y, ptz_msg->z ));
+
+                mptr = mptr->next;
+            }
+
+            ksc->freeMessages(&message);
+        }
+    }
+}
+
+
+/*!
+ * Thread-function to move the camera (and save its movement to disk)
+ */
+void camera_control( CameraPTZ& cam )
+{
+    CameraPTZ::Position ptz_origin;
+    CameraPTZ::Position ptz_direction;
+    Point3D             xyz_direction;
+
+    CameraPTZ::Movement ptz_movement_data;
+
+    /*
+     * Running loop
+     */
+    while( running )
+    {
+        /*
+         * If there is some movement to do:
+         * - get the movement and remove it from the queue
+         * - move the camera
+         * - update origin and direction variables
+         */
+        if( !movements_queue.empty() )
+        {
+            /*
+             * Get the movement and remove it from the queue
+             */
+            xyz_direction = movements_queue.back();
+            movements_queue.pop();
+
+            /*
+             * Move the camera
+             */
+            cam.move(xyz_direction);
+
+            /*
+             * Updating ptz values
+             */
+            ptz_origin    = cam.where();
+            ptz_direction = cam.xyz2ptz(xyz_direction);
+        }
+
+        /*
+         * Filling up and sending the output flow
+         */
+        ptz_movement_data.vel_pt = cam.pt_speed();   // this is constant, but in may be variable in a future versions
+        ptz_movement_data.vel_z  = cam.zoom_speed(); // this is constant, but in may be variable in a future versions
+        ptz_movement_data.ptz    = cam.where();
+        ptz_movement_data.ts     = clock_ts();
+        ptz_movement_data.origin = ptz_origin;
+        ptz_movement_data.target = ptz_direction;
+
+        /*
+         * AGIL: Feature disabled because it uses a deprecated classe: PTZFileOperations.
+         *       We should update it!
+         */
+#ifdef AGIL_DEPRECATED
+        // Writing data
+        ptzFile.write( *outPtzData, cfg.mode );
+#endif
+    }
+}
+
+
+
+// Config definitions
+IMAGEPLUS_TOOL_CONFIG_BRIEF()
+
+    "Controls a Pan-Tilt-Zoom camera";
+
+IMAGEPLUS_TOOL_CONFIG_DESCRIPTION()
+
+     "This tool controls the movements of a Pan-Tilt-Zoom camera.                             \n" +
+     "It receives KSC messages with x,y,z points and uses the CameraPTZ class move the camera \n" +
+     "to point to that location. So, it needs a calibration information.";
+
+IMAGEPLUS_TOOL_CONFIG_PARAMETERS()
+
+    // options
+    std::string serial_port;
+
+    // arguments
+    int         pan_tilt_speed;  // value recommended 17
+    int         zoom_speed;      // value recommended  7
+    std::string calib_file;
+
+    int         ksc_id;
+    std::string ksc_host;
+    int         ksc_port;
+
+    std::string  write_path;
+
+IMAGEPLUS_TOOL_CONFIG_DEFAULT_VALUES()
+
+    serial_port     = "/dev/ttyS0";
+
+IMAGEPLUS_TOOL_CONFIG_OPTIONS()
+
+    IMAGEPLUS_TOOL_CONFIG_OPTION( serial_port, "Serial port name of the camera" );
+
+IMAGEPLUS_TOOL_CONFIG_FLAGS()
+
+IMAGEPLUS_TOOL_CONFIG_ARGUMENTS()
+
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( ksc_id         , "KSC identification to allow multiple clients connection automatically" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( calib_file     , "Path of the calibration file of the camera" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( pan_tilt_speed , "Pan and Tilt velocity of actuation (recomended: 17)" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( zoom_speed     , "Zoom velocity of actuation (recomended: 7)" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( write_path     , "Path where the ptz data information file will be stored" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( ksc_host       , "Host name to connect to the KSC Server" );
+    IMAGEPLUS_TOOL_CONFIG_ARGUMENT( ksc_port       , "Port Number of the KSC Server" );
+
+IMAGEPLUS_TOOL_CONFIG_READ_PARAMETERS()
+
+    IMAGEPLUS_TOOL_CONFIG_READ( serial_port    );
+    IMAGEPLUS_TOOL_CONFIG_READ( ksc_id         );
+    IMAGEPLUS_TOOL_CONFIG_READ( calib_file     );
+    IMAGEPLUS_TOOL_CONFIG_READ( pan_tilt_speed );
+    IMAGEPLUS_TOOL_CONFIG_READ( zoom_speed     );
+    IMAGEPLUS_TOOL_CONFIG_READ( write_path     );
+    IMAGEPLUS_TOOL_CONFIG_READ( ksc_host       );
+    IMAGEPLUS_TOOL_CONFIG_READ( ksc_port       );
+
+IMAGEPLUS_TOOL_CONFIG_MAIN()
+{
+    /*
+     * To synchronize with recording tool
+     */
+    Recording_client::initClient();
+
+    /*
+     * CameraPTZ set-up
+     */
+    CameraPTZ cam( cfg.calib_file );
+    cam.init();
+    cam.speed(cfg.pan_tilt_speed, cfg.zoom_speed);
+
+    /*
+     * AGIL: Feature disabled because it uses a deprecated classe: PTZFileOperations.
+     *       We should update it!
+     */
+#ifdef AGIL_DEPRECATED
+
+    /*
+     * Open file to write in
+     */
+
+    bf::path p(write_path);
+
+    if( !bf::exists(p) )
+    {
+        bf::create_directories(write_path);
+    }
+
+    CameraPTZ::PTZFileOperations ptzFile;
+    ptzFile.open( cfg.write_path + "/ptz.seq" );
+#endif
+
+
+    /*
+     * KSC set up
+     */
+    KSC ksc;
+
+    stringstream ksc_id;
+    ksc_id << "control_ptz_" << cfg.ksc_id;
+
+    if(!ksc.signIn( ksc_id.str(), cfg.ksc_host, cfg.ksc_port ))
+    {
+        cout << "Error!" << endl;
+    }
+    ksc.setSync(1, 0);
+    ksc.subscribe( "PTZTracker" );
+
+    /*
+     * Configuring threads
+     */
+    boost::thread control_thread( boost::bind( &camera_control   , cam  ));
+    boost::thread receive_thread( boost::bind( &receive_movements, &ksc ));
+
+    /*
+     * Waiting for the end of the threads ("running-loop threads")
+     */
+    control_thread.join();
+    receive_thread.join();
+
+
+    /*
+     * AGIL: Feature disabled because it uses a deprecated classe: PTZFileOperations.
+     *       We should update it!
+     */
+#ifdef AGIL_DEPRECATED
+    // Closing file
+    ptzFile.close();
+#endif
+
+}
+
+IMAGEPLUS_TOOL_CONFIG_END()
+
+#else
+
+#include <iostream>
+
+int main(int argc, char* argv[])
+{
+    std::cout << "This client needs to USE_SMARTFLOW because it communicates with the recording_system by KSC" << std::endl;
+
+    return 1;
+}
+
+#endif // AGIL_DEPRECATED

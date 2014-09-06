@@ -1,0 +1,218 @@
+/*
+ * mst.hpp
+ *
+ *  Created on: Nov 8, 2011
+ *      Author: guillem
+ */
+
+#ifndef MST_HPP_
+#define MST_HPP_
+
+#include <imageplus/math/graphs/graph.hpp>
+#include <boost/graph/kruskal_min_spanning_tree.hpp>
+#include <boost/graph/prim_minimum_spanning_tree.hpp>
+
+namespace imageplus {
+	namespace math {
+		namespace graphs {
+
+		//! Class to compute the Minimum Spanning Tree (MST) using Kruskal algorithm
+		//! \param Graph : BoostGraph class
+		template <class Graph>
+		class KruskalMST {
+
+			//! Node type
+			typedef typename Graph::Node Node;
+
+			//! Edge type
+			typedef typename Graph::Edge Edge;
+
+		public:
+
+			//! Calculates the MST
+			//! \param[in] g: graph
+			void calculate(Graph& g) {
+				// Compute the Dijkstra
+
+				boost::kruskal_minimum_spanning_tree(g.graph(), std::back_inserter(_spanning_tree), boost::weight_map(get(&Graph::EdgePropertiesType::weight, g.graph())));
+			}
+
+			//! Spanning tree
+			//! \return Edge vector containing all the edges forming the MST
+			const std::vector<Edge>&	spanning_tree() {return _spanning_tree;}
+
+		private:
+			//! spanning tree vector
+			std::vector<Edge> _spanning_tree;
+
+		};
+
+		//! \cond SKIP_DOC
+		//! Still not works (the function call to prim_minimum_spanning_tree gives weird template errors
+		template <class Graph>
+		class PrimMST {
+			typedef typename Graph::Node Node;
+			typedef typename Graph::Edge Edge;
+
+		public:
+
+			void calculate(Graph& g, Node source) {
+
+				uint32 N = g.num_nodes();
+
+				// Compute the MST
+				_parents = std::vector<Node>(N,std::numeric_limits<uint64>::max());
+				_parents[source] = source;
+
+				std::vector<float64> distance(N);
+
+				//! TODO
+				// It gives a boost internal error
+				//boost::prim_minimum_spanning_tree(g.graph(), source, boost::predecessor_map(&_parents[0]).distance_map(&distance[0]).
+				//		weight_map(get(&Graph::EdgePropertiesType::weight, g.graph())));
+			}
+
+			const std::vector<Node>&	parents() {return _parents;}
+			inline const uint64 parent(Node n) {return _parents[n];}
+
+		private:
+			std::vector<Node> _parents;
+
+		};
+		//! \endcond
+
+
+		//! Class to compute several MS Forest given some labels. If two nodes have different labels, they will be at different trees at the end
+		//! Nodes with kLabelUndefined will be assigned a label
+		//! \param Graph : graph class
+		//! \param LabelVector : vector of labels
+		template <class Graph, class LabelVector>
+		class ConstrainedMST {
+
+			//! Node type
+			typedef typename Graph::Node Node;
+
+			//! Edge type
+			typedef typename Graph::Edge Edge;
+
+			//! Node pair
+			typedef typename Graph::NodePair NodePair;
+
+		public:
+
+			//! Undefined label type
+			static const uint32 kLabelUndefined = 1e9;
+
+			//! Calculate the MS Forest respecting the labels
+			//! \param[in] g :graph
+			//! \param[in] labels : vector of labels
+			void calculate(Graph& g, LabelVector& labels) {
+				// Compute the minimum spanning tree, not joining nodes with different predefined labels
+				uint32 N = g.num_nodes();
+
+				_parents = std::vector<Node>(N);
+
+
+				_labels = labels;
+				std::vector<uint32> rank(N);
+
+				// Create the MST, using the Kruskal algorithm. Avoid to add an edge with two nodes of different labels
+				std::map<Edge,float64> wmap;
+				for (typename Graph::edge_iterator e = g.edges_begin(); e != g.edges_end(); ++e) wmap[*e] = g.edge_properties(*e).weight;
+
+				boost::associative_property_map< std::map<Edge, float64> > weight_map(wmap);
+
+				create_forest(g, rank, _parents, weight_map);
+			}
+
+			//! Returns a list of edges forming the forest
+			//! \return vector of edges
+			const std::vector<Edge>&	forest_edges() {return _forest_edges;}
+
+			//! Returns a vector with the final labels
+			//! \return the label vector
+			inline const LabelVector& labels() {return _labels;}
+
+		private:
+
+			/*
+			 * Modified Kruskal implementation from Boost
+			 */
+
+			//! \cond SKIP_DOC
+			template<class Weights>
+			void create_forest(Graph& g, std::vector<uint32>& rank, std::vector<Node>& parent, Weights w) {
+
+				typedef typename boost::property_traits<Weights>::value_type W_value;
+				typedef boost::indirect_cmp<Weights, std::greater<W_value> > weight_greater;
+				weight_greater wl(w);
+				std::priority_queue<Edge, std::vector<Edge>, weight_greater> pq(wl);
+
+
+				boost::disjoint_sets<uint32*, Node*>  dset(&rank[0], &parent[0]);
+
+				// Take care of the labels
+				std::map<uint32, std::set<Node> > 	map_label_nodes;
+
+				for (typename Graph::edge_iterator e = g.edges_begin(); e != g.edges_end(); ++e)  pq.push(*e);
+
+				for (typename Graph::node_iterator n = g.nodes_begin(); n != g.nodes_end(); ++n)  {
+					dset.make_set(*n);
+					map_label_nodes[_labels[*n]].insert(*n);
+				}
+
+				while (!pq.empty()) {
+					Edge e = pq.top();
+					pq.pop();
+
+					Node u = dset.find_set(g.source(e));
+					Node v = dset.find_set(g.target(e));
+
+					uint32 label;
+					if ((_labels[u] == kLabelUndefined || _labels[v] == kLabelUndefined) || (_labels[u] == _labels[v])) {
+						if ( u != v ) {
+							dset.link(u, v);
+
+							// join the labels of the connected components
+							uint32 labelu = _labels[u];
+							uint32 labelv = _labels[v];
+
+							if (_labels[u] == kLabelUndefined) label = _labels[v]; else
+								if (_labels[v] == kLabelUndefined) label = _labels[u]; else label = _labels[v];
+
+							for (typename std::set<Node>::iterator n = map_label_nodes[labelu].begin(); n != map_label_nodes[labelu].end(); n++) {
+								map_label_nodes[label].insert(*n);
+								_labels[*n] = label; }
+
+							for (typename std::set<Node>::iterator n = map_label_nodes[labelv].begin(); n != map_label_nodes[labelv].end(); n++) {
+								map_label_nodes[label].insert(*n);
+								_labels[*n] = label; }
+						}
+					}
+				}
+
+			}
+
+			//! \endcond
+
+		private:
+
+			//! parent vector
+			std::vector<Node> _parents;
+
+			//! forest edges
+			std::vector<Edge> _forest_edges;
+
+			//! labels
+			LabelVector		  _labels;
+
+		};
+
+
+		}
+	}
+}
+
+
+
+#endif /* MST_HPP_ */

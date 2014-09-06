@@ -1,0 +1,254 @@
+/*
+ * optimal_pruner.hpp
+ *
+ *  Created on: Dec 18, 2012
+ *      Author: gpalou
+ */
+
+#ifndef OPTIMAL_PRUNER_HPP_
+#define OPTIMAL_PRUNER_HPP_
+
+#include <imageplus/bpt/pruning/bpt_pruner.hpp>
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <boost/multi_array.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+		//! Base class of cost function. Each region should have a cost depending ONLY in its characteristics (e.g. mean color, region perimeter...)
+		//! \param BPT : tree type
+		//! \param InputModel : image type
+		template<class BPT, class InputModel>
+		class RegionCostFunction {
+
+			std::map<uint64, float64>  _cost;
+
+		public:
+
+			RegionCostFunction(descriptors::DescriptorManager& manager, uint64 max_label, float64 lambda) {
+				_manager = &manager;
+				_lambda = lambda;
+			}
+
+			//! Gets the regularization parameter
+			//! \return lambda the regularization paramete
+			float64 lambda() {return _lambda;}
+
+			void set_lambda(float64 lambda) {
+				_lambda = lambda; //std::max(1e-10,lambda);
+			}
+
+
+			//! Virtual function. must be implemented
+			//! \param[in] region_id: id
+			//! \return The cost of having region_id in the final partition
+			float64 cost(BPT& bpt, InputModel& img, uint64 region_id) {
+				if (_cost.find(region_id) != _cost.end())
+					return _cost[region_id];
+
+				return (_cost[region_id] = region_cost(bpt, img, region_id));
+			}
+
+			//! Virtual function. must be implemented
+			//! \param[in] region_id: id
+			//! \return The cost of and individual region
+			virtual float64 region_cost(BPT& bpt, InputModel& img, uint64 region_id)  = 0;
+
+			inline std::map<uint64,float64> costs() {
+				return _cost;
+			}
+
+		protected:
+
+			float64 _lambda;
+			descriptors::DescriptorManager* _manager;
+
+		};
+
+		//! Base class of minimizer of a cost function in the BPT. Each region should have a cost depending ONLY in its characteristics (e.g. mean color, region perimeter...)
+		//! \param BPT : tree type
+		//! \param InputModel : image type
+		//! \param RegionCostFunction : cost function type
+		template<class BPT, class ImageModel, class RegionCostFunction>
+		class OptimalPruner : public BPTPruner<BPT,ImageModel> {
+
+			//! Pruner base class
+			typedef BPTPruner<BPT,ImageModel> Pruner;
+
+			//! Region ids
+			typedef typename Pruner::RegionsIDs RegionsIDs;
+
+		public:
+
+			OptimalPruner(RegionCostFunction& region_cost_function, bool prune_tree) : Pruner(prune_tree), _cost_function(&region_cost_function) {
+
+			}
+
+			//! Gets the optimal subtree given the number of regionsa
+			//! \param[in] bpt : tree
+			//! \param[in] r : region acting as root of the minimization (normally the root of the tree)
+			//! \param[in] N: number of regions
+			float64 cost(BPT& bpt, ImageModel& img, uint64 r, uint64 N) {
+
+				//std::cout << "cost " << r << " " << N << std::endl;
+				if (map_cost[index[r]][N] >= 0) return map_cost[index[r]][N];
+				if (N == 1) {
+					//std::cout << "computing cost " << r << std::endl;
+					map_cost[index[r]][1] = _cost_function->region_cost(bpt,img,r);
+					return map_cost[index[r]][1];
+				}
+
+				uint64 ri = index[r];
+				float64 c = map_cost[ri][1];
+
+				float64 min_cost = 1e100;
+
+				if (N == 1) {
+					return c;
+				}
+
+				if (bpt(r).children().size() == 0)
+					return 1e20; // return infinity, as it is impossible to find a partition with N>1 regions if this node is a leaf
+
+				uint32 son1 = bpt(r).child(0)->label();
+				uint32 son2 = bpt(r).child(1)->label();
+
+				for (uint64 i = 1; i <= N-1; i++) {
+					float64 c = cost(bpt,img,son1,i) + cost(bpt,img,son2,N-i);
+					min_cost = (c < min_cost) ? c : min_cost;
+				}
+
+				map_cost[ri][N] = min_cost;
+
+				//std::cout << r << " " << N << " " << min_cost << std::endl;
+
+				return min_cost;
+			}
+
+			//! Gets the optimal subtree given the number of regionsa
+			//! \param[in] bpt : tree
+			//! \param[in] r : region acting as root of the minimization (normally the root of the tree)
+			//! \param[in] N: number of regions
+			void retrieve_regions(BPT& bpt, uint64 r, uint64 N) {
+				uint64 ri = index[r];
+
+				if (N == 1 || bpt(r).children().size() == 0) {
+					Pruner::_regions.insert(r);
+					return;
+				}
+
+				uint32 son1 = bpt(r).child(0)->label();
+				uint32 son2 = bpt(r).child(1)->label();
+
+				float64 c = map_cost[ri][N];
+
+				for (uint64 i = 1; i <= N-1; i++) {
+					float64 c1 = map_cost[index[son1]][i];
+					float64 c2 = map_cost[index[son2]][N-i];
+
+					if  (c1+c2 == c) {
+						retrieve_regions(bpt,son1,i);
+						retrieve_regions(bpt,son2,N-i);
+						return;
+					}
+				}
+
+				return;
+			}
+
+
+			//! Gets the optimal subtree according to the cost function from the node r
+			//! \param[in] bpt : tree
+			//! \param[in] r : region acting as root of the minimization (normally the root of the tree)
+			//! \param[in] No: objective number of regions
+			void get_optimal_subtree(BPT& bpt, ImageModel& img, uint32 r, uint64 No, uint64 max_reg, bool exact = false) {
+
+				//Fill the index and count the number of leaves
+				uint64 Nleaves = 0;
+
+				uint64 N = 0;
+
+				for (typename BPT::global_iterator it = bpt.begin(); it != bpt.end(); ++it) {
+					uint64 r = (*it).label();
+					index[r] = N++;
+					if ((*it).children().size() == 0) Nleaves++;
+				}
+
+				//std::cout << "Number of leaves " << Nleaves << " - " << N << " " << max_reg << " " << map_cost.size() <<  std::endl;
+
+				Nleaves = std::min(Nleaves,max_reg);
+
+				if (map_cost.size() == 0)
+					map_cost = std::vector<std::vector<float64> >(N,std::vector<float64>(Nleaves+1,-1)); //boost::multi_array<float64,2>(boost::extents[N][Nleaves+1]);
+
+				for (uint64 i = 1; i <= Nleaves; i++) {
+					cost(bpt,img, r,i);
+				}
+
+				std::vector<uint64> v;
+
+				//traverse the cost structure to find the regions
+				std::deque<std::pair<uint64,uint64> > stack;
+
+				float64 min_cost = 1e200;
+				uint64 min_i = 0;
+				for (uint64 i = 1; i <= Nleaves; i++) {
+					//std::cout << "With " << i << " min cost " << map_cost[index[r]][i] << std::endl;
+					if (map_cost[index[r]][i] + _cost_function->lambda() * fabs(i-No) < min_cost) {
+						min_cost = map_cost[index[r]][i] + _cost_function->lambda() * fabs(i-No);
+						min_i = i;
+						//std::cout << map_cost[index[r]][i] + _cost_function->lambda() * fabs(i-No) << " ";
+					}
+				}
+				//std::cout << std::endl;
+
+				std::cout << "Result error " << min_cost << " with " << min_i << " regions " << std::endl;
+
+				//The solution has min_i regions
+				Pruner::_regions.clear();
+				if (exact == false)
+					retrieve_regions(bpt,r,min_i);
+				else
+					retrieve_regions(bpt,r,No);
+			}
+
+			//! Functions that finds the regions to prune
+			//! \param[in] bpt: tree
+			//! \param[in] img: image
+			//! \param[in] reg_id: id of the root to begin to count (normally the root of the tree)
+			const RegionsIDs& find_pruned_regions(BPT& bpt, ImageModel& img, uint64 reg_id, uint64 region_objective = 0) {
+				uint64 max_reg = 10000;
+
+				get_optimal_subtree(bpt, img, reg_id, region_objective, max_reg, false);
+
+				return Pruner::_regions;
+			}
+
+			//! Prune with an exact number of regions
+			//! \param[in] bpt: tree
+			//! \param[in] img: image
+			//! \param[in] reg_id: id of the root to begin to count (normally the root of the tree)
+			const RegionsIDs& find_exact_regions(BPT& bpt, ImageModel& img, uint64 region_objective) {
+				uint64 max_reg = region_objective;
+
+				get_optimal_subtree(bpt, img, bpt.max_label(), region_objective, max_reg, true);
+
+				return Pruner::_regions;
+			}
+
+		private:
+
+			//! cost function
+			RegionCostFunction* _cost_function;
+
+			//! index of regions
+			std::map<uint64, uint64> index;
+
+			//! map of the region costs
+			std::vector<std::vector<float64> > map_cost;
+
+		};
+	}
+}
+
+#endif /* OPTIMAL_PRUNER_HPP_ */

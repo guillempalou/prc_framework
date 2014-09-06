@@ -1,0 +1,64 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file point_geometry.test
+//!
+//!  Tests for functions in point_geometry.hpp
+//!
+
+#include <imageplus/core.hpp>
+#include <imageplus/math/geometry/point_geometry.hpp>
+
+BOOST_AUTO_TEST_SUITE ( suite_math_geometry_point_geomtry );
+
+using namespace imageplus;
+
+BOOST_AUTO_TEST_CASE ( test_math_geometry_point_geometry )
+{
+
+    // Euclidean distance between two imageplus points
+    const Point2D a(2, 2);
+    const Point2D b(1, 1);
+
+    BOOST_CHECK_EQUAL(imageplus::math::geometry::distance(a, b), (float64)std::sqrt((float64)2.0));
+
+    // Horizontal segment points
+    // Final objective: Create a segment on y = 1 with x=[-4, 4];
+
+    // Create a segment from -3 to 4 and concatenate to the point array after
+    // the initial (-4, 1) point using next_point = 1
+    const int64 x_begin = -3;
+    const int64 x_end = 4;
+    const int64 y = 1;
+    
+    // Multiarray as to be big enought to fit the segment points
+    std::vector<size_type> dims(1);
+    dims[0] = 1;
+    MultiArray<Coord2D<> , 1> point(dims);
+    point[0] = Coord2D<> (-4, y);
+    size_type next_point = 1;
+
+    BOOST_CHECK_THROW(next_point = imageplus::math::geometry::horizontal_segment_points(x_begin,x_end,y,point,next_point), ImagePlusError);
+    
+    // resize array to fit all points    
+    dims[0] = 9;
+    point.resize(dims);
+
+    BOOST_CHECK_NO_THROW(next_point = imageplus::math::geometry::horizontal_segment_points(x_begin,x_end,y,point,next_point));
+
+    // next point contains the number of points
+    BOOST_CHECK(next_point == (size_type)9);
+
+    // check the content of the array
+    int64 x = -4;
+    for (size_type i = 0; i < next_point; ++i) {
+	BOOST_CHECK(point[i].x() == x);
+    	BOOST_CHECK(point[i].y() == y);
+	x++;
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

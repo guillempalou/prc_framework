@@ -1,0 +1,226 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file quantizer.hpp
+ */
+
+#ifndef IMAGEPLUS_CORE_QUANTIZER_HPP
+#define IMAGEPLUS_CORE_QUANTIZER_HPP
+
+#include <imageplus/core/multiarray.hpp>
+
+namespace imageplus
+{
+    /*!
+     * A Quantizer allows you to map a range of values to bin indexes.
+     *
+     * It is basically an array of thresholds in ascendent order to define the quantization range
+     * and bins.
+     *
+     * See the \ref quantizer.test example to see an example of how to use it.
+     *
+     * \tparam T : The type of the input data (and the type of the thresholds)
+     *
+     * \warning Because of the natural float imprecision, the "Float Quantizers" (i.e. when T is float)
+     *          have an ambiguity or imprecision when input values are equal or close to any threshold.\n
+     *          But "Integer Quantizers" (i.e. when T is integer) have no imprecision, the bin of a
+     *          threshold is always the lower one. \n
+     *          See the \ref quantizer.test example to see this ambiguity, or not, near thresholds.
+     *
+     * \author 2008-10 - Ramon Llorca      - Creation
+     * \author 2011-11 - Albert Gil Moreno - Recoded
+     */
+    template< typename T >
+    class Quantizer
+    {
+    public:
+
+        /*!
+         * Default Constructor
+         *
+         * Necessary to be able to use Quantizer in the STL containers
+         */
+        Quantizer()
+        {}
+
+        /*!
+         * Constructor of a Uniform Quantizer from the range and the number of bins
+         *
+         * See the \ref quantizer.test example to see an example of how to use it.
+         *
+         * \param[in] min_value : Minimum value of the input range
+         * \param[in] max_value : Maximum value of the input range
+         * \param[in]  num_bins : Number of bins of the quantizer
+         */
+        Quantizer( const T& min_value, const T& max_value, size_type num_bins )
+        :   _thresholds( num_bins + 1 ),
+            _num_bins  ( num_bins     )
+        {
+            ASSERT( max_value > min_value, "Maximum value should be bigger than minimum value" );
+            ASSERT( num_bins  > 0        , "The number of bins should be bigger than 0" );
+
+            // Limits of min_value, max_value and num_bins
+#ifndef NDEBUG
+#ifndef MSVC /* MSVC do not support std::numeric_limits<T>::min() */
+
+            if( typeid(T) != typeid(float32) && typeid(T) != typeid(float64) )
+            {
+                ASSERT( min_value >= static_cast< T > (std::numeric_limits<T>::min()), "Min value exceeds its type numeric limit" );
+                ASSERT( min_value <= static_cast< T > (std::numeric_limits<T>::max()), "Min value exceeds its type numeric limit" );
+                ASSERT( max_value >= static_cast< T > (std::numeric_limits<T>::min()), "Max value exceeds its type numeric limit" );
+                ASSERT( max_value <= static_cast< T > (std::numeric_limits<T>::max()), "Max value exceeds its type numeric limit" );
+                ASSERT( num_bins <= static_cast< uint64 >( max_value - min_value + 1 ), "The number of bins should be smaller than max_value - min_value + 1 for integers" );
+            }
+#endif // MSVC
+#endif // NDEBUG
+
+            float64 bin_size = static_cast < float64 >( max_value - min_value ) / _num_bins;
+
+            for( size_type i = 0; i <= _num_bins; ++i )
+            {
+                _thresholds[i] = static_cast < T >( min_value + bin_size*i );
+            }
+        }
+
+        /*!
+         * Constructor of a Non-Uniform Quantizer from an array of ascending thresholds.
+         *
+         * See the \ref quantizer.test example to see an example of how to use it.
+         *
+         * \param[in] thresholds : MultiArray storing the thresholds (maximum and minimum not included)
+         *
+         * \warning The thresholds should be passed in ascending order
+         */
+        Quantizer(const MultiArray< T, 1 >& thresholds )
+        :   _thresholds ( thresholds ),
+            _num_bins   ( thresholds.num_elements()-1   )
+        {
+#ifndef NDEBUG
+            for (std::size_t i = 0; i < _num_bins; ++i)
+            {
+                ASSERT(_thresholds[i] < _thresholds[i+1], "Thresholds must be in ascending order: " <<
+                                                          "th[i]   = " << _thresholds[i]   << " / " <<
+                                                          "th[i+1] = " << _thresholds[i+1] );
+            }
+#endif //NDEBUG
+        }
+
+        /*!
+         * \returns the bin of the quantizer for the given value.
+         *
+         * The bin is in the range [0, num_bins()-1].
+         * If the value is equal to a threshold the bin returned is lower one.
+         *
+         * See the \ref quantizer.test example to see an example of how to use it.
+         *
+         * \param[in] value : The value used to find its bin
+         *
+         * \todo should we check if value is in the range (min, max)? (see #267)
+         */
+        std::size_t bin( const T& value ) const
+        {
+            for(std::size_t i = _num_bins-1; i > 0; --i)
+            {
+                if( value > _thresholds[i] ) return i;
+            }
+            return 0;
+        }
+
+        /*!
+         * \returns the thresholds including the maximum and minimum.
+         *
+         * See the \ref quantizer.test example to see an example of how to use it.
+         *
+         * \todo is this function really necessary?
+         */
+        const MultiArray< T, 1 >& thresholds() const
+        {
+            return _thresholds;
+        }
+
+        /*!
+         * \returns the threshold at idx
+         *
+         * Note that when idx is 0 the threshold returned is minimum of the expected input range
+         * of values, and when idx is num_bins()+1 this function returns the maximum value expected
+         * of the input range.
+         *
+         * See the \ref quantizer.test example to see an example of how to use it.
+         *
+         * \param[in] idx : the number or position of the threshold (from 0 to num_bins()+1)
+         */
+        const  T& threshold(std::size_t idx) const
+        {
+            ASSERT(idx < _thresholds.size(), "idx out of range");
+            ASSERT(idx < _num_bins+1,        "idx out of range");
+
+            return _thresholds[idx];
+        }
+
+        /*!
+         * \return the number of bins
+         *
+         * See the \ref quantizer.test example to see an example of how to use it.
+         */
+        const std::size_t& num_bins() const
+        {
+            return _num_bins;
+        }
+
+    private:
+
+        MultiArray< T, 1 > _thresholds; //!< the array of thresholds, min and max values included
+        std::size_t        _num_bins;   //!< the number of bins (== thresholds.size()-1)
+    };
+
+    /*!
+     * Equal-to operator (==) between Quantizer
+     *
+     * Used mainly for test proposes.
+     *
+     * See the \ref quantizer.test example to see an example of how to use it.
+     *
+     * \tparam T : the type of the Quantizer
+     *
+     * \param[in] q1 : the first Quantizer to compare
+     * \param[in] q2 : the second Quantizer to compare
+     *
+     * \return true if Quantizer s are equal
+     *
+     * \related Quantizer
+     */
+    template<typename T>
+    bool operator==(const Quantizer<T>& q1, const Quantizer<T>& q2)
+    {
+        if( q1.num_bins() != q2.num_bins() ) return false;
+        else                                 return (q1.thresholds() == q2.thresholds());
+    }
+
+    /*!
+     * Not-Equal-to operator (!=) between Quantizer
+     *
+     * Used mainly for test proposes
+     *
+     * See the \ref quantizer.test example to see an example of how to use it.
+     *
+     * \tparam T : the type of the Quantizer
+     *
+     * \param[in] q1 : the first Quantizer to compare
+     * \param[in] q2 : the second Quantizer to compare
+     *
+     * \return true if Quantizer s are not equal
+     *
+     * \related Quantizer
+     */
+    template<typename T>
+    bool operator!=(const Quantizer<T>& q1, const Quantizer<T>& q2)
+    {
+        return !( q1 == q2 );
+    }
+
+} // ns imageplus
+
+#endif /* IMAGEPLUS_CORE_QUANTIZER_HPP_*/

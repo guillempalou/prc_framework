@@ -1,0 +1,100 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file transformations.cpp
+//!
+//!  Numerical transformations
+//!
+
+#include <imageplus/core.hpp>
+
+#include <imageplus/math/numeric/transformations.hpp>
+
+#include <numeric/ublas_adaptors.hpp>
+
+#include <boost/numeric/ublas/triangular.hpp>
+#include <boost/numeric/ublas/lu.hpp>
+#include <boost/numeric/ublas/io.hpp>
+
+
+// for uint64 std::abs(int64)
+#include <imageplus/math.hpp>
+
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+template<typename T>
+MultiArray<T,2> imageplus::math::numeric::trans( const MultiArray<T,2>& in ) throw (ImagePlusError)
+{
+    UblasAdaptionMatrix<T> u(const_cast<T*>(in.data()), in.dims(0), in.dims(1));
+
+    boost::numeric::ublas::matrix<T> out;
+    out=boost::numeric::ublas::trans(u);
+
+    return out;
+}
+
+template<typename T>
+MultiArray<T,2> imageplus::math::numeric::invert_matrix( const MultiArray<T,2>& in) throw (ImagePlusError)
+{
+    ASSERT(in.dims(0)==in.dims(1), "Squared matrix expected." ) 
+
+    UblasAdaptionMatrix<T> u(const_cast<T*>(in.data()), in.dims(0), in.dims(1));
+
+    typedef  boost::numeric::ublas::permutation_matrix<std::size_t> pmatrix;
+
+    // create a working copy of the input
+    boost::numeric::ublas::matrix<T> A(u);
+    boost::numeric::ublas::matrix<T> out(u);
+
+    // create a permutation matrix for the LU-factorization
+    pmatrix pm(A.size1());
+
+    // perform LU-factorization
+    int64 res =  boost::numeric::ublas::lu_factorize(A,pm);
+    if ( res != 0 )
+    {
+        for (uint64 j=0; j< in.dims(1); j++)
+        {
+            for (uint64 i =0; i< in.dims(0); i++)
+                out(i,j)=0;
+        }
+        return out; //no inverse
+    }
+
+    // create identity matrix of "inverse"
+    out.assign(boost::numeric::ublas::identity_matrix<T>(A.size1()));
+
+    // backsubstitute to get the inverse
+    boost::numeric::ublas::lu_substitute(A, pm, out);
+
+    return out;
+}
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            template MultiArray<uint8,2>   trans(const MultiArray<uint8,2>&);
+            template MultiArray<uint16,2>  trans(const MultiArray<uint16,2>&);
+            template MultiArray<int16,2>   trans(const MultiArray<int16,2>&);
+            template MultiArray<int32,2>   trans(const MultiArray<int32,2>&);
+            template MultiArray<uint32,2>  trans(const MultiArray<uint32,2>&);
+            template MultiArray<uint64,2>  trans(const MultiArray<uint64,2>&);
+            template MultiArray<int64,2>   trans(const MultiArray<int64,2>&);
+            template MultiArray<float32,2> trans(const MultiArray<float32,2>&);
+            template MultiArray<float64,2> trans(const MultiArray<float64,2>&);
+    
+            //template MultiArray<uint8,2> invert_matrix( const MultiArray<uint8,2>& ) ; <- boost 1.38 complains
+            //template MultiArray<int64,2> invert_matrix( const MultiArray<int64,2>& ) ; <- boost 1.38 complains
+            template MultiArray<float64,2> invert_matrix( const MultiArray<float64,2>& ) ;
+            //template MultiArray<float32,2> invert_matrix( const MultiArray<float32,2>& ) ; <- boost 1.38 complains
+        }
+    }
+}

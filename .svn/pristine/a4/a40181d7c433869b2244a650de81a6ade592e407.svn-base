@@ -1,0 +1,75 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Targets and alias                                #
+#                                                                            #
+# This file defines all the targets and its alias.                           #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                                                                            #
+##############################################################################
+
+Import('*')
+
+##
+## Targets
+##
+libTarget      = mainlibPath
+modulesTarget  = modulesPath
+toolsTarget    = toolsBinPath
+websTarget     = websPath
+apiTarget      = docPath + 'html/always.run'
+docTarget      = docPath + 'html_check/always.run'
+testsTarget    = testsPath + 'bin/'
+validateTarget = validationPath
+
+
+##
+## Define the default targets. 
+## The default targets will be the only ones built when 
+## invoking the default command: 'scons'
+##  
+Default(libTarget)
+
+
+
+# Export the targets for all the modules
+Export( 'libTarget', 
+        'modulesTarget', 
+        'toolsTarget',
+        'websTarget', 
+        'apiTarget',
+        'docTarget',
+        'testsTarget',
+        'validateTarget',
+        )
+
+
+
+##
+## Alias
+##
+## Note: Each module defines its alias in the 'modules.build' script (mod -> modules/mod).
+##
+Alias( 'lib'     , libTarget     )
+Alias( 'library' , libTarget     )
+
+Alias( 'mod'     , modulesTarget )
+Alias( 'modules' , modulesTarget )
+
+Alias( 'test'     , testsTarget )
+Alias( 'tests'    , testsTarget )
+Alias( 'runtests' , testsTarget )
+Alias( 'run_tests', testsTarget )
+
+Alias( 'validate'   , [validateTarget] )
+Alias( 'validation' , 'validate' )
+
+Alias( 'web' , websTarget )

@@ -1,0 +1,102 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file perimeter.hpp
+//!
+#ifndef IMAGEPLUS_DESCRIPTORS_GEOMETRY_PERIMETER_HPP
+#define IMAGEPLUS_DESCRIPTORS_GEOMETRY_PERIMETER_HPP
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/core/mask.hpp>
+#include <imageplus/core/imavolmask.hpp>
+#include <boost/array.hpp>
+
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Perimeter descriptor
+        //!
+        //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+        //! \author Jordi Pont <jordi.pont@upc.edu>
+        //!
+        //! \date 29-6-2009     
+        template<class PositionModel>
+        class Perimeter : public DescriptorBase
+        {
+        public:
+            //! The dimension of the Coord space
+            static const std::size_t dimensions = PositionModel::dimensions;
+            
+            //!
+            //! \brief Default constructor
+            //!
+            Perimeter() : DescriptorBase("Perimeter",false), _perimeter(0)
+            {
+            }        
+            
+            //! \brief Calculates the perimeter of a region given a pair of iterators. 
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {
+                ASSERT(peer_descs!=0x0, "Perimeter calculate: peer_descs must be non null");
+
+                boost::array<std::size_t, 2> borders2d = {{1,1}};
+                const Mask<PositionModel>& mask = peer_descs->calculate(new Mask<PositionModel>(borders2d), first, last);
+
+                _perimeter = 0;
+                
+                typename ImaVolMask<dimensions>::template const_iterator<> it     = mask.colors_begin();
+                typename ImaVolMask<dimensions>::template const_iterator<> it_end = mask.colors_end();
+                
+                typedef typename ImaVolMask<dimensions>::template const_iterator<>::pixel_type::neighbor_iterator neigh_iterator;
+                
+                //! Neighborhood of connectivity 4
+                Neighborhood<Coord<int64,dimensions> > ngb;
+                ngb.resize(4);
+                ngb[0]=typename Neighborhood<PositionModel>::CoordType( 0,-1);
+                ngb[1]=typename Neighborhood<PositionModel>::CoordType(-1, 0);
+                ngb[2]=typename Neighborhood<PositionModel>::CoordType( 1, 0);
+                ngb[3]=typename Neighborhood<PositionModel>::CoordType( 0, 1);
+                
+                for( ; it!=it_end; ++it)
+                {
+                    if((*it).value(0))
+                    {
+                        //We iterate for the neighbors and increase _perimeter when a neighbor doesn't belong to the region.
+                        for(neigh_iterator nit = (*it).local_begin(ngb); nit != (*it).local_end(ngb); ++nit)
+                        {
+                            if(!(*nit).value(0))
+                            {
+                                _perimeter++;
+                            }
+                        }
+                    }
+                }   
+            }
+            
+            //! \brief Returns the perimeter of the region
+            operator const uint64() const
+            {
+                return _perimeter;
+            }
+
+        private:
+
+            //! Perimeter of the region
+            uint64 _perimeter;
+        };
+    }
+}
+
+#endif
+

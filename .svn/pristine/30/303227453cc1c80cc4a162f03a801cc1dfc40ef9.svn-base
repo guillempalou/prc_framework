@@ -1,0 +1,60 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file difference_of_gaussians.cpp
+//!
+//!  Implementation for Difference of Gaussians blob feature extraction
+//!
+
+#include <imageplus/filters/difference_of_gaussians.hpp>
+#include <imageplus/math/numeric/transformations.hpp>
+#include <imageplus/core/multiarray_arithmetic.hpp>
+#include <imageplus/filters/gaussian.hpp>
+#include <cmath>
+
+using namespace imageplus;
+using namespace imageplus::filters;
+
+template <typename T>
+MultiArray<T,2> imageplus::filters::difference_of_gaussians( const MultiArray<T,2> & im, const float64 sigma1, const float64 sigma2 )
+{
+    int64 size=3;
+    if( sigma2 > sigma1 )
+    {
+        size=2*static_cast<int64>(3.0*sigma2)+1;
+    }
+    else
+    {
+        size=2*static_cast<int64>(3.0*sigma1)+1;
+    }
+    if( size < 3 )
+    {
+        size = 3;
+    }
+    
+    MultiArray<float64,2> gmask=gaussian_mask( sigma1, size )-gaussian_mask( sigma2, size );
+    LinearConvolution gconv( gmask );
+    
+    MultiArray<T,2> r=gconv.filter( im );
+    
+	return abs( r );
+}
+
+template <typename T>
+MultiArray<T,2> imageplus::filters::difference_of_gaussians( const MultiArray<T,2> & im, const float64 sigma )
+{
+    float64 sigma2 = 1.41421356*sigma;
+    return difference_of_gaussians( im, sigma, sigma2 );
+}
+
+namespace imageplus
+{
+	namespace filters
+	{
+		template MultiArray<float64,2> difference_of_gaussians( const MultiArray<float64,2> & in, const float64 sigma1, const float64 sigma2 );
+        template MultiArray<float64,2> difference_of_gaussians( const MultiArray<float64,2> & in, const float64 sigma );
+	}
+}

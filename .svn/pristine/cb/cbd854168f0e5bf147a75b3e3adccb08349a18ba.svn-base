@@ -1,0 +1,95 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//! \file readwritebitstream.test
+//!
+//! \author Jordi Pont tuset <jpont@gps.tsc.upc.edu>
+//!
+//! Test for classes ReadBitStream and WriteBitStream
+//!
+
+#include <imageplus/io/readbitstream.hpp>
+#include <imageplus/io/writebitstream.hpp>
+
+BOOST_AUTO_TEST_SUITE ( ReadWriteBitStreamSuite );
+
+using namespace imageplus;
+using namespace imageplus::io;
+
+
+BOOST_AUTO_TEST_CASE( ReadWriteBitStreamTest )
+{
+    // This test consist of writing and reading to a file 10x10000 times. (10 files, 10000 writings/readings each) 
+    // Each time, a random number of bits is written (between 1 and 64)
+    
+    for(uint8 jj=0; jj<10; jj++)
+    {
+        const uint64 N = 10000;
+    
+        MultiArray<uint64,1> values(N);
+        MultiArray<uint8,1>  lengths(N);    
+        MultiArray<uint64,1> values_read(N);
+        MultiArray<uint64,1> values_read_ahead(N);
+      
+        imageplus::random(lengths,(uint8)63);
+        imageplus::random(values,(uint64)-1);
+        
+        WriteBitStream wbs;
+        wbs.open( std::string(TEST_DATA_PATH_W) + "/bitstream.b" );
+        
+        for(std::size_t ii=0; ii<N; ii++)
+        {
+            lengths[ii]++; // +1 to avoid length 0
+            // values[ii] is chosen randomly between those numbers representable with lengths[ii] bits
+            if(lengths[ii]<(uint8)64)
+            {
+                values[ii] = values[ii] % ((uint64)2 << (lengths[ii]-1));
+            }
+            wbs.write(values[ii], lengths[ii]);  
+        }
+        
+        wbs.close();
+        
+        ReadBitStream rbs;
+        rbs.open( std::string(TEST_DATA_PATH_W) + "/bitstream.b" );
+        
+        for(std::size_t ii=0; ii<N; ii++)
+        {
+            values_read_ahead[ii] = rbs.read_ahead(lengths[ii]);
+            values_read[ii] = rbs.read(lengths[ii]);
+        }
+        
+        rbs.close();
+        
+        BOOST_CHECK( values_read_ahead==values );
+        BOOST_CHECK( values_read==values );
+    }
+}
+
+
+BOOST_AUTO_TEST_CASE( ReadBitStreamSizeTest )
+{
+    ReadBitStream rbs;
+    rbs.open( std::string(TEST_DATA_PATH_R) + "/io/readimage_gray_uint8.jpg" );
+    uint64 b = rbs.remaining_size();        
+    BOOST_CHECK( b == 8*75748 );
+    rbs.seekg(8*50000);
+    b = rbs.remaining_size();
+    BOOST_CHECK( b == (8*75748 - 8*50000) );
+    rbs.close();
+
+    rbs.open( std::string(TEST_DATA_PATH_R) + "/io/readimage_gray_uint8.tiff" );
+    b = rbs.remaining_size(); 
+    BOOST_CHECK( b == (uint64)8*122834 );
+    rbs.seekg(8*120000);
+    b = rbs.remaining_size();
+    BOOST_CHECK( b == (uint64)(8*122834 - 8*120000) );
+
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+

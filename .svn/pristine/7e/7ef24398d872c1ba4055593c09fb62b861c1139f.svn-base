@@ -1,0 +1,56 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+//!
+//! \file io.hpp
+//!
+//! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+//!
+//! \date 14-7-2010
+//!
+//! Default interface for all ImagePlus io module
+//!
+
+
+#ifndef IMAGEPLUS_IO_HPP
+#define IMAGEPLUS_IO_HPP
+
+namespace imageplus
+{
+    /*!
+     * \namespace imageplus::io
+     *
+     * \brief input/output module for reading and writing from / to disk
+     *
+     * This module contains functionality of:
+     * - Image, Volume and MultiArray
+     * - Sequences
+     * - Bitstreams
+     * - Capture from live devices (video4linux)
+     */
+    namespace io
+    {}
+}
+
+#include <imageplus/io/capturev4l2.hpp>
+#include <imageplus/io/io_types.hpp>
+#include <imageplus/io/portablefloat.hpp>
+#include <imageplus/io/readbitstream.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <imageplus/io/readmultiarray.hpp>
+#include <imageplus/io/readroom.hpp>
+#include <imageplus/io/readsequence.hpp>
+#include <imageplus/io/readvolume.hpp>
+#include <imageplus/io/writebitstream.hpp>
+#include <imageplus/io/writeimage.hpp>
+#include <imageplus/io/writemultiarray.hpp>
+#include <imageplus/io/writeroom.hpp>
+#include <imageplus/io/writesequence.hpp>
+#include <imageplus/io/write_sequence_yuv.hpp>
+#include <imageplus/io/writevolume.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+
+#endif // IMAGEPLUS_IO_HPP

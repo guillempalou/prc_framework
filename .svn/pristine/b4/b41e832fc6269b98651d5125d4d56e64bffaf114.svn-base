@@ -1,0 +1,122 @@
+/*
+ * binary_pruner.hpp
+ *
+ *  Created on: Mar 7, 2013
+ *      Author: gpalou
+ */
+
+#ifndef BINARY_PRUNER_HPP_
+#define BINARY_PRUNER_HPP_
+
+
+#include <imageplus/bpt/pruning/bpt_pruner.hpp>
+#include <imageplus/descriptors/descriptor_manager.hpp>
+#include <boost/multi_array.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+		//! Base class of minimizer of a cost function in the BPT. Each region should have a cost depending ONLY in its characteristics (e.g. mean color, region perimeter...)
+		//! \param BPT : tree type
+		//! \param InputModel : image type
+		//! \param RegionCostFunction : cost function type
+		template<class BPT, class ImageModel, class RegionCostFunction>
+		class BinaryPruner : public BPTPruner<BPT,ImageModel> {
+
+			//! Pruner base class
+			typedef BPTPruner<BPT,ImageModel> Pruner;
+
+			//! Region ids
+			typedef typename Pruner::RegionsIDs RegionsIDs;
+
+		public:
+
+			BinaryPruner(RegionCostFunction& region_cost_function, bool prune_tree, uint64 max_levels = 0) : Pruner(prune_tree), _cost_function(&region_cost_function), _max_levels(max_levels) {
+
+			}
+
+			//! Gets the optimal subtree given the number of regionsa
+			//! \param[in] bpt : tree
+			//! \param[in] r : region acting as root of the minimization (normally the root of the tree)
+			//! \param[in] N: number of regions
+			std::pair<std::set<uint64>,float64> minimum_cost(BPT& bpt, ImageModel& img, uint64 r, uint64 l) {
+
+				float64 cost = 0;
+				std::set<uint64> regs;
+				std::pair<std::set<uint64>,float64> s;
+
+				if (bpt(r).children().size() == 0 || l == _max_levels) {
+
+					cost = _cost_function->region_cost(bpt,img,r);
+
+					regs.insert(r);
+					s.first = regs; s.second = cost;
+					return s;
+				}
+
+				uint32 son1 = bpt(r).child(0)->label();
+				uint32 son2 = bpt(r).child(1)->label();
+
+				std::pair<std::set<uint64>,float64> s1 = minimum_cost(bpt,img,son1,l+1);
+				std::pair<std::set<uint64>,float64> s2 = minimum_cost(bpt,img,son2,l+1);
+
+				cost = _cost_function->region_cost(bpt,img,r); // return infinity, as it is impossible to find a partition with N>1 regions if this node is a leaf
+
+				//cost = _cost_function->region_cost(bpt,img,r);
+
+				//std::cout << r << " : " << cost << " --- " << s1.second << " " << s2.second << " : " <<  s1.second + s2.second << std::endl;
+
+				if (cost > s1.second + s2.second) {
+					for (std::set<uint64>::iterator i = s2.first.begin(); i != s2.first.end(); ++i) {
+						s.first.insert(*i);
+					}
+					for (std::set<uint64>::iterator i = s1.first.begin(); i != s1.first.end(); ++i) {
+						s.first.insert(*i);
+					}
+					s.second = s2.second + s1.second;
+				} else {
+					regs.insert(r);
+					s.first = regs; s.second = cost;
+				}
+
+				return s;
+			}
+
+			//! Functions that finds the regions to prune
+			//! \param[in] bpt: tree
+			//! \param[in] img: image
+			//! \param[in] reg_id: id of the root to begin to count (normally the root of the tree)
+			const RegionsIDs& find_pruned_regions(BPT& bpt, ImageModel& img, uint64 reg_id, uint64 region_objective = 0) {
+
+				std::pair<std::set<uint64>,float64> s = minimum_cost(bpt,img,reg_id,1);
+				//std::cout << "minimum cost pr " << s.second << std::endl;
+				_cost = s.second;
+				//std::cout << "Final cost " << s.second << std::endl;
+				Pruner::_regions = s.first;
+
+				return Pruner::_regions;
+			}
+
+			float64 cost() {
+				return _cost;
+			}
+
+		private:
+
+			//! cost function
+			RegionCostFunction* _cost_function;
+
+			//! index of regions
+			std::map<uint64, uint64> index;
+
+			//! map of the region costs
+			std::map<uint64,float64 > _costs;
+
+			float64 _cost;
+
+			uint64 _max_levels;
+		};
+	}
+}
+
+#endif /* BINARY_PRUNER_HPP_ */

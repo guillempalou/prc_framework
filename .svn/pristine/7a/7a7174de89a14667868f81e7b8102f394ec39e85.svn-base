@@ -1,0 +1,50 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+//!
+//!  \file point_geometry.cpp
+//!
+//!  Implementation of point_geometry functions
+//!
+
+#include <imageplus/math/geometry/point_geometry.hpp>
+
+// for uint64 std::abs(int64)
+#include <imageplus/math.hpp>
+
+using namespace imageplus;
+
+
+// AT HEADER 
+//float64 imageplus::geometry::distance(const Point& a, const Point& b)
+//{
+//    float64 dis=0.0;
+//
+//    ASSERT(a.dims()==b.dims(), "Points must belong to the same space");
+//
+//    for (size_type i=0; i<a.dims();i++)
+//    {
+//        dis+=pow(a[i]-b[i],2.0);
+//    }
+//    return std::sqrt(dis);
+//}
+
+size_type imageplus::math::geometry::horizontal_segment_points(const int64 x_begin, const int64 x_end, const int64 y,
+							 MultiArray<Coord2D<> , 1>& point,
+							 const size_type next_point = 0) throw (ImagePlusError) {
+    
+    if (point.dims(0)-next_point < (size_type)std::abs(x_end - x_begin+1))
+	throw ImagePlusError("horizontal_segment_points: point array has no space for all points");
+    
+    size_type point_idx = next_point;
+    
+    for (int64 x = x_begin; x <= x_end; x++) {
+	
+	point[point_idx].x() = x;
+	point[point_idx].y() = y;
+	point_idx++;
+    }
+    
+    return point_idx;
+}

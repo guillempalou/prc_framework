@@ -1,0 +1,112 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+/*!
+ * \example io_sequence_example.hpp
+ * 
+ * This is an example of how to read and write sequences to disk.
+ */
+
+/*
+ * The necessary header file
+ */
+#include <imageplus/io/readsequence.hpp>
+#include <imageplus/io/writesequence.hpp>
+
+/*
+ * To found the main classes
+ */
+using namespace imageplus;
+using namespace imageplus::io;
+
+/*
+ * The *Sequence classes are designed with two main ideas:
+ *   - follow a "printf style" to define the filename to read or write
+ *   - use the stream notation of C++: operators >> and <<
+ */
+void read_sequence()
+{
+    /*
+     * The following object will read all following images:
+     * 
+     * /path/to/my/in/images/seq_000000.png
+     * /path/to/my/in/images/seq_000001.png
+     * /path/to/my/in/images/seq_000002.png
+     * ...
+     */
+    ReadSequence rseq("/path/to/my/in/images/seq_%06d.png");
+    
+    /*
+     * We can load the images to any of our Image classes.
+     */
+    ImageGray<uint8> gry;
+    ImageRGB<uint8>  rgb;
+    
+    rseq >> gry; /* the first image is loaded to "gry" object */
+    rseq >> rgb; /* the second object is loaded to the "rgb" object */
+    
+    /*
+     * Althought it is not very useful in th general case, we can also concatenate readings
+     * as with any other C++ stream:
+     */
+    rseq >> gry >> rgb; /* the same results of the previous lines */
+}
+
+/*
+ * Comlpetally equivalent for writting
+ */
+void write_sequence()
+{
+    /*
+     * The following object will write the following images:
+     * 
+     * /path/to/my/out/images/seq_000000.png
+     * /path/to/my/out/images/seq_000001.png
+     * /path/to/my/out/images/seq_000002.png
+     * ...
+     */
+    WriteSequence wseq("/path/to/my/out/images/seq_%06d.png");
+    
+    /*
+     * We can write images from any of our Image classes.
+     */
+    ImageGray<uint8> gry(100,200);
+    ImageRGB<uint8>  rgb(100,200);
+    
+    gry =  5; /* just to save something known to disk */ 
+    rgb = 10;
+        
+    wseq << gry; /* the first file of the sequence contains "gry" */
+    wseq << rgb; /* the second file of the sequence contains "rgb" */
+    
+    /*
+     * Althought it is not very useful in th general case, we can also concatenate writings
+     * as with any other C++ stream:
+     */
+    wseq << gry << rgb; /* the same results of the previous lines */
+}
+
+/*
+ * In the most general case we read a sequence of images, process them and save the results:
+ */
+void io_sequence()
+{
+    ReadSequence  rseq("/path/to/my/in/images/seq_%06d.png");
+    WriteSequence wseq("/path/to/my/out/images/seq_%06d.png");
+    
+    ImageGray<uint8> gry;
+    ImageRGB<uint8>  rgb;
+    
+    /*
+     * To read until the last existing frame
+     */
+    while( !rseq.eof() )
+    {
+        rseq >> rgb;
+        
+        gry = to_gray( rgb ); /* our process is a little simple, sure you will do something nicer! */
+        
+        wseq << gry;
+    }    
+}

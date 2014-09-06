@@ -1,0 +1,13 @@
+Import('moduleEnv')
+
+dependences = Split('''
+
+core
+math
+multiview
+filters
+
+''')
+
+
+Return('dependences')

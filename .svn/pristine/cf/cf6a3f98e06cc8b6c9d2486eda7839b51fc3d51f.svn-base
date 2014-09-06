@@ -1,0 +1,74 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//! 
+//! \file trainset.test
+//!
+//! Tests for TrainSet class
+//!
+#include <imageplus/semantic/trainset.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( Semantic_TrainSet_Suite );
+
+using namespace imageplus;
+using namespace imageplus::semantic;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE( trainset_test )
+{
+	TrainSet trainset;
+
+	// add 3 positive observations
+	trainset.add_observation(Observation(), Instance::POSITIVE);
+	trainset.add_observation(Observation(), Instance::POSITIVE);
+	trainset.add_observation(Observation(), Instance::POSITIVE);
+
+	// add 1 neutral instance
+	trainset.add_observation(Observation(), Instance::NEUTRAL);
+
+	// add 2 negative instances
+	trainset.add_observation(Observation(), Instance::NEGATIVE);
+	trainset.add_observation(Observation(), Instance::NEGATIVE);
+
+	BOOST_CHECK(trainset.get_observations(Instance::POSITIVE).size() == 3);
+	BOOST_CHECK(trainset.get_observations(Instance::NEUTRAL).size()  == 1);
+	BOOST_CHECK(trainset.get_observations(Instance::NEGATIVE).size() == 2);
+}
+
+BOOST_AUTO_TEST_CASE( trainset_test_cout )
+{
+	TrainSet trainset;
+
+	Observation observation;
+	Observation::FeatureVector fv1(10), fv2(5);
+	fv1 = 0; fv2 = 0;
+	observation.add_vd_featurevector("ColorStructure", fv1);
+	observation.add_vd_featurevector("ColorLayout", fv2);
+
+	// add 3 positive observations
+	trainset.add_observation(observation, Instance::POSITIVE);
+	trainset.add_observation(observation, Instance::POSITIVE);
+
+	// add 2 negative instances
+	trainset.add_observation(observation, Instance::NEGATIVE);
+
+	stringstream expected;
+	expected << "Trainset:"                                               << endl;
+	expected << " `- positive instances (2)"                              << endl;
+	expected <<  "    `- observation with feature vectors for visual descriptors: ColorLayout, ColorStructure," << endl;
+	expected <<  "    `- observation with feature vectors for visual descriptors: ColorLayout, ColorStructure," << endl;
+	expected << " `- negative instances (1)"                              << endl;
+	expected <<  "    `- observation with feature vectors for visual descriptors: ColorLayout, ColorStructure," << endl;
+	expected << " `- neutral instances (0)"                               << endl;
+
+	stringstream obtained;
+	obtained << trainset;
+
+	BOOST_CHECK_EQUAL(obtained.str(), expected.str());
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();

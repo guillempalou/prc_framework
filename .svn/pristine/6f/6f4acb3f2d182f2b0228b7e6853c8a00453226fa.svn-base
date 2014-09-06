@@ -1,0 +1,60 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file filterempty.hpp
+//!
+//!  Empty filter (does nothing)
+//!
+
+#ifndef IMAGEPLUS_CORE_FILTEREMPTY_HPP
+#define IMAGEPLUS_CORE_FILTEREMPTY_HPP
+
+#include <imageplus/core/filter.hpp>
+
+namespace imageplus
+{
+
+    //!
+    //! \brief Empty filter
+    //!
+    //! \author Javier Ruiz Hidalgo <j.ruiz@upc.edu>
+    //!
+    //! \date 18-2-2008
+    //!
+    //! This is an emptyt filter as it does nothing but copies the input image/multiarray to ouput
+    //!
+    class FilterEmpty : public Filter<FilterEmpty>
+    {
+            
+        public:
+
+            //!
+            //! \brief Default constructor
+            //!
+            FilterEmpty() {};
+
+            //!
+            //! \brief Overloading of method implementation()
+            //!
+            //! WARNING!: Never use this method. Use filter() instead.
+            //!
+            //! \param[in] m : object to be filtered
+            //!
+            //! \return Filtered object (copies output)
+            //!
+            template<typename T>
+            T implementation(const T& m) const
+            {
+                return m;
+            }
+            
+        private:
+
+    };
+
+}
+
+#endif

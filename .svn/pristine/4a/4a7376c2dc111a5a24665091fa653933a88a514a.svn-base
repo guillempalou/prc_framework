@@ -1,0 +1,625 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \example async_process_advanced.cpp
+ *
+ * A SmartFlow client example about how to use the CircularSyncBuffer classes to create an async client.
+ *
+ * \author Albert Gil
+ */
+
+#define IMAGEPLUS_CLIENT_CONFIG_NAME  async_process_advanced
+#define IMAGEPLUS_CLIENT_CONFIG_ASYNC
+#include <imageplus/toolbox/client_config.hpp>
+
+
+/*
+ * ImagePlus headers to process data..
+ */
+#include <imageplus/toolbox/draw_in_image.hpp>
+
+
+/*
+ * namespaces config
+ */
+using namespace imageplus;
+using namespace imageplus::toolbox;
+using namespace std;
+
+
+IMAGEPLUS_CLIENT_CONFIG_BRIEF()
+
+    "This client is just and example about how to receive and send multiple flows asynchronously\n";
+
+IMAGEPLUS_CLIENT_CONFIG_DESCRIPTION()
+
+    "This client is just and example about how to receive and send multiple flows asynchronously\n";
+
+IMAGEPLUS_CLIENT_CONFIG_PARAMETERS()
+
+    // options
+
+    // flags
+
+    // arguments
+
+    // flows
+    DataInputFlowPtr  crd_i1;      // flow pointer number 1 to receive Coords
+    DataInputFlowPtr  crd_i2;      // flow pointer number 2 to receive Coords
+    VideoInputFlowPtr video_in;    // flow pointer to receive video
+
+    DataOutputFlowPtr  crd_o1;     // flow pointer number 1 to send Coords
+    DataOutputFlowPtr  crd_o2;     // flow pointer number 2 to send Coords
+    VideoOutputFlowPtr video_out;  // flow pointer to send video
+
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_VARIABLES()
+
+    /*
+     * Shared circular flows
+     */
+    CircularSyncBuffer<Coord2D<>  > crd_cb1; // circular buffer to save the received coords of flow 1
+    CircularSyncBuffer<Coord2D<>  > crd_cb2; // circular buffer to save the received coords of flow 2
+    CircularSyncBuffer<ImageRGB<> > img_cb;  // circular buffer to save the received images
+
+    /*
+     * mutex variable to synchronise data access between threads (avoid data corruption)
+     */
+    boost::shared_mutex           mutex; // note that it is a "shared_mutex" to be able to have the
+                                         // multiple-readers / single-writer scheme
+
+    /*
+     * Waiting conditions for threads synchronise threads.
+     * These variables are used for the processing threads to wait until new data is received.
+     * We can have different conditions depending on the needs of our processing threads.
+     */
+    boost::condition_variable_any cond_all_crd_received;  // will be notified when all coords data is new (not yet processed)
+    boost::condition_variable_any cond_any_crd_received;  // will be notified when there is any new coords element
+    boost::condition_variable_any cond_img_received;      // will be notified when a new image is received
+
+    /*
+     * Volatile variables to control conditions
+     */
+    volatile bool crd1_received;
+    volatile bool crd2_received;
+
+    /*
+     * Video flows metadatas
+     */
+    VideoMetadata video_metadata;
+
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_DEFAULT_VALUES()
+{
+    crd1_received = false;
+    crd2_received = false;
+
+    std::size_t cbuff_capacity = 10;
+
+    crd_cb1.capacity(cbuff_capacity);
+    crd_cb2.capacity(cbuff_capacity);
+    img_cb .capacity(cbuff_capacity);
+
+    crd_cb1.id("crd_cb1"); // ids should be unique // TODO: create a macro to force id == var_name...
+    crd_cb2.id("crd_cb2");
+    img_cb .id("img_cb" );
+}
+
+//IMAGEPLUS_CLIENT_CONFIG_APP_DESTRUCTOR() // only necessary if we use new in default values...
+//{}
+
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREADS_LIST()
+{
+    /*
+     * Input threads
+     */
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( receive_crd1 ); // receive coords from flow crd_i1
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( receive_crd2 ); // receive coords from flow crd_i2
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( receive_img  ); // receive images
+
+    /*
+     * Process/Output threads
+     */
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( process_addition     );
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( process_subtraction  );
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_ADD_THREAD( process_draw_circles );
+}
+
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREADS_IMPLEMENTATION()
+
+    /*
+     * The two receive_crdN threads do the same work, but receiving from different flows
+     * and storing data in different circular buffers.
+     *
+     * To avoid copy+paste we use a "shared function" called receive_crd
+     */
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( receive_crd1 )
+    {
+        receive_crd( cfg.crd_i1, crd1_received, crd_cb1 );
+    }
+
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( receive_crd2 )
+    {
+        receive_crd( cfg.crd_i2, crd2_received, crd_cb2 );
+    }
+
+    /*
+     * The receive_crd function just:
+     * - receive new data from the given flow
+     * - stores the new data to the given circular buffer
+     * - notify the corresponding conditions
+     *
+     * Note that:
+     * - flow reception is a blocking function
+     * - we are going to write in a shared buffer, so we need a unique_lock before writting
+     */
+    void receive_crd( DataInputFlowPtr&               flow,
+                      volatile bool&                  crd_received,
+                      CircularSyncBuffer<Coord2D<> >& cb )
+    {
+        /*
+         * Flow variables
+         */
+        const Coord2D<>* data_in; // note that the data ptr from an input flow is always const
+        Timestamp        time_in;
+
+        /*
+         * Infinite loop
+         */
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the input buffer/pointer from the flow and its Timestamp
+             * Note that this is a blocking function!
+             */
+            time_in = flow->get_buffer(data_in);
+
+            std::cout << "Received " << cb.id() << ":" << std::endl;
+            std::cout << "Timestamp: " << time_in << " - Data: " << *data_in << std::endl;
+
+            /*
+             * Lock to write to the shared variables (buffers and condition variables).
+             *
+             */
+            boost::unique_lock<boost::shared_mutex> lock(mutex);
+
+            /*
+             * Saving timestamped data to the circular flow
+             */
+            cb.add( *data_in, time_in );
+
+            /*
+             * Updating the state machine variable/event
+             */
+            crd_received = true;
+
+            /*
+             * Notify the processes to be done
+             */
+            if( crd1_received || crd2_received )  // always true...
+            {
+                cond_any_crd_received.notify_all();
+            }
+            if( crd1_received && crd2_received )
+            {
+                cond_all_crd_received.notify_all();
+
+                crd1_received = false;
+                crd2_received = false;
+            }
+
+            /*
+             * UnLock to release the buffer and allow the other threads to read the new data
+             * and to write more data in other circular buffers
+             */
+            lock.unlock();
+        }
+    }
+
+    /*
+     * The receive_img thread follows the same scheme of the receive_crd
+     */
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( receive_img )
+    {
+        /*
+         * Flow variables
+         */
+        const ImageRGB<>::data_type* data_in;
+        Timestamp                    time_in;
+
+        ImageRGB<>  rgb    (video_metadata.width,  video_metadata.height);
+        std::size_t bsize = video_metadata.width * video_metadata.height * 3;
+
+        /*
+         * Infinite loop
+         */
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the input buffer/pointer from the flow and its Timestamp
+             * Note that this is a blocking function!
+             */
+            time_in = cfg.video_in->get_buffer(data_in);
+
+            /*
+             * Importing an ImageRGB from the pointer of the flow
+             */
+            import_from(rgb, data_in, bsize, RGB);
+
+            /*
+             * Lock to write to the shared variables
+             */
+            boost::unique_lock<boost::shared_mutex> lock(mutex);
+
+            /*
+             * Saving data to the circular flow
+             */
+            img_cb.add( rgb, time_in );
+
+            /*
+             * Notify the processing threads
+             */
+            cond_img_received.notify_all();
+
+            /*
+             * UnLock to write to the shared variables
+             */
+            lock.unlock();
+        }
+    }
+
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( process_addition )
+    {
+        /*
+         * Output flow variables
+         */
+        Coord2D<>* data_out; // Note that output flows pointers are non-const, so we have to write on them!
+        Timestamp  time_out;
+
+        /*
+         * Creating the Synchroniser object to synchronise only the crd buffers.
+         * Why only the crd buffers and not the img buffer?
+         * Because we only use crd buffers to process the addition.
+         */
+        CircularSyncBufferSynchroniser sync;
+        sync.add(&crd_cb1);
+        sync.add(&crd_cb2);
+
+        /*
+         * Just to wait for the first data available from all flows.
+         * Note that in the infinite loop we only wait for "any" crd available, but for the first time
+         * we need all new crds received.
+         */
+        boost::shared_lock<boost::shared_mutex> first_lock(mutex);
+        cond_all_crd_received.wait(first_lock);
+        first_lock.unlock();
+
+        /*
+         * Infinite loop for process addition
+         */
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the output pointer from the flow to write on
+             */
+            cfg.crd_o1->get_buffer(data_out);
+
+            /*
+             * Shared lock to read the shared variables.
+             * Note that here we use a "shared_lock" because we only read data from buffers.
+             * This way we allow other threads to also read and process data.
+             */
+            boost::shared_lock<boost::shared_mutex> lock(mutex);
+
+            /*
+             * Waiting for the con_any_crd_received because we want to process addition any time
+             * there is a new crd received.
+             *
+             * Please, note that in the process subtraction we wait for a different condition.
+             */
+            cond_any_crd_received.wait(lock);
+
+            /*
+             * Getting the last data in all circular buffers to be processed.
+             *
+             * First we set the sync object, and then we get the timestamped data.
+             * Note that we use const reference to be sure we only "read" data in this thread.
+             */
+            sync.last();
+
+            const Timestamp& time1 = crd_cb1.time(sync);
+            const Timestamp& time2 = crd_cb2.time(sync);
+
+            const Coord2D<>& data1 = crd_cb1.data(sync);
+            const Coord2D<>& data2 = crd_cb2.data(sync);
+
+            std::cout << "Processing Addition: "<< std::endl;
+            std::cout << "Timestamp 1: " << time1 << " - Data 1: " << data1 << std::endl;
+            std::cout << "Timestamp 2: " << time2 << " - Data 2: " << data2 << std::endl;
+
+            /*
+             * Processing the input data and saving the result to the output flow get at the beginning
+             * of the infinite loop (*data_out).
+             */
+            *data_out = data1 + data2;
+             time_out = time1; // using time1 as the representant ts (we can do a median betweeen ts1 and ts2..)
+
+            std::cout << "Timestamp S: " << time_out << " - Data S: " << *data_out << std::endl;
+
+            /*
+             * Unlocking to allow the receive threads to add more data
+             */
+            lock.unlock();
+
+            /*
+             * Really sending the data stored in the flow (data_out)
+             */
+            send_buffer(cfg.crd_o1, time_out);
+        }
+    }
+
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( process_subtraction )
+    {
+        /*
+         * Output flow variables
+         */
+        Coord2D<>* data_out; // Note that output flows pointers are non-const, so we have to write on them!
+        Timestamp  time_out;
+
+        /*
+         * Creating the Synchroniser object to synchronise only the crd buffers.
+         * Why only the crd buffers and not the img buffer?
+         * Because we only use crd buffers to process the addition.
+         */
+        CircularSyncBufferSynchroniser sync;
+        sync.add(&crd_cb1);
+        sync.add(&crd_cb2);
+
+        /*
+         * Infinite loop for process subtraction
+         */
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the output pointer from the flow to write on
+             */
+            cfg.crd_o2->get_buffer(data_out);
+
+            /*
+             * Shared lock to read the shared variables.
+             * Note that here we use a "shared_lock" because we only read data from buffers.
+             * This way we allow other threads to also read and process data.
+             */
+            boost::shared_lock<boost::shared_mutex> lock(mutex);
+
+            /*
+             * Waiting for the con_all_crd_received because we only want to process subtraction
+             * when all crd are new (not yet processed).
+             *
+             * Please, note that in the process addition we wait for a different condition.
+             */
+            cond_all_crd_received.wait(lock);
+
+            /*
+             * Getting the last but sync data to be processed.
+             *
+             * First we set the sync object, and then we get the timestamped data.
+             * Note that we use const reference to be sure we only "read" data in this thread.
+             *
+             * Note that if circular buffers are not big enough for the different frame rates,
+             * or if the time-distance between data is bigger than the max_dist we use to sync,
+             * the sync(max_dist) function will not found a really good sync data.
+             *
+             * In this case the best solution is probably to use the last received data.
+             */
+            if ( ! sync.sync( 0.5 ) )
+            {
+                std::cout << "SYNC ERROR - NO SYNC DATA FOUND, USING LAST DATA!!!"<< std::endl;
+                sync.last();
+            }
+
+            const Timestamp& time1 = crd_cb1.time(sync);
+            const Timestamp& time2 = crd_cb2.time(sync);
+
+            const Coord2D<>& data1 = crd_cb1.data(sync);
+            const Coord2D<>& data2 = crd_cb2.data(sync);
+
+            std::cout << "Processing Subtraction: "<< std::endl;
+            std::cout << "Timestamp 1: " << time1 << " - Data 1: " << data1 << std::endl;
+            std::cout << "Timestamp 2: " << time2 << " - Data 2: " << data2 << std::endl;
+
+            /*
+             * Processing the input data and saving the result to the output flow get at the beginning
+             * of the infinite loop (*data_out).
+             */
+            *data_out = data1 - data2;
+             time_out = time1; // using ts1 as the representant ts (we can do a median betweeen ts1 and ts2)
+
+            std::cout << "Timestamp S: " << time1 << " - Data S: " << *data_out << std::endl;
+
+            /*
+             * Unlocking to allow the receive threads to add more data
+             */
+            lock.unlock();
+
+            /*
+             * Really sending the data stored in the flow (data_out)
+             */
+            send_buffer(cfg.crd_o2, time_out);
+        }
+    }
+
+    IMAGEPLUS_CLIENT_CONFIG_ASYNC_THREAD( process_draw_circles )
+    {
+        /*
+         * Output flow variables
+         */
+        ImageRGB<>::data_type* data_out;
+        Timestamp              time_out;
+
+        /*
+         * Creating the Synchroniser object to synchronise ALL circular buffers.
+         * In this thread we use all the received data, so we want to sync them all.
+         */
+        CircularSyncBufferSynchroniser sync;
+        sync.add(&crd_cb1);
+        sync.add(&crd_cb2);
+        sync.add(&img_cb);
+
+        /*
+         * Just to wait for the first data available from all flows.
+         *
+         * Note that in the infinite loop we only wait for a new image available, but for the first time
+         * we need also all new crds received.
+         */
+        boost::shared_lock<boost::shared_mutex> first_lock(mutex);
+        cond_all_crd_received.wait(first_lock);
+        first_lock.unlock();
+
+        /*
+         * Infinite loop
+         */
+        CLIENT_CONFIG_WHILE_RUNNING()
+        {
+            /*
+             * Getting the output pointer from the flow to write on
+             */
+            cfg.video_out->get_buffer(data_out);
+
+            /*
+             * Shared lock to read the shared variables.
+             * Note that here we use a "shared_lock" because we only read data from buffers.
+             * This way we allow other threads to also read and process data.
+             */
+            boost::shared_lock<boost::shared_mutex> lock(mutex);
+
+            /*
+             * Waiting for the con_img_received because we want to process for all new image received.
+             *
+             * Please, note that in the process addition and subtraction we wait for a different condition.
+             */
+            cond_img_received.wait(lock);
+
+            /*
+             * Getting the last data in all circular buffers to be processed.
+             *
+             * First we set the sync object, and then we get the timestamped data.
+             * Note that we use const reference to be sure we only "read" data in this thread.
+             */
+            sync.last();
+
+            const Timestamp& time    = img_cb .time(sync);
+
+            const Coord2D<>&  crd1   = crd_cb1.data(sync);
+            const Coord2D<>&  crd2   = crd_cb2.data(sync);
+            const ImageRGB<>& img_in = img_cb .data(sync);
+
+            /*
+             * Processing the input data and saving the result to the output flow get at the beginning
+             * of the infinite loop (*data_out).
+             */
+            ImageRGB<> img_out = img_in;
+
+            toolbox::draw_circle( img_out, 20.0, crd1, 255,  0,0 );
+            toolbox::draw_circle( img_out, 20.0, crd2,   0,255,0 );
+
+
+            export_to(img_out, data_out, img_out.size_x()*img_out.size_y()*3, RGB);
+            time_out = time; // we use the ts of the video flow
+
+            /*
+             * Unlocking to allow the receive threads to add more data
+             */
+            lock.unlock();
+
+            /*
+             * Really sending the data stored in the flow (data_out)
+             */
+            send_buffer(cfg.video_out, time_out);
+        }
+    }
+
+IMAGEPLUS_CLIENT_CONFIG_DEFAULT_VALUES()
+
+    //
+    // Here you should assign default values to your parameters
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_OPTIONS()
+
+    //
+    // Here you have to define your OPTIONS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLAGS()
+
+    //
+    // Here you have to define your FLAGS, with a description
+    // and an optional abreviature
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_ARGUMENTS()
+
+    //
+    // Here you have to define your ARGUMENTS with a description.
+    // You should put them in the DESIRED ORDER in the command-line
+    //
+    // Note that an argument that is a vector should be the last and no more
+    // argument can be added later. Think: is impossible to parser arguments
+    // afters an unknown size vector!
+    // If you need more than one vector, use "options" instead of arguments.
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_FLOWS()
+
+    //
+    // Here you have to define your FLOWS
+    //
+    CLIENT_CONFIG_DATA_IN ( crd_i1, Coord2D<> );
+    CLIENT_CONFIG_DATA_IN ( crd_i2, Coord2D<> );
+    CLIENT_CONFIG_VIDEO_IN( video_in );
+
+    CLIENT_CONFIG_DATA_OUT ( crd_o1, Coord2D<> );
+    CLIENT_CONFIG_DATA_OUT ( crd_o2, Coord2D<> );
+    CLIENT_CONFIG_VIDEO_OUT( video_out );
+
+IMAGEPLUS_CLIENT_CONFIG_READ_PARAMETERS()
+
+    //
+    // Here you have to read all your parameters
+    //
+    // DO NOT FORGET THIS STEP!!
+    //
+
+IMAGEPLUS_CLIENT_CONFIG_METADATAS()
+
+    //
+    // Here you can get the metadatas from the input flows
+    // And you MUST set the metadata of your output flows
+    //
+    // Note that from now on you can access to the previously
+    // defined config parameters with the "cfg" object.
+    //
+    app.video_metadata = cfg.video_in->getMetadata();
+
+    std::cout << "width:  " << app.video_metadata.width  << std::endl;
+    std::cout << "height: " << app.video_metadata.height << std::endl;
+
+    cfg.video_out->setMetadata( app.video_metadata );
+
+//
+// This is the "main" function of your client.
+//
+// You can access to all your parameters (options, flags, and arguments)
+// with the "cfg" object (see the code.)
+//
+// Run the client with "--help" to see your configuration.
+//
+IMAGEPLUS_CLIENT_CONFIG_ASYNC_START()
+
+//
+// This last line is mandatory!
+//
+IMAGEPLUS_CLIENT_CONFIG_END()

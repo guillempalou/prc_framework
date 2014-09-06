@@ -1,0 +1,111 @@
+/*
+ * levmar.hpp
+ *
+ *  Created on: May 30, 2013
+ *      Author: gpalou
+ */
+
+#ifndef LEVMAR_HPP_
+#define LEVMAR_HPP_
+
+#include <imageplus/math/math_types.hpp>
+#include <unsupported/Eigen/NonLinearOptimization>
+
+namespace  imageplus {
+	namespace monocular_depth {
+
+	math::Matrix kronecker_product(const math::Matrix& A, const math::Matrix& B) {
+		math::Matrix AB(A.rows()*B.rows(),A.cols()*B.cols());
+		uint64  Ar = A.rows(),
+				Ac = A.cols(),
+				Br = B.rows(),
+				Bc = B.cols();
+
+		for (uint64 i=0; i<Ar; ++i)
+			for (uint64 j=0; j<Ac; ++j)
+				AB.block(i*Br,j*Bc,Br,Bc) = A(i,j)*B;
+
+		return AB;
+	}
+
+	// Generic functor
+	//NY is the number of observations
+	template<typename _Scalar, int NX=Eigen::Dynamic, int NY=Eigen::Dynamic>
+	struct Functor
+	{
+		typedef _Scalar Scalar;
+		enum {
+			InputsAtCompileTime = NX,
+			ValuesAtCompileTime = NY
+		};
+		typedef Eigen::Matrix<Scalar,InputsAtCompileTime,1> InputType;
+		typedef Eigen::Matrix<Scalar,ValuesAtCompileTime,1> ValueType;
+		typedef Eigen::Matrix<Scalar,ValuesAtCompileTime,InputsAtCompileTime> JacobianType;
+
+		const int m_inputs, m_values;
+
+		Functor() : m_inputs(InputsAtCompileTime), m_values(ValuesAtCompileTime) {}
+		Functor(int inputs, int values) : m_inputs(inputs), m_values(values) {}
+
+		int inputs() const { return m_inputs; }
+		int values() const { return m_values; }
+
+		// you should define that in the subclass :
+		//  void operator() (const InputType& x, ValueType* v, JacobianType* _j=0) const;
+	};
+
+	template<typename Scalar>
+	struct SampsonError : public Functor<Scalar> {
+
+		SampsonError(math::Matrix x1, math::Matrix x2, uint64 N) : Functor<Scalar>(9,N) {
+
+			// Build vectors
+			_N = N;
+
+			_x1 = x1;
+			_x2 = x2;
+
+		}
+
+		// Store the result of the cost function in vector y
+		int operator()(const math::Vector& f, math::Vector& y) const {
+
+			math::Matrix F(3,3);
+			F.row(0) = f.head(3).transpose();
+			F.row(1) = f.segment(3,3).transpose();
+			F.row(2) = f.tail(3).transpose();
+
+			for (uint64 i = 0; i < _N; i++) {
+				math::Vector x1 = _x1.row(i).transpose();
+				math::Vector x2 = _x2.row(i).transpose();
+
+				math::Vector l1 = F*x1; l1(2) = 0;
+				math::Vector l2 = F.transpose()*x2; l2(2) = 0;
+
+				float64 num = (x2.transpose()*F*x1);
+				float64 den = std::sqrt(l1.squaredNorm() + l2.squaredNorm());
+
+				if (den == 0) {
+					y(i) = 0;
+				} else {
+					y(i) = num / den;
+				}
+			}
+			//std::cout << y.transpose() << std::endl;
+			//exit(0);
+
+			return 0;
+		}
+
+	private:
+
+		math::Matrix _x1;
+		math::Matrix _x2;
+
+		uint64 _N;
+	};
+
+	}
+}
+
+#endif /* LEVMAR_HPP_ */

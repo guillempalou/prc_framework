@@ -1,0 +1,109 @@
+/*
+ * area.hpp
+ *
+ *  Created on: Aug 30, 2012
+ *      Author: guillem
+ */
+
+#ifndef AREA_HPP_
+#define AREA_HPP_
+
+
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+
+#include <imageplus/descriptors/descriptor_base.hpp>
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+        //!
+        //! \brief Area visual descriptor
+        //!
+        //! \author Jordi Pont <jpont@gps.tsc.upc.edu>, Guillem Palou <guillem.palou@gmail.com>
+        //!
+        //! \date 02-06-2009
+        class Area : public DescriptorBase
+        {
+        public:
+
+        	//! base structur for descriptors using parameters
+        	struct AreaDescriptorParameters {
+        	};
+
+        	typedef AreaDescriptorParameters 	Parameters;
+
+            //! Type to refer to the type of data which will be returned by this descriptor
+            typedef uint64 type;
+
+
+            //! function returning the id given a set of parameters
+            //! \param[in] pars: parameters to the descriptors (null in this case)
+            static const std::string id(const Parameters& pars = default_parameters()) {
+            	return "absolute_area";
+            }
+
+            //! Default parameters for descriptors
+            static const Parameters default_parameters() {
+            	return Parameters();
+            }
+
+            //!
+            //! \brief Default constructor
+            //!
+            Area(const Parameters& pars = default_parameters()) : DescriptorBase(true), _value(0){};
+
+            //! Virtual destructor
+            ~Area(){};
+
+            //! \brief Calculates the area of a region, given a pair of iterators.
+            //!
+            //! \param[in] first      : Iterator to the beginning of the region
+            //! \param[in] last       : Iterator to the end of the region
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class SignalModel, class RegionModel>
+            void calculate(SignalModel& signal, RegionModel& region, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+                //ASSERT(manager!=0x0, "Area calculate: manager must be non null");
+
+                _value = 0;
+
+                typename SignalModel::template region_iterator<RegionModel>::type	first 	= signal.begin(region);
+                typename SignalModel::template region_iterator<RegionModel>::type	last 	= signal.end(region);
+
+                for(; first!=last; ++first) ++_value;
+            }
+
+            //!
+            //! \brief Calculates recursively area of the father region given the sons ones.
+            //!
+            //! \param[in] son1_descs : CollaborativeDescriptors of the son 1
+            //! \param[in] son2_descs : CollaborativeDescriptors of the son 2
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template<class SignalModel, class RegionModel, class ChildContainer>
+            void recursive_calculate(SignalModel& signal, RegionModel& region, ChildContainer& childs, const Parameters& pars, typename DescriptorBase::ManagerType* manager)
+            {
+                 _value = 0;
+
+                 for (typename ChildContainer::iterator child = childs.begin(); child != childs.end(); ++child) {
+                	 _value += manager->calc_descriptor<Area>(signal,**child, pars);
+                 }
+            }
+
+            const type& value() const {
+            	return _value;
+            }
+
+        private:
+            //! Area of the region
+            type _value;
+
+        };
+    }
+}
+
+#endif /* AREA_HPP_ */

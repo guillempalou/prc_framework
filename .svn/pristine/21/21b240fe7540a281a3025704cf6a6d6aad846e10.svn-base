@@ -1,0 +1,43 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file gaussian_distribution.test
+ * 
+ * Tests for the GaussianDistribution class
+ */
+
+#include <imageplus/math/statistics/gaussian_distribution.hpp>
+
+BOOST_AUTO_TEST_SUITE ( suite_gaussian_distribution );
+
+using namespace std;
+using namespace imageplus;
+using namespace imageplus::math::statistics;
+
+
+BOOST_AUTO_TEST_CASE( test_gaussian_distribution )
+{
+    GaussianDistribution<uint32,3> gauss(2, 0.5, false);
+    boost::array<uint32, 3> mean = { {2,2,2} };
+    BOOST_CHECK(gauss.mean()==mean);
+    
+    /*
+     * The above code should be recoded as follows
+     */
+#if 0
+    typedef GaussianDistribution<uint32,3> Gaussian;
+    
+    Gaussian       gauss (2, 0.5, false);
+    Gaussian::Mean mean  = { {2,2,2} };
+    
+    BOOST_CHECK(gauss.mean()==mean);
+    
+#endif
+    
+    BOOST_WARN_MESSAGE(false, "Gaussian Distribution: TEST NOT YET IMPLEMENTED");
+}
+
+BOOST_AUTO_TEST_SUITE_END();

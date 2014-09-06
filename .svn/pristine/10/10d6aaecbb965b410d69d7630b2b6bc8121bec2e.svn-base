@@ -1,0 +1,654 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file segmentation/test/distances.test
+ */ 
+
+#include <imageplus/segmentation/distances.hpp>
+#include <imageplus/io/readimage.hpp>
+#include <set>
+
+BOOST_AUTO_TEST_SUITE ( Segmentation_Distances_Suite );
+
+using namespace imageplus;
+using namespace segmentation;
+using namespace std;
+
+BOOST_AUTO_TEST_CASE(intersection_matrix_test)
+{
+    ImagePartition<uint32> my_part1(4,3);
+    ImagePartition<uint32> my_part2(4,3);
+    
+    my_part1[0][0] = 1;  my_part1[1][0] = 1;  my_part1[2][0] = 1;  my_part1[3][0] = 5;
+    my_part1[0][1] = 1;  my_part1[1][1] = 1;  my_part1[2][1] = 1;  my_part1[3][1] = 5;
+    my_part1[0][2] = 3;  my_part1[1][2] = 3;  my_part1[2][2] = 3;  my_part1[3][2] = 5;
+    
+    my_part2[0][0] = 1;  my_part2[1][0] = 2;  my_part2[2][0] = 2;  my_part2[3][0] = 3;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;  my_part2[2][1] = 2;  my_part2[3][1] = 3;
+    my_part2[0][2] = 1;  my_part2[1][2] = 1;  my_part2[2][2] = 4;  my_part2[3][2] = 5;
+
+    MultiArray<uint64,2> ground_truth(3,5);
+    ground_truth[0][0] = 3;  ground_truth[1][0] = 0;  ground_truth[2][0] = 2;
+    ground_truth[0][1] = 3;  ground_truth[1][1] = 0;  ground_truth[2][1] = 0;
+    ground_truth[0][2] = 0;  ground_truth[1][2] = 2;  ground_truth[2][2] = 0;
+    ground_truth[0][3] = 0;  ground_truth[1][3] = 0;  ground_truth[2][3] = 1;
+    ground_truth[0][4] = 0;  ground_truth[1][4] = 1;  ground_truth[2][4] = 0;
+    
+    part_bimap bimap1;
+    part_bimap bimap2;
+    MultiArray<uint64,2> intersect_matrix = intersection_matrix(my_part1, my_part2, bimap1, bimap2);
+    BOOST_CHECK(intersect_matrix == ground_truth);
+    
+    BOOST_CHECK(bimap1.left.find(1)->second == 0);
+    BOOST_CHECK(bimap1.left.find(5)->second == 1);
+    BOOST_CHECK(bimap1.left.find(3)->second == 2);
+    
+    BOOST_CHECK(bimap2.left.find(1)->second == 0);
+    BOOST_CHECK(bimap2.left.find(2)->second == 1);
+    BOOST_CHECK(bimap2.left.find(3)->second == 2);
+    BOOST_CHECK(bimap2.left.find(4)->second == 3);
+    BOOST_CHECK(bimap2.left.find(5)->second == 4);
+   
+    intersect_matrix = intersection_matrix(my_part1, my_part2);
+    BOOST_CHECK(intersect_matrix == ground_truth);
+}
+
+
+BOOST_AUTO_TEST_CASE(asymmetric_partition_distance_test)
+{
+	ImagePartition<uint32> my_part1(5,6);
+    ImagePartition<uint32> my_part2(5,6);
+    
+    my_part1[0][0] = 1;  my_part1[1][0] = 1;  my_part1[2][0] = 1;  my_part1[3][0] = 2;  my_part1[4][0] = 2;
+    my_part1[0][1] = 1;  my_part1[1][1] = 1;  my_part1[2][1] = 1;  my_part1[3][1] = 2;  my_part1[4][1] = 2;
+    my_part1[0][2] = 3;  my_part1[1][2] = 3;  my_part1[2][2] = 3;  my_part1[3][2] = 2;  my_part1[4][2] = 2;
+    my_part1[0][3] = 3;  my_part1[1][3] = 3;  my_part1[2][3] = 3;  my_part1[3][3] = 2;  my_part1[4][3] = 2;
+    my_part1[0][4] = 4;  my_part1[1][4] = 4;  my_part1[2][4] = 4;  my_part1[3][4] = 5;  my_part1[4][4] = 5;
+    my_part1[0][5] = 4;  my_part1[1][5] = 4;  my_part1[2][5] = 4;  my_part1[3][5] = 5;  my_part1[4][5] = 5;
+    
+    my_part2[0][0] = 1;  my_part2[1][0] = 2;  my_part2[2][0] = 2;  my_part2[3][0] = 3;  my_part2[4][0] = 3;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;  my_part2[2][1] = 2;  my_part2[3][1] = 3;  my_part2[4][1] = 3;
+    my_part2[0][2] = 1;  my_part2[1][2] = 1;  my_part2[2][2] = 2;  my_part2[3][2] = 3;  my_part2[4][2] = 3;
+    my_part2[0][3] = 4;  my_part2[1][3] = 4;  my_part2[2][3] = 4;  my_part2[3][3] = 3;  my_part2[4][3] = 3;
+    my_part2[0][4] = 5;  my_part2[1][4] = 5;  my_part2[2][4] = 6;  my_part2[3][4] = 6;  my_part2[4][4] = 3;
+    my_part2[0][5] = 5;  my_part2[1][5] = 5;  my_part2[2][5] = 6;  my_part2[3][5] = 6;  my_part2[4][5] = 6;
+
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part1, my_part2), (uint64)6);
+    
+    io::ReadImage ri(string(TEST_DATA_PATH_R) + "/segmentation/1.prl");
+    ri >> my_part1;
+
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/3.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part1, my_part2), (uint64)10275);
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part2, my_part1), (uint64)11076);
+    
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part1, my_part1), (uint64)0);
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part2, my_part2), (uint64)0);
+    
+    
+    // These two were checked against an implementation from the authors (J.S.Cardoso et al.)
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_128.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part1, my_part2), (uint64)160826);
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part2, my_part1), (uint64) 88617);
+    
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part1, my_part1), (uint64)0);
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part2, my_part2), (uint64)0);
+}
+
+
+BOOST_AUTO_TEST_CASE(asymmetric_partition_distance_2_test)
+{
+    ImagePartition<uint32> my_part1(5,6);
+    ImagePartition<uint32> my_part2(5,6);
+    
+    my_part1[0][0] = 1;  my_part1[1][0] = 1;  my_part1[2][0] = 1;  my_part1[3][0] = 9;  my_part1[4][0] = 9;
+    my_part1[0][1] = 1;  my_part1[1][1] = 1;  my_part1[2][1] = 1;  my_part1[3][1] = 9;  my_part1[4][1] = 9;
+    my_part1[0][2] = 3;  my_part1[1][2] = 3;  my_part1[2][2] = 3;  my_part1[3][2] = 9;  my_part1[4][2] = 9;
+    my_part1[0][3] = 3;  my_part1[1][3] = 3;  my_part1[2][3] = 3;  my_part1[3][3] = 9;  my_part1[4][3] = 9;
+    my_part1[0][4] = 4;  my_part1[1][4] = 4;  my_part1[2][4] = 4;  my_part1[3][4] = 5;  my_part1[4][4] = 5;
+    my_part1[0][5] = 4;  my_part1[1][5] = 4;  my_part1[2][5] = 4;  my_part1[3][5] = 5;  my_part1[4][5] = 5;
+    
+    my_part2[0][0] = 1;  my_part2[1][0] = 2;  my_part2[2][0] = 2;  my_part2[3][0] = 3;  my_part2[4][0] = 3;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;  my_part2[2][1] = 2;  my_part2[3][1] = 3;  my_part2[4][1] = 3;
+    my_part2[0][2] = 1;  my_part2[1][2] = 1;  my_part2[2][2] = 2;  my_part2[3][2] = 3;  my_part2[4][2] = 3;
+    my_part2[0][3] = 4;  my_part2[1][3] = 4;  my_part2[2][3] = 4;  my_part2[3][3] = 3;  my_part2[4][3] = 3;
+    my_part2[0][4] = 5;  my_part2[1][4] = 5;  my_part2[2][4] = 6;  my_part2[3][4] = 6;  my_part2[4][4] = 3;
+    my_part2[0][5] = 5;  my_part2[1][5] = 5;  my_part2[2][5] = 6;  my_part2[3][5] = 6;  my_part2[4][5] = 6;
+
+    std::map<uint32,uint32> lut;
+    BOOST_CHECK_EQUAL(asymmetric_partition_distance(my_part1, my_part2, lut), (uint64)6);
+    
+    BOOST_CHECK_EQUAL(lut[1], (uint32)1);
+    BOOST_CHECK_EQUAL(lut[2], (uint32)1);
+    BOOST_CHECK_EQUAL(lut[3], (uint32)9);
+    BOOST_CHECK_EQUAL(lut[4], (uint32)3);
+    BOOST_CHECK_EQUAL(lut[5], (uint32)4);
+    BOOST_CHECK_EQUAL(lut[6], (uint32)5);
+}
+
+BOOST_AUTO_TEST_CASE(symmetric_partition_distance_test)
+{
+    ImagePartition<uint32> my_part1(5,6);
+    ImagePartition<uint32> my_part2(5,6);
+    
+    my_part1[0][0] = 1;  my_part1[1][0] = 1;  my_part1[2][0] = 1;  my_part1[3][0] = 2;  my_part1[4][0] = 2;
+    my_part1[0][1] = 1;  my_part1[1][1] = 1;  my_part1[2][1] = 1;  my_part1[3][1] = 2;  my_part1[4][1] = 2;
+    my_part1[0][2] = 3;  my_part1[1][2] = 3;  my_part1[2][2] = 3;  my_part1[3][2] = 2;  my_part1[4][2] = 2;
+    my_part1[0][3] = 3;  my_part1[1][3] = 3;  my_part1[2][3] = 3;  my_part1[3][3] = 2;  my_part1[4][3] = 2;
+    my_part1[0][4] = 4;  my_part1[1][4] = 4;  my_part1[2][4] = 4;  my_part1[3][4] = 5;  my_part1[4][4] = 5;
+    my_part1[0][5] = 4;  my_part1[1][5] = 4;  my_part1[2][5] = 4;  my_part1[3][5] = 5;  my_part1[4][5] = 5;
+    
+    my_part2[0][0] = 1;  my_part2[1][0] = 2;  my_part2[2][0] = 2;  my_part2[3][0] = 3;  my_part2[4][0] = 3;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;  my_part2[2][1] = 2;  my_part2[3][1] = 3;  my_part2[4][1] = 3;
+    my_part2[0][2] = 1;  my_part2[1][2] = 1;  my_part2[2][2] = 2;  my_part2[3][2] = 3;  my_part2[4][2] = 3;
+    my_part2[0][3] = 4;  my_part2[1][3] = 4;  my_part2[2][3] = 4;  my_part2[3][3] = 3;  my_part2[4][3] = 3;
+    my_part2[0][4] = 5;  my_part2[1][4] = 5;  my_part2[2][4] = 6;  my_part2[3][4] = 6;  my_part2[4][4] = 3;
+    my_part2[0][5] = 5;  my_part2[1][5] = 5;  my_part2[2][5] = 6;  my_part2[3][5] = 6;  my_part2[4][5] = 6;
+
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part1, my_part2), (uint64)9);
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part2, my_part1), (uint64)9);
+    
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part1, my_part1), (uint64)0);
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part2, my_part2), (uint64)0);
+}
+
+
+BOOST_AUTO_TEST_CASE(symmetric_partition_distance_big_test)
+{
+    ImagePartition<uint32> my_part1;
+    ImagePartition<uint32> my_part2;
+    
+    io::ReadImage ri(string(TEST_DATA_PATH_R) + "/segmentation/1.prl");
+    ri >> my_part1;
+
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/3.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part1, my_part2), (uint64)13252);
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part2, my_part1), (uint64)13252);
+    
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part1, my_part1), (uint64)0);
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part2, my_part2), (uint64)0);
+    
+    
+    // These two were checked against an implementation from the authors (J.S.Cardoso et al.)
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_128.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part1, my_part2), (uint64)168212);
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part2, my_part1), (uint64)168212);
+    
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part1, my_part1), (uint64)0);
+    BOOST_CHECK_EQUAL(symmetric_partition_distance(my_part2, my_part2), (uint64)0);
+}
+
+BOOST_AUTO_TEST_CASE(local_consistency_error_big_test)
+{
+    ImagePartition<uint32> my_part1;
+    ImagePartition<uint32> my_part2;
+    
+    io::ReadImage ri(string(TEST_DATA_PATH_R) + "/segmentation/1.prl");
+    ri >> my_part1;
+
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/3.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_CLOSE(local_consistency_error(my_part1, my_part2), (float64)0.4341574375885, 1e-10);
+    BOOST_CHECK_CLOSE(local_consistency_error(my_part2, my_part1), (float64)0.4341574375885, 1e-10);
+    
+    BOOST_CHECK_EQUAL(local_consistency_error(my_part1, my_part1), (float64)0);
+    BOOST_CHECK_EQUAL(local_consistency_error(my_part2, my_part2), (float64)0);
+    
+    
+    // These two were checked against an implementation from J.S.Cardoso et al.
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_128.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_CLOSE(local_consistency_error(my_part1, my_part2), (float64)0.2493495026281, 1e-10);
+    BOOST_CHECK_CLOSE(local_consistency_error(my_part2, my_part1), (float64)0.2493495026281, 1e-10);
+    
+    BOOST_CHECK_EQUAL(local_consistency_error(my_part1, my_part1), (float64)0);
+    BOOST_CHECK_EQUAL(local_consistency_error(my_part2, my_part2), (float64)0);
+}
+   
+
+
+BOOST_AUTO_TEST_CASE(global_consistency_error_big_test)
+{
+    ImagePartition<uint32> my_part1;
+    ImagePartition<uint32> my_part2;
+    
+    io::ReadImage ri(string(TEST_DATA_PATH_R) + "/segmentation/1.prl");
+    ri >> my_part1;
+
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/3.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_CLOSE(global_consistency_error(my_part1, my_part2), (float64)0.5606498406156, 1e-10);
+    BOOST_CHECK_CLOSE(global_consistency_error(my_part2, my_part1), (float64)0.5606498406156, 1e-10);
+    
+    BOOST_CHECK_EQUAL(global_consistency_error(my_part1, my_part1), (uint64)0);
+    BOOST_CHECK_EQUAL(global_consistency_error(my_part2, my_part2), (uint64)0);
+    
+    
+    // These two were checked against an implementation from J.S.Cardoso et al.
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_128.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_CLOSE(global_consistency_error(my_part1, my_part2), (float64)0.2885847112374, 1e-10);
+    BOOST_CHECK_CLOSE(global_consistency_error(my_part2, my_part1), (float64)0.2885847112374, 1e-10);
+    
+    BOOST_CHECK_EQUAL(global_consistency_error(my_part1, my_part1), (float64)0);
+    BOOST_CHECK_EQUAL(global_consistency_error(my_part2, my_part2), (float64)0);
+}
+
+
+BOOST_AUTO_TEST_CASE(bidirectional_consistency_error_big_test)
+{
+    ImagePartition<uint32> my_part1;
+    ImagePartition<uint32> my_part2;
+    
+    io::ReadImage ri(string(TEST_DATA_PATH_R) + "/segmentation/1.prl");
+    ri >> my_part1;
+
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/3.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_CLOSE(bidirectional_consistency_error(my_part1, my_part2), (float64)0.7265257995469, 1e-10);
+    BOOST_CHECK_CLOSE(bidirectional_consistency_error(my_part2, my_part1), (float64)0.7265257995469, 1e-10);
+    
+    BOOST_CHECK_EQUAL(bidirectional_consistency_error(my_part1, my_part1), (float64)0);
+    BOOST_CHECK_EQUAL(bidirectional_consistency_error(my_part2, my_part2), (float64)0);
+    
+    
+    // These two were checked against an implementation from J.S.Cardoso et al.
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_128.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_CLOSE(bidirectional_consistency_error(my_part1, my_part2), (float64)0.5377632744257, 1e-10);
+    BOOST_CHECK_CLOSE(bidirectional_consistency_error(my_part2, my_part1), (float64)0.5377632744257, 1e-10);
+    
+    BOOST_CHECK_EQUAL(bidirectional_consistency_error(my_part1, my_part1), (float64)0);
+    BOOST_CHECK_EQUAL(bidirectional_consistency_error(my_part2, my_part2), (float64)0);
+}
+
+
+BOOST_AUTO_TEST_CASE(mutual_information_big_test)
+{
+    ImagePartition<uint32> my_part1;
+    ImagePartition<uint32> my_part2;
+    
+    io::ReadImage ri(string(TEST_DATA_PATH_R) + "/segmentation/1.prl");
+    ri >> my_part1;
+
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/3.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_CLOSE(mutual_information(my_part1, my_part2), (float64)0.002510330720466, 1e-10);
+    BOOST_CHECK_CLOSE(mutual_information(my_part2, my_part1), (float64)0.002510330720466, 1e-10);
+    
+    
+    // These two were checked against an implementation from J.S.Cardoso et al.
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_128.prl");
+    ri >> my_part2;
+    
+    BOOST_CHECK_CLOSE(mutual_information(my_part1, my_part2), (float64)0.03583978881224, 1e-10);
+    BOOST_CHECK_CLOSE(mutual_information(my_part2, my_part1), (float64)0.03583978881224, 1e-10);
+}
+
+
+BOOST_AUTO_TEST_CASE(segmentation_covering_test)
+{
+    ImagePartition<uint32> my_part1(5,6);
+    ImagePartition<uint32> my_part2(5,6);
+    
+    my_part1[0][0] = 1;  my_part1[1][0] = 1;  my_part1[2][0] = 1;  my_part1[3][0] = 2;  my_part1[4][0] = 2;
+    my_part1[0][1] = 1;  my_part1[1][1] = 1;  my_part1[2][1] = 1;  my_part1[3][1] = 2;  my_part1[4][1] = 2;
+    my_part1[0][2] = 3;  my_part1[1][2] = 3;  my_part1[2][2] = 3;  my_part1[3][2] = 2;  my_part1[4][2] = 2;
+    my_part1[0][3] = 3;  my_part1[1][3] = 3;  my_part1[2][3] = 3;  my_part1[3][3] = 2;  my_part1[4][3] = 2;
+    my_part1[0][4] = 4;  my_part1[1][4] = 4;  my_part1[2][4] = 4;  my_part1[3][4] = 5;  my_part1[4][4] = 5;
+    my_part1[0][5] = 4;  my_part1[1][5] = 4;  my_part1[2][5] = 4;  my_part1[3][5] = 5;  my_part1[4][5] = 5;
+    
+    my_part2[0][0] = 1;  my_part2[1][0] = 2;  my_part2[2][0] = 2;  my_part2[3][0] = 3;  my_part2[4][0] = 3;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;  my_part2[2][1] = 2;  my_part2[3][1] = 3;  my_part2[4][1] = 3;
+    my_part2[0][2] = 1;  my_part2[1][2] = 1;  my_part2[2][2] = 2;  my_part2[3][2] = 3;  my_part2[4][2] = 3;
+    my_part2[0][3] = 4;  my_part2[1][3] = 4;  my_part2[2][3] = 4;  my_part2[3][3] = 3;  my_part2[4][3] = 3;
+    my_part2[0][4] = 5;  my_part2[1][4] = 5;  my_part2[2][4] = 4;  my_part2[3][4] = 6;  my_part2[4][4] = 6;
+    my_part2[0][5] = 5;  my_part2[1][5] = 5;  my_part2[2][5] = 5;  my_part2[3][5] = 6;  my_part2[4][5] = 6;
+
+    BOOST_CHECK_CLOSE(segmentation_covering(my_part1, my_part2), 0.73809523809523803, 1e-10);
+    BOOST_CHECK_CLOSE(segmentation_covering(my_part1, my_part1), 1, 1e-10);
+    BOOST_CHECK_CLOSE(segmentation_covering(my_part2, my_part2), 1, 1e-10);
+    
+    io::ReadImage ri(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    BOOST_CHECK_CLOSE(segmentation_covering(my_part1, my_part1), 1, 1e-10);
+}
+
+BOOST_AUTO_TEST_CASE(optimal_segmentation_covering_test)
+{
+    ImagePartition<uint32> my_part1(5,6);
+    ImagePartition<uint32> my_part2(5,6);
+    
+    my_part1[0][0] = 1;  my_part1[1][0] = 1;  my_part1[2][0] = 1;  my_part1[3][0] = 2;  my_part1[4][0] = 2;
+    my_part1[0][1] = 1;  my_part1[1][1] = 1;  my_part1[2][1] = 1;  my_part1[3][1] = 2;  my_part1[4][1] = 2;
+    my_part1[0][2] = 3;  my_part1[1][2] = 3;  my_part1[2][2] = 3;  my_part1[3][2] = 2;  my_part1[4][2] = 2;
+    my_part1[0][3] = 3;  my_part1[1][3] = 3;  my_part1[2][3] = 3;  my_part1[3][3] = 2;  my_part1[4][3] = 2;
+    my_part1[0][4] = 4;  my_part1[1][4] = 4;  my_part1[2][4] = 4;  my_part1[3][4] = 5;  my_part1[4][4] = 5;
+    my_part1[0][5] = 4;  my_part1[1][5] = 4;  my_part1[2][5] = 4;  my_part1[3][5] = 5;  my_part1[4][5] = 5;
+    
+    my_part2[0][0] = 1;  my_part2[1][0] = 2;  my_part2[2][0] = 2;  my_part2[3][0] = 3;  my_part2[4][0] = 3;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;  my_part2[2][1] = 2;  my_part2[3][1] = 3;  my_part2[4][1] = 3;
+    my_part2[0][2] = 1;  my_part2[1][2] = 1;  my_part2[2][2] = 2;  my_part2[3][2] = 3;  my_part2[4][2] = 3;
+    my_part2[0][3] = 4;  my_part2[1][3] = 4;  my_part2[2][3] = 4;  my_part2[3][3] = 3;  my_part2[4][3] = 3;
+    my_part2[0][4] = 5;  my_part2[1][4] = 5;  my_part2[2][4] = 4;  my_part2[3][4] = 6;  my_part2[4][4] = 6;
+    my_part2[0][5] = 5;  my_part2[1][5] = 5;  my_part2[2][5] = 5;  my_part2[3][5] = 6;  my_part2[4][5] = 6;
+
+    BOOST_CHECK_CLOSE(optimal_segmentation_covering(my_part1, my_part2), 0.61507936318715417, 1e-10);
+    BOOST_CHECK_CLOSE(optimal_segmentation_covering(my_part1, my_part1), 1, 1e-10);
+    BOOST_CHECK_CLOSE(optimal_segmentation_covering(my_part2, my_part2), 1, 1e-10);
+    
+    io::ReadImage ri(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    BOOST_CHECK_CLOSE(optimal_segmentation_covering(my_part1, my_part1), 1, 1e-10);
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_200.prl");
+    ri >> my_part1;
+    
+    ri.open(string(TEST_DATA_PATH_R) + "/segmentation/football_128.prl");
+    ri >> my_part2;
+    
+    // Check it is symmetrical
+    BOOST_CHECK_CLOSE(optimal_segmentation_covering(my_part1, my_part2), optimal_segmentation_covering(my_part2, my_part1), 1e-10);
+}
+
+BOOST_AUTO_TEST_CASE(HooverMeasures_simple1_test)
+{
+    ImagePartition<uint32> my_part1(2,2);
+    ImagePartition<uint32> my_part2(2,2);
+    
+    my_part1[0][0] = 0;  my_part1[1][0] = 1;
+    my_part1[0][1] = 2;  my_part1[1][1] = 3;
+    
+    my_part2[0][0] = 0;  my_part2[1][0] = 1;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;
+    
+    HooverMeasures hoover_measures;
+    hoover_measures.calculate(my_part1, my_part2);
+    
+    BOOST_CHECK(hoover_measures.classification_part().size() == 4);
+    BOOST_CHECK(hoover_measures.classification_part().find(0)->second == CORRECT_DETECTION);
+    BOOST_CHECK(hoover_measures.classification_part().find(1)->second == OVER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_part().find(2)->second == OVER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_part().find(3)->second == OVER_SEGMENTATION);
+    
+    BOOST_CHECK(hoover_measures.classification_gt().size() == 2);
+    BOOST_CHECK(hoover_measures.classification_gt().find(0)->second == CORRECT_DETECTION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(1)->second == OVER_SEGMENTATION);
+    
+    hoover_measures.calculate(my_part2, my_part1);
+    
+    BOOST_CHECK(hoover_measures.classification_gt().size() == 4);
+    BOOST_CHECK(hoover_measures.classification_gt().find(0)->second == CORRECT_DETECTION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(1)->second == UNDER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(2)->second == UNDER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(3)->second == UNDER_SEGMENTATION);
+    
+    BOOST_CHECK(hoover_measures.classification_part().size() == 2);
+    BOOST_CHECK(hoover_measures.classification_part().find(0)->second == CORRECT_DETECTION);
+    BOOST_CHECK(hoover_measures.classification_part().find(1)->second == UNDER_SEGMENTATION);
+}
+
+BOOST_AUTO_TEST_CASE(HooverMeasures_simple2_test)
+{
+    ImagePartition<uint32> my_part1(2,2);
+    ImagePartition<uint32> my_part2(2,2);
+    
+    my_part1[0][0] = 0;  my_part1[1][0] = 0;
+    my_part1[0][1] = 0;  my_part1[1][1] = 0;
+    
+    my_part2[0][0] = 0;  my_part2[1][0] = 1;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;
+    
+    HooverMeasures hoover_measures;
+    hoover_measures.calculate(my_part1, my_part2);
+    
+    BOOST_CHECK(hoover_measures.classification_part().size() == 1);
+    BOOST_CHECK(hoover_measures.classification_part().find(0)->second == UNDER_SEGMENTATION);
+    
+    BOOST_CHECK(hoover_measures.classification_gt().size() == 2);
+    BOOST_CHECK(hoover_measures.classification_gt().find(0)->second == UNDER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(1)->second == UNDER_SEGMENTATION);
+    
+    hoover_measures.calculate(my_part2, my_part1);
+    
+    BOOST_CHECK(hoover_measures.classification_gt().size() == 1);
+    BOOST_CHECK(hoover_measures.classification_gt().find(0)->second == OVER_SEGMENTATION);
+    
+    BOOST_CHECK(hoover_measures.classification_part().size() == 2);
+    BOOST_CHECK(hoover_measures.classification_part().find(0)->second == OVER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_part().find(1)->second == OVER_SEGMENTATION);
+}
+
+BOOST_AUTO_TEST_CASE(HooverMeasures_complete_test)
+{
+    ImagePartition<uint32> my_part1(5,6);
+    ImagePartition<uint32> my_part2(5,6);
+    
+    my_part1[0][0] = 1;  my_part1[1][0] = 1;  my_part1[2][0] = 1;  my_part1[3][0] = 2;  my_part1[4][0] = 2;
+    my_part1[0][1] = 1;  my_part1[1][1] = 1;  my_part1[2][1] = 1;  my_part1[3][1] = 2;  my_part1[4][1] = 2;
+    my_part1[0][2] = 3;  my_part1[1][2] = 3;  my_part1[2][2] = 3;  my_part1[3][2] = 2;  my_part1[4][2] = 2;
+    my_part1[0][3] = 3;  my_part1[1][3] = 3;  my_part1[2][3] = 3;  my_part1[3][3] = 2;  my_part1[4][3] = 2;
+    my_part1[0][4] = 4;  my_part1[1][4] = 4;  my_part1[2][4] = 4;  my_part1[3][4] = 5;  my_part1[4][4] = 5;
+    my_part1[0][5] = 4;  my_part1[1][5] = 4;  my_part1[2][5] = 4;  my_part1[3][5] = 5;  my_part1[4][5] = 5;
+    
+    my_part2[0][0] = 1;  my_part2[1][0] = 2;  my_part2[2][0] = 2;  my_part2[3][0] = 3;  my_part2[4][0] = 3;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;  my_part2[2][1] = 2;  my_part2[3][1] = 3;  my_part2[4][1] = 3;
+    my_part2[0][2] = 1;  my_part2[1][2] = 1;  my_part2[2][2] = 2;  my_part2[3][2] = 3;  my_part2[4][2] = 3;
+    my_part2[0][3] = 4;  my_part2[1][3] = 4;  my_part2[2][3] = 4;  my_part2[3][3] = 3;  my_part2[4][3] = 3;
+    my_part2[0][4] = 5;  my_part2[1][4] = 5;  my_part2[2][4] = 4;  my_part2[3][4] = 6;  my_part2[4][4] = 6;
+    my_part2[0][5] = 5;  my_part2[1][5] = 5;  my_part2[2][5] = 5;  my_part2[3][5] = 6;  my_part2[4][5] = 6;
+    
+    HooverMeasures hoover_measures;
+    hoover_measures.calculate(my_part1, my_part2);
+    
+    BOOST_CHECK(hoover_measures.classification_part().size() == 5);
+    BOOST_CHECK(hoover_measures.classification_part().find(0)->second == UNDER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_part().find(1)->second == CORRECT_DETECTION);
+    BOOST_CHECK(hoover_measures.classification_part().find(2)->second == NOISE);
+    BOOST_CHECK(hoover_measures.classification_part().find(3)->second == CORRECT_DETECTION);
+    BOOST_CHECK(hoover_measures.classification_part().find(4)->second == CORRECT_DETECTION);
+    
+    BOOST_CHECK(hoover_measures.classification_gt().size() == 6);
+    BOOST_CHECK(hoover_measures.classification_gt().find(0)->second == UNDER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(1)->second == UNDER_SEGMENTATION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(2)->second == CORRECT_DETECTION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(3)->second == MISSED);
+    BOOST_CHECK(hoover_measures.classification_gt().find(4)->second == CORRECT_DETECTION);
+    BOOST_CHECK(hoover_measures.classification_gt().find(5)->second == CORRECT_DETECTION);
+
+    // Check correct_detections
+    BOOST_CHECK(hoover_measures.correct_detections().size() == 3);
+    BOOST_CHECK(hoover_measures.correct_detections().left.find(1)->second == 2);
+    BOOST_CHECK(hoover_measures.correct_detections().left.find(3)->second == 4);
+    BOOST_CHECK(hoover_measures.correct_detections().left.find(4)->second == 5);
+
+    // Check over_segmentation
+    BOOST_CHECK(hoover_measures.over_segmentations().size() == 0);
+    BOOST_CHECK(hoover_measures.total_over_segmentations()  == 0);
+    
+    // Check under_segmentation
+    BOOST_CHECK(hoover_measures.under_segmentations().size() == 1);
+    BOOST_CHECK(hoover_measures.under_segmentations().count(0) == 1);
+    BOOST_CHECK(hoover_measures.under_segmentations().find(0)->second.size() == 2);
+    BOOST_CHECK(*(hoover_measures.under_segmentations().find(0)->second.begin()) == 0);
+    BOOST_CHECK(*(++(hoover_measures.under_segmentations().find(0)->second.begin())) == 1);
+    
+    BOOST_CHECK(hoover_measures.total_under_segmentations() == 2);
+    
+    // Check missed
+    BOOST_CHECK(hoover_measures.missed().size() == 1);
+    BOOST_CHECK(hoover_measures.missed().count(3) == 1);
+    
+    // Check noise
+    BOOST_CHECK(hoover_measures.noise().size() == 1);
+    BOOST_CHECK(hoover_measures.noise().count(2) == 1);
+
+    
+    hoover_measures.calculate(my_part2, my_part1);
+    
+    BOOST_CHECK(hoover_measures.classification_gt().size() == 5);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_gt().find(0)->second, OVER_SEGMENTATION);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_gt().find(1)->second, CORRECT_DETECTION);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_gt().find(2)->second, MISSED);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_gt().find(3)->second, CORRECT_DETECTION);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_gt().find(4)->second, CORRECT_DETECTION);
+
+    BOOST_CHECK(hoover_measures.classification_part().size() == 6);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_part().find(0)->second, OVER_SEGMENTATION);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_part().find(1)->second, OVER_SEGMENTATION);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_part().find(2)->second, CORRECT_DETECTION);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_part().find(3)->second, NOISE);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_part().find(4)->second, CORRECT_DETECTION);
+    BOOST_CHECK_EQUAL(hoover_measures.classification_part().find(5)->second, CORRECT_DETECTION);
+    
+    
+    // Check correct_detections
+    BOOST_CHECK(hoover_measures.correct_detections().size() == 3);
+    BOOST_CHECK(hoover_measures.correct_detections().left.find(2)->second == 1);
+    BOOST_CHECK(hoover_measures.correct_detections().left.find(4)->second == 3);
+    BOOST_CHECK(hoover_measures.correct_detections().left.find(5)->second == 4);
+
+    // Check under_segmentations
+    BOOST_CHECK(hoover_measures.under_segmentations().size() == 0);
+    BOOST_CHECK(hoover_measures.total_under_segmentations() == 0);
+    
+    // Check over_segmentations
+    BOOST_CHECK(hoover_measures.over_segmentations().size() == 1);
+    BOOST_CHECK(hoover_measures.over_segmentations().count(0) == 1);
+    BOOST_CHECK(hoover_measures.over_segmentations().find(0)->second.size() == 2);
+    BOOST_CHECK(*(hoover_measures.over_segmentations().find(0)->second.begin()) == 0);
+    BOOST_CHECK(*(++(hoover_measures.over_segmentations().find(0)->second.begin())) == 1);
+    
+    BOOST_CHECK(hoover_measures.total_over_segmentations() == 2);
+    
+    // Check missed
+    BOOST_CHECK(hoover_measures.missed().size() == 1);
+    BOOST_CHECK(hoover_measures.missed().count(2) == 1);
+    
+    // Check noise
+    BOOST_CHECK(hoover_measures.noise().size() == 1);
+    BOOST_CHECK(hoover_measures.noise().count(3) == 1);
+}
+
+//BOOST_AUTO_TEST_CASE(HooverMeasures_real_test)
+//{
+//    ImagePartition<uint32> my_part1, my_part2;
+//
+//    io::ReadImage ri("/mnt/seq/techs/segmentation/BSDS500/ground_truth/100007_3.prl");
+//    ri >> my_part1;
+//
+//    ri.open("/mnt/seq/techs/segmentation/BSDS500/ground_truth/100039_1.prl");
+//    ri >> my_part2;
+//
+//}
+
+BOOST_AUTO_TEST_CASE(variation_of_information_test)
+{
+    ImagePartition<uint32> my_part1(2,2);
+    ImagePartition<uint32> my_part2(2,2);
+    
+    my_part1 = 0;
+    
+    my_part2[0][0] = 0; my_part2[0][1] = 1;
+    my_part2[1][0] = 0; my_part2[1][1] = 1;
+    
+    BOOST_CHECK_EQUAL(variation_of_information(my_part1, my_part1), 0);
+    BOOST_CHECK_EQUAL(variation_of_information(my_part2, my_part2), 0);
+    BOOST_CHECK_EQUAL(variation_of_information(my_part1, my_part2), 1);
+    BOOST_CHECK_EQUAL(variation_of_information(my_part2, my_part1), 1);
+    
+    my_part1[0][0] = 0; my_part1[0][1] = 1;
+    my_part1[1][0] = 2; my_part1[1][1] = 3;
+    
+    BOOST_CHECK_EQUAL(variation_of_information(my_part1, my_part1), 0);
+    BOOST_CHECK_EQUAL(variation_of_information(my_part1, my_part2), 1);
+}
+
+BOOST_AUTO_TEST_CASE(rand_index_test) // We should test it more deeply, against other implementations maybe
+{
+    ImagePartition<uint32> my_part1(2,2);
+    ImagePartition<uint32> my_part2(2,2);
+    
+    my_part1 = 0;
+    
+    my_part2[0][0] = 0; my_part2[0][1] = 1;
+    my_part2[1][0] = 0; my_part2[1][1] = 1;
+    
+    BOOST_CHECK_EQUAL(rand_index(my_part1, my_part1), 1);
+    BOOST_CHECK_EQUAL(rand_index(my_part2, my_part2), 1);
+    
+    my_part1[0][0] = 0; my_part1[0][1] = 1;
+    my_part1[1][0] = 2; my_part1[1][1] = 3;
+    
+    BOOST_CHECK_EQUAL(rand_index(my_part1, my_part1), 1);
+}
+
+BOOST_AUTO_TEST_CASE(pairs_of_pixels_test)
+{
+    ImagePartition<uint32> my_part1(5,6);
+    ImagePartition<uint32> my_part2(5,6);
+    
+    my_part1[0][0] = 1;  my_part1[1][0] = 1;  my_part1[2][0] = 1;  my_part1[3][0] = 2;  my_part1[4][0] = 2;
+    my_part1[0][1] = 1;  my_part1[1][1] = 1;  my_part1[2][1] = 1;  my_part1[3][1] = 2;  my_part1[4][1] = 2;
+    my_part1[0][2] = 3;  my_part1[1][2] = 3;  my_part1[2][2] = 3;  my_part1[3][2] = 2;  my_part1[4][2] = 2;
+    my_part1[0][3] = 3;  my_part1[1][3] = 3;  my_part1[2][3] = 3;  my_part1[3][3] = 2;  my_part1[4][3] = 2;
+    my_part1[0][4] = 4;  my_part1[1][4] = 4;  my_part1[2][4] = 4;  my_part1[3][4] = 5;  my_part1[4][4] = 5;
+    my_part1[0][5] = 4;  my_part1[1][5] = 4;  my_part1[2][5] = 4;  my_part1[3][5] = 5;  my_part1[4][5] = 5;
+    
+    my_part2[0][0] = 1;  my_part2[1][0] = 2;  my_part2[2][0] = 2;  my_part2[3][0] = 3;  my_part2[4][0] = 3;
+    my_part2[0][1] = 1;  my_part2[1][1] = 1;  my_part2[2][1] = 2;  my_part2[3][1] = 3;  my_part2[4][1] = 3;
+    my_part2[0][2] = 1;  my_part2[1][2] = 1;  my_part2[2][2] = 2;  my_part2[3][2] = 3;  my_part2[4][2] = 3;
+    my_part2[0][3] = 4;  my_part2[1][3] = 4;  my_part2[2][3] = 4;  my_part2[3][3] = 3;  my_part2[4][3] = 3;
+    my_part2[0][4] = 5;  my_part2[1][4] = 5;  my_part2[2][4] = 4;  my_part2[3][4] = 6;  my_part2[4][4] = 6;
+    my_part2[0][5] = 5;  my_part2[1][5] = 5;  my_part2[2][5] = 5;  my_part2[3][5] = 6;  my_part2[4][5] = 6;
+
+    
+    PairsOfPixels pairs;
+    pairs.calculate(my_part1, my_part2);
+
+    BOOST_CHECK_EQUAL(pairs.rand_index(), rand_index(my_part1, my_part2)); // Comparison between two different implementations
+    BOOST_CHECK_EQUAL(pairs.rand_index(), rand_index(my_part2, my_part1)); // Comparison between two different implementations
+    
+    BOOST_CHECK_CLOSE(pairs.recall()   , 0.81818181818181823, 1e-10);  // Not checked against any other implementation
+    BOOST_CHECK_CLOSE(pairs.precision(), 0.68354430379746833, 1e-10);  // Not checked against any other implementation
+}
+
+
+BOOST_AUTO_TEST_SUITE_END ();
+

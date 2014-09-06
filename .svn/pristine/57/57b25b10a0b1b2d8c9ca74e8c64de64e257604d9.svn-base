@@ -1,0 +1,320 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+/*!
+ *\file kalman.hpp
+ * 
+ * Kalman's filter
+ */
+
+
+#ifndef IMAGEPLUS_FILTERS_KALMAN__HPP
+#define IMAGEPLUS_FILTERS_KALMAN__HPP
+
+
+#include <imageplus/core.hpp>
+
+#include <ostream>
+
+
+namespace imageplus
+{
+    namespace filters
+    {
+        //!
+        //!  Kalman filter algorithm. 
+        //!
+        //! The Kalman filter is an efficient recursive filter that estimates the state of a linear dynamic system from a series of noisy 
+        //! measurements. It is used in a wide range of engineering applications from radar to computer vision, and is an important topic in 
+        //! control theory and control systems engineering. 
+        //!
+        //! An example application would be providing accurate, continuously updated information about the position and velocity of an object given 
+        //! only a sequence of observations about its position, each of which includes some error. This application is implemented in the test application
+        //! example.
+        //!
+        //! How to use the kalman filter:
+        //! First, call the constructor with the configuration matrixes and the state vector Xk:
+        //! \code
+        //!        Kalman(MultiArray<float64, 2> & A, MultiArray<float64, 2> & Q, MultiArray<float64, 2> & H,
+        //!                MultiArray<float64, 2> & R, MultiArray<float64, 2> & P, MultiArray<float64, 1> & Xk);
+        //! \endcode
+        //!
+        //! Where:     A is the State transition Matrix.
+        //!            Q is the Covariance matrix of the noise process w.
+        //!            H is the Matrix for relating the state with the observation.
+        //!            R is the Covariance matrix of the observation noise v.
+        //!            P is the Error covariance matrix.
+        //!            Xk is the State vector (i.e. N= 4 --> x, y , Vx, Vy)
+        //!
+        //! A correct configuration of these matrixes is needed for a correct kalman filter running!!. You can read more about these matrixes,  
+        //! why they are needed, and how to configure them in any kalman filter explanation.  
+        //!
+        //! Second, for each new observation Zk, use the process function -->            
+        //! \code
+        //!        void kalman_process(MultiArray<float64, 1> & Zk);
+        //! \endcode
+        //!
+        //! Third, to obtain the results of the state vector, access to state vector Xk via  -->    
+        //! \code
+        //!     MultiArray<float64, 1> & Xk(){return _Xk;};
+        //! \endcode
+        //!
+        //!
+        //! \author Jaime Gallego Vila jgallego@gps.tsc.upc.edu
+        //! \date 2009-07-01
+        //!
+        class Kalman  
+        {
+            
+        public:
+            
+            //!
+            //! \brief Default constructor.
+            //!
+            Kalman(){};
+            
+            //!
+            //! \brief Constructor
+            //!
+            //! \param[in]     A    :    MultiArray<float64, 2>, State transition Matrix.
+            //! \param[in]     Q    :    MultiArray<float64, 2>, Covariance matrix of the noise process w.
+            //! \param[in]     H    :    MultiArray<float64, 2>, Matrix for relating the state with the observation.
+            //! \param[in]     R    :    MultiArray<float64, 2>, Covariance matrix of the observation noise v.
+            //! \param[in]     P    :    MultiArray<float64, 2>, Error covariance matrix.
+            //! \param[in]     Xk   :    MultiArray<float64, 2>, State vector.
+            //!
+            Kalman( const MultiArray<float64, 2>& A, const MultiArray<float64, 2>& Q, const MultiArray<float64, 2>& H,
+                    const MultiArray<float64, 2>& R, const MultiArray<float64, 2>& P, const MultiArray<float64, 1>& Xk );
+            
+            //!
+            //! \brief destructor
+            //!
+            ~Kalman();
+            
+            //!
+            //! \brief Kalman filter Initialization
+            //!
+            //! \param[in]     A    :    MultiArray<float64, 2>, State transition Matrix.
+            //! \param[in]     Q    :    MultiArray<float64, 2>, Covariance matrix of the noise process w.
+            //! \param[in]     H    :    MultiArray<float64, 2>, Matrix for relating the state with the observation.
+            //! \param[in]     R    :    MultiArray<float64, 2>, Covariance matrix of the observation noise v.
+            //! \param[in]     P    :    MultiArray<float64, 2>, Error covariance matrix.
+            //! \param[in]     Xk   :    MultiArray<float64, 2>, State vector.
+            //!
+            void kalman_init( const MultiArray<float64, 2>& A, const MultiArray<float64, 2>& Q, const MultiArray<float64, 2>& H,
+                              const MultiArray<float64, 2>& R, const MultiArray<float64, 2>& P, const MultiArray<float64, 1>& Xk );
+            
+            //!
+            //! \brief Process. Prediction & Updating
+            //!
+            //! \param[in]     Zk    :    MultiArray<float64, 1>, Vector with the observation features. I.e ( |x|y|)
+            //!
+            void kalman_process( const MultiArray<float64, 1>& Zk);
+            
+            //!
+            //! \brief Assignment operator
+            //!
+            //! \param[in] copy : filter to copy
+            //!
+            //! \return cpy, just to concatenate
+            //!
+            const Kalman& operator=(const Kalman& copy);
+                        
+            //!
+            //! \brief Return the State transition Matrix
+            //!
+            //! \return the State Transition Matrix
+            //!
+            const MultiArray<float64, 2>& A() const 
+            {
+                return _A;
+            };
+            
+            //!
+            //! \brief Return the State transition Matrix
+            //!
+            //! \return the State Transition Matrix transposed
+            //!
+            const MultiArray<float64, 2>& AT() const 
+            {
+                return _AT;
+            };
+            
+            //!
+            //! \brief Set the State transition Matrix and its transpose.
+            //!
+            //! \param[in] A_in : State transition matrix to set
+            //!
+            void A( const MultiArray<float64, 2>& A_in);
+            
+            //!
+            //! \brief Return Covariance matrix of the noise process w
+            //!
+            //! \return the covariance matrix of the noise process w
+            //!
+            MultiArray<float64, 2>& Q()
+            {
+                return _Q;
+            };
+            
+            //!
+            //! \brief Return Covariance matrix of the noise process w
+            //!
+            //! \return the covariance matrix of the noise process w
+            //!
+            const MultiArray<float64, 2> & Q() const 
+            {
+                return _Q;
+            };
+            
+            //!
+            //! \brief Set the Matrix to relate the state with the observation and its traspose.
+            //!
+            //! \param[in] H_in : Observation matrix
+            //!
+            void H( const MultiArray<float64, 2>& H_in);
+            
+            //!
+            //! \brief Return const Matrix to relate the state with the observation
+            //!
+            //! \return Matrix to relate the state with the observation
+            //!
+            const MultiArray<float64, 2>& H() const
+            {
+                return _H;
+            };
+            
+            //!
+            //! \brief Return Matrix to relate the state with the observation
+            //!
+            //! \return Transposed matrix to relate the state with the observation
+            //!
+            const MultiArray<float64, 2> & HT() const
+            {
+                return _HT;
+            };
+            
+            //!
+            //! \brief Return Covariance matrix of the observation noise v
+            //!
+            //! \return Covariance matrix of the observation noise v
+            //!
+            MultiArray<float64, 2> & R()
+            {
+                return _R;
+            };
+            
+            //!
+            //! \brief Return const Covariance matrix of the observation noise v
+            //!
+            //! \return Covariance matrix of the observation noise v
+            //!
+            const MultiArray<float64, 2> & R() const
+            {
+                return _R;
+            };
+            
+            //!
+            //! \brief Return Error covariance matrix
+            //!
+            //! \return Error covariance matrix
+            //!
+            MultiArray<float64, 2> & P() 
+            {
+                return _P;
+            };
+            
+            //!
+            //! \brief Return Error const covariance matrix
+            //!
+            //! \return Error covariance matrix
+            //!
+            const MultiArray<float64, 2> & P() const
+            {
+                return _P;
+            };
+            
+            //!
+            //! \brief Return State vector
+            //!
+            //! \return Error State vector
+            //!
+            MultiArray<float64, 1> & Xk()
+            {
+                return _Xk;
+            };
+            
+            //!
+            //! \brief Return State vector
+            //!
+            //! \return Error State vector
+            //!
+            const MultiArray<float64, 1> & Xk() const
+            {
+                return _Xk;
+            };
+            
+        private:
+            
+            //!
+            //! \brief Prediction .
+            //!
+            void _kalman_predict();
+            
+            //!
+            //! \brief update.
+            //!
+            //! \param[in] Zk : The observations to update with
+            void _kalman_update( const MultiArray<float64, 1>& Zk);
+            
+            
+            //!Observation dimension
+            uint32 _observation_dimension;
+            
+            //!State dimensions
+            uint32 _state_vector_dimensions;
+            
+            //Each Object_Kalman has the state, transition and noise matrix associated for a Kalman filtering
+            //Kalman Matrix********************************
+            
+            //!State transition Matrix
+            MultiArray<float64, 2> _A;
+            
+            //!Traspose state transition matrix 
+            MultiArray<float64, 2> _AT;
+            
+            //!Covariance matrix of the noise process w
+            MultiArray<float64, 2> _Q;
+            
+            //!Matrix for relating the state with the observation             
+            MultiArray<float64, 2> _H;
+            
+            //!Traspose matrix for relating the state with the observation  
+            MultiArray<float64, 2> _HT;
+            
+            //!State vector (i.e. N= 4 --> x, y , Vx, Vy)
+            MultiArray<float64, 1> _Xk;
+            
+            //!Error covariance matrix
+            MultiArray<float64, 2> _P;
+            
+            //!Covariance matrix of the observation noise v
+            MultiArray<float64, 2> _R;
+        };
+    }
+    
+    //!
+    //! \brief Print Kalman filter parameters via ostream and operator <<.
+    //!
+    //! \param[in] os : ostream to write
+    //! \param[in] m  : filter to write
+    //!
+    //! \return os, to concatenate
+    //!
+    //! \author Jaime Gallego Vila <jgallego@gps.tsc.upc.edu>
+    //!
+    std::ostream& operator<<(std::ostream& os, const filters::Kalman& m);
+}
+
+#endif

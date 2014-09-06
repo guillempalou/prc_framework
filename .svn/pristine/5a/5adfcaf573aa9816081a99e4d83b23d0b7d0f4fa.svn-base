@@ -1,0 +1,1250 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file edge_histogram.hpp
+//!
+//!
+
+#ifndef IMAGEPLUS_DESCRIPTORS_TEXTURE_EDGE_HISTOGRAM_HPP
+#define IMAGEPLUS_DESCRIPTORS_TEXTURE_EDGE_HISTOGRAM_HPP
+
+#include <imageplus/core/visual_descriptors.hpp>
+#include <imageplus/descriptors/geometry/area.hpp>
+#include <imageplus/descriptors/color/color_statistics.hpp>
+#include <imageplus/io/xml_auxiliar.hpp>
+#include <fstream>
+
+
+namespace imageplus
+{
+    namespace descriptors
+    {
+    
+        //!
+        //! \brief Class for visual descriptor that captures spatial distribution of edges in an image.
+        //!
+        //! The image space is divided into 4x4 subimages. The local-edge distribution for each subimage can be represented by a histogram.
+        //! To generate the histogram, edges in the subimages are categorized into five types: vertical, horizontal, 45º diagonal, 135º diagonal and nondirectional edges. Since there are 16 subimages, a total of 5x16 = 80 histogram bins are required.
+        //! The next table summarizes the semantics of the 80-bin edge histogram:
+        //! h[0]  Relative population of vertical edges in subimage at (0,0)
+        //! h[1]  Relative population of horizontal edges in subimage at (0,0)
+        //! h[2]  Relative population of 45º edges in subimage at (0,0)
+        //! h[3]  Relative population of 135º edges in subimage at (0,0)
+        //! h[4]  Relative population of nondirectional edges in subimage at (0,0)
+        //! .     .
+        //! .     .
+        //! .     .
+        //! h[75] Relative population of vertical edges in subimage at (3,3)
+        //! h[76] Relative population of horizontal edges in subimage at (3,3)
+        //! h[77] Relative population of 45º edges in subimage at (3,3)
+        //! h[78] Relative population of 135º edges in subimage at (3,3)
+        //! h[79] Relative population of nondirectional edges in subimage at (3,3)
+        //!
+        //! The user has to use the helper functions defined in visual_descriptors.hpp because of their simplicity.
+        //!
+        //! \author Carles Ventura <alcarles@gps.tsc.upc.edu>
+        //!
+        //! \date 29-6-2009     
+        template<class InputModel>
+        class EdgeHistogram : public DescriptorBase
+        {
+        public:
+            
+            //!
+            //! \brief Constructor
+            //!
+            //! \param[in] num_blocks: The image will be divided into this number of blocks.
+            EdgeHistogram(uint64 num_blocks = 1100) : DescriptorBase("EdgeHistogram",false), _mask()
+            {
+                _num_blocks = num_blocks;
+                _histogram.resize(80);
+                _histogram_nq.resize(80);
+                _ngb.resize(4);
+                _ngb[0]=Neighborhood2D::CoordType(0,0);
+                _ngb[1]=Neighborhood2D::CoordType(1,0);
+                _ngb[2]=Neighborhood2D::CoordType(0,1);
+                _ngb[3]=Neighborhood2D::CoordType(1,1);
+                _ver_edge_filter.push_back(1);
+                _ver_edge_filter.push_back(-1);
+                _ver_edge_filter.push_back(1);
+                _ver_edge_filter.push_back(-1);
+                _hor_edge_filter.push_back(1);
+                _hor_edge_filter.push_back(1);
+                _hor_edge_filter.push_back(-1);
+                _hor_edge_filter.push_back(-1);
+                _dia45_edge_filter.push_back(std::sqrt((double)2));
+                _dia45_edge_filter.push_back(0);
+                _dia45_edge_filter.push_back(0);
+                _dia45_edge_filter.push_back((-1)*std::sqrt((double)2));
+                _dia135_edge_filter.push_back(0);
+                _dia135_edge_filter.push_back(std::sqrt((double)2));
+                _dia135_edge_filter.push_back((-1)*std::sqrt((double)2));
+                _dia135_edge_filter.push_back(0);
+                _nond_edge_filter.push_back(2);
+                _nond_edge_filter.push_back(-2);
+                _nond_edge_filter.push_back(-2);
+                _nond_edge_filter.push_back(2);
+            }        
+            
+            //!
+            //! \param[in] first : Iterator to the beginning of the image
+            //! \param[in] last : Iterator to the end of the image
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            //!
+            //! \returns the local-edge distribution in the image given a pair of iterators.
+            //!
+            //! \todo the calculate prototype is void, no?
+            //!
+            template< class IteratorModel >
+            void calculate(IteratorModel first, IteratorModel last, CollaborativeDescriptors* peer_descs)
+            {
+                ASSERT(peer_descs!=0x0, "EdgeHistogram calculate: peer_descs must be non null");
+
+                const BoundingBox<typename InputModel::CoordType>& bb_coord = peer_descs->calculate(new BoundingBox<typename InputModel::CoordType>(), first, last);
+                _calculate(first,last,bb_coord, peer_descs);
+            }
+            
+            //! \brief Returns the 80-bin Edge Histogram
+            //!
+            //! \return 80-bin Edge Histogram
+            const std::vector<float64>& value() const
+            {
+                return _histogram;
+            }
+            
+            //! \brief Returns the 80-bin Edge Histogram before quantization
+            //!
+            //! \return 80-bin Edge Histogram before quantization
+            const std::vector<float64>& value_nq() const
+            {
+                return _histogram_nq;
+            }
+            
+            //! Writes the value of the descriptor.
+            //! \param[in] os: TXT file we are writing to.
+            void txt_write(std::fstream &os)
+            {
+            	os << " " << _histogram.size();
+            	for(uint64 ii=0; ii<_histogram.size(); ii++)
+            	{
+            		os << " " << _histogram[ii];
+            	}
+            }
+            
+            //! Reads the value of the descriptor.
+            //! \param[in] is: TXT file we are reading from.
+            void txt_read(std::fstream& is)
+            {
+            	uint64 size;
+            	is >> size;
+            	_histogram.resize(size);
+            	for(uint64 ii=0; ii<size; ii++)
+            	{
+            		is >> _histogram[ii];
+            	}
+            }
+            
+            
+        #ifdef USE_XML    
+            //! Returns the name of the descriptor to be written to the XML descriptors file
+            //! \return Name of the identifier
+            std::string xml_name() const
+            {
+                return "TextureEdgeHistogramType";
+            }
+            //! Writes the value of the descriptor. 
+            //! \param[in] doc: Pointer to the XML document we are writing 
+            //! \param[in] vdElem: Pointer to the XML element referring to the region whose descriptors we are writing
+            void xml_write(XERCES_CPP_NAMESPACE::DOMDocument *doc, XERCES_CPP_NAMESPACE::DOMElement *vdElem) const
+            {
+                XERCES_CPP_NAMESPACE::DOMElement* dataElem;
+                XERCES_CPP_NAMESPACE::DOMText* textElem;
+                std::string append;
+                std::string space(" ");
+                
+                dataElem = doc->createElement(io::fromNative("BinCounts").c_str());
+                vdElem->appendChild(dataElem);
+                
+                for(uint64 i=0; i<_histogram.size(); i++ )
+                {
+                    append = append + boost::lexical_cast<std::string>(_histogram[i]) + space;
+                }
+                textElem = doc->createTextNode(io::fromNative(append.c_str()).c_str());
+                dataElem->appendChild(textElem);
+    
+            }
+
+            /*!
+             * Reads the value of the descriptor.
+             *
+             * \param[in] vdNode: Pointer to the XML element referring to the region whose descriptors we are reading
+             *
+             * \return true if the descriptor is read
+             */
+            bool xml_read(XERCES_CPP_NAMESPACE::DOMNode *vdNode)
+            {
+                bool read = false;
+                XERCES_CPP_NAMESPACE::DOMNode* curr_node = io::xml_get_check_son_by_field(vdNode, "VisualDescriptor", "xsi:type", "TextureEdgeHistogramType");
+                if (curr_node==0x0)
+                {
+//                    throw ImagePlusError("TextureEdgeHistogramType not found");
+                }
+                else
+                {
+                    _histogram.resize(80);
+                    XERCES_CPP_NAMESPACE::DOMNode* curr_node2 = io::xml_get_check_son(curr_node, "BinCounts");
+                    std::string text = io::xml_get_text_son(curr_node2, curr_node2);
+                    const char* text2 = text.c_str();
+                    uint32 j = 0;
+                    int pos = 0;
+                    for( j = 0; j < 80; j++)
+                    {
+                        std::string value;
+                        value.push_back(text2[pos]);
+                        pos++;
+                        while(text2[pos]!=' ')
+                        {
+                            value.push_back(text2[pos]);
+                            pos++;
+                        }
+                        pos++;
+                        
+                        float64 val;
+                        sscanf(value.c_str(), "%lf", &val);
+                        _histogram[j]=val;
+                    }
+                    read = true;
+                }
+                return read;
+            }
+        #endif
+                      
+        private:
+            
+            //! 80-bin Edge Histogram
+            std::vector<float64> _histogram;
+            
+            //! 80-bin Edge Histogram before quantization
+            std::vector<float64> _histogram_nq;
+            
+            //! Mask of the region
+            ImaVolMask<2> _mask;
+            
+            //! Neighborhood
+            Neighborhood2D _ngb;
+            
+            //! Vertical edge detector
+            std::vector<float64> _ver_edge_filter;
+            
+            //! Horizontal edge detector
+            std::vector<float64> _hor_edge_filter;
+            
+            //! 45º edge detector
+            std::vector<float64> _dia45_edge_filter;
+            
+            //! 135º edge detector
+            std::vector<float64> _dia135_edge_filter;
+            
+            //! Nondirectional edge detector
+            std::vector<float64> _nond_edge_filter;
+            
+            //! Number of blocks that the image will be divided.
+            uint64 _num_blocks;
+            
+    
+            //! \brief Private method that computes the local-edge distribution in the image given a pair of iterators. 
+            //!
+            //! \param[in] first : Iterator to the beginning of the image
+            //! \param[in] last : Iterator to the end of the image
+            //! \param[in] bb_coord: Top-Left and Bottom-Right coordinates of the bounding box
+            //! \param[in] peer_descs : Pointer to CollaborativeDescriptors, in principle is never 0x0 but it is a good idea to ASSERT it
+            template< class IteratorModel >
+            void _calculate(IteratorModel first, IteratorModel last, const BoundingBox<typename InputModel::CoordType>& bb_coord, CollaborativeDescriptors* peer_descs)
+            {
+                uint64 size_x = bb_coord.side(0);
+                uint64 size_y = bb_coord.side(1);
+                if((size_x<8)||(size_y<8))
+                {
+                    _histogram.assign(80,0);
+                }
+                else
+                {
+                    ImageGray<typename InputModel::data_type > im_gray;
+                    _mask = peer_descs->calculate(new Mask<typename InputModel::CoordType>(), first, last);
+                    im_gray = peer_descs->calculate(new VDImageGray<InputModel>(), first, last);
+    
+                    //We calculate the size of each Image-block
+                    float64 x = std::sqrt(size_x*size_y/(float64)_num_blocks);
+                    uint64 block_size = (uint64)std::floor(x/2.0) * 2;
+                    if(block_size == 0)
+                    {
+                        block_size = 2;
+                    }
+                    
+                    //We calculate the number of Image-blocks in each direction.
+                    uint64 total_blocks_x = size_x / block_size;
+                    uint64 total_blocks_y = size_y / block_size;
+                    
+                    //We calculate the number of Image-blocks for each sub-image (the image is divided into 4x4 subimages)
+                    boost::array<uint64, 4> blocks_x;
+                    boost::array<uint64, 4> blocks_y;
+                    
+                    for(uint64 i=0; i<4; i++)
+                    {
+                        blocks_x[i]=total_blocks_x/4;
+                        blocks_y[i]=total_blocks_y/4;
+                    }
+                    for(uint64 i=0, m = total_blocks_x%4; m>0; m--, i++ )
+                    {
+                        blocks_x[i]++;
+                        
+                    }
+                    for(uint64 i=0, m = total_blocks_y%4; m>0; m--, i++ )
+                    {
+                        blocks_y[i]++;
+                    }
+                    
+                    boost::array<uint64, 4> acum_blocks_x;
+                    boost::array<uint64, 4> acum_blocks_y;
+                    acum_blocks_x[0]=0;
+                    acum_blocks_y[0]=0;
+                    for(uint64 i = 1; i<4; i++)
+                    {
+                        acum_blocks_x[i]=acum_blocks_x[i-1]+blocks_x[i-1];
+                        acum_blocks_y[i]=acum_blocks_y[i-1]+blocks_y[i-1];
+                    }
+                    
+                    std::vector<ImageGray<float64> > im_gray2;
+                    im_gray2.resize(16);
+                    for(uint64 i = 0; i<16; i++)
+                    {
+                        im_gray2[i].resize(2*blocks_x[i%4], 2*blocks_y[i/4]);
+                    }
+    
+                    
+                    std::vector<ImageGray<uint32> > valid_block;
+                    valid_block.resize(16);
+                    for(uint64 i = 0; i<16; i++)
+                    {
+                        valid_block[i].resize(blocks_x[i%4], blocks_y[i/4]);
+                        valid_block[i]=1;
+                    }
+    
+                    
+                    //We treat each image-block as 2x2 super-pixel image-block
+                    for(uint64 jjj = 0; jjj < 4; jjj++ )
+                    {
+                        for(uint64 iii = 0; iii<4; iii++)
+                        {
+                            for(uint64 j = 0; j < 2*blocks_y[jjj] ; j++)
+                            {
+                                for(uint64 i = 0; i < 2*blocks_x[iii]; i++)
+                                {
+                                    for(uint64 jj = 0; jj < block_size/2 ; jj++)
+                                    {
+                                        for(uint64 ii = 0; ii < block_size/2 ; ii++)
+                                        {
+                                            int64 cx = bb_coord.origin()[0]+acum_blocks_x[iii]*block_size + i*(block_size/2) + ii;
+                                            int64 cy = bb_coord.origin()[1]+acum_blocks_y[jjj]*block_size + j*(block_size/2) + jj;
+                                            im_gray2[jjj*4+iii][i][j] = im_gray2[jjj*4+iii][i][j] + im_gray[cx][cy];
+                                            if(!(_mask[cx][cy]))
+                                            {
+                                                valid_block[jjj*4+iii][i/2][j/2] = 0;  //We only consider the blocks which lies entirely within the region
+                                            }
+                                        }
+                                    }
+                                }
+                            } 
+                        }
+                    }
+
+                    std::vector<uint64> num_valid_blocks;
+                    num_valid_blocks.resize(16);
+                    for(uint64 k=0; k<16; k++)
+                    {
+                        for(ImageGray<uint32>::iterator<> it = valid_block[k].colors_begin(); it!= valid_block[k].colors_end();++it)
+                        {
+                            if((*it).value() == 1)
+                            {
+                                num_valid_blocks[k]++;
+                            }
+                        }
+                    }
+
+                    //We calculate the mean value of each 2x2 super-pixel image-block
+                    for(uint64 k = 0; k < 16; k++)
+                    {
+                        for( ImageGray<float64>::iterator<> it=im_gray2[k].colors_begin(); it!=im_gray2[k].colors_end(); ++it)
+                        {
+                            (*it).value(0) = (*it).value(0)/(float64)(block_size*block_size/4);
+                        }
+                    }
+                    
+                    std::vector<float64>::iterator ver_it = _ver_edge_filter.begin();
+                    std::vector<float64>::iterator hor_it = _hor_edge_filter.begin();
+                    std::vector<float64>::iterator dia45_it = _dia45_edge_filter.begin();
+                    std::vector<float64>::iterator dia135_it = _dia135_edge_filter.begin();
+                    std::vector<float64>::iterator nond_it = _nond_edge_filter.begin();
+                    float64 ver_out = 0;
+                    float64 hor_out = 0;
+                    float64 dia45_out = 0;
+                    float64 dia135_out = 0;
+                    float64 nond_out = 0;
+                    
+                    //We apply the oriented edge detectors for each 2x2 super-pixel image-block to compute the corresponding edge strengths
+                    for(uint64 k = 0; k < 16; k++)
+                    {
+                        for( ImageGray<float64>::iterator<> it=im_gray2[k].colors_begin(); it!=im_gray2[k].colors_end(); ++it, ++it)
+                        {
+                            if(((*it).position()[1]%2)==0)
+                            {
+                                if(valid_block[k][(*it).position()[0]/2][(*it).position()[1]/2]==1)  //We only consider the blocks which lies entirely within the region
+                                {
+                                    ver_it = _ver_edge_filter.begin();
+                                    hor_it = _hor_edge_filter.begin();
+                                    dia45_it = _dia45_edge_filter.begin();
+                                    dia135_it = _dia135_edge_filter.begin();
+                                    nond_it = _nond_edge_filter.begin();
+                                    ver_out = hor_out = dia45_out = dia135_out = nond_out = 0;
+                                    for(typename ImageGray<float64>::iterator<>::pixel_type::neighbor_iterator nit = (*it).local_begin(_ngb); nit != (*it).local_end(_ngb); ++nit, ++ver_it, ++hor_it, ++dia45_it, ++dia135_it, ++nond_it)
+                                    {
+    
+                                        ver_out = ver_out + static_cast<float64>((*nit).value(0))*(*ver_it);
+                                        hor_out = hor_out + static_cast<float64>((*nit).value(0))*(*hor_it);
+                                        dia45_out = dia45_out + static_cast<float64>((*nit).value(0))*(*dia45_it);
+                                        dia135_out = dia135_out + static_cast<float64>((*nit).value(0))*(*dia135_it);
+                                        nond_out = nond_out + static_cast<float64>((*nit).value(0))*(*nond_it);
+                                    }
+                                    ver_out = std::abs(ver_out);
+                                    hor_out = std::abs(hor_out);
+                                    dia45_out = std::abs(dia45_out);
+                                    dia135_out = std::abs(dia135_out);
+                                    nond_out = std::abs(nond_out);
+                                    
+                                    //We identify the edge detector with the maximum edge strength
+                                    float64 max = ver_out;
+                                    uint64 max_pos = 0;
+                                    if(hor_out > max)
+                                    {
+                                        max = hor_out;
+                                        max_pos = 1;
+                                    }
+                                    if(dia45_out > max)
+                                    {
+                                        max = dia45_out;
+                                        max_pos = 2;
+                                    }
+                                    if(dia135_out > max)
+                                    {
+                                        max = dia135_out;
+                                        max_pos = 3;
+                                    }
+                                    if(nond_out > max)
+                                    {
+                                        max = nond_out;
+                                        max_pos = 4;
+                                    }
+                                    
+                                    //If this edge strength is above a given threshold, then the corresponding edge orientation is associated with the image-block.
+                                    //If the maximum of the edge strengths is below the given threshold, then that block is not classified as an edge block.
+                                    if(max >= 11.0)
+                                        _histogram[k*5+max_pos]++;
+                                }
+    
+                            }
+                        }
+                    }
+                    
+                    //Each bin value is normalized by the total number of image-blocks in the sub-image.
+                    //Since there are image-blocks without any edge (i.e. nonedge blocks) as well as edge blocks, the sum of five normalized histogram bins for each subimage is less or equal to 1.
+                    for(uint64 i = 0; i < 80; i++)
+                    {
+                        if(num_valid_blocks[i/5]!=0)
+                        {
+                            _histogram[i]=_histogram[i]/(float64)(num_valid_blocks[i/5]);
+                        }
+                        _histogram_nq[i]=_histogram[i];
+                    }
+                    
+                    //We quantizate the histogram non-linearly with 3 bits
+                    for(uint64 i = 0; i < 80; i++)
+                     {
+                         switch(i%5)
+                         {
+                             case 0:
+                                 if(_histogram[i]<0.034391)
+                                 {
+                                     _histogram[i]=0;
+                                 }
+                                 else if(_histogram[i]<0.0787205)
+                                 {
+                                     _histogram[i]=1;
+                                 }
+                                 else if(_histogram[i]<0.1221875)
+                                 {
+                                     _histogram[i]=2;
+                                 }
+                                 else if(_histogram[i]<0.170211)
+                                 {
+                                     _histogram[i]=3;
+                                 }
+                                 else if(_histogram[i]<0.2280385)
+                                 {
+                                     _histogram[i]=4;
+                                 }
+                                 else if(_histogram[i]<0.3092675)
+                                 {
+                                     _histogram[i]=5;
+                                 }
+                                 else if(_histogram[i]<0.4440795)
+                                 {
+                                     _histogram[i]=6;
+                                 }
+                                 else
+                                 {
+                                     _histogram[i]=7;
+                                 }
+                                 break;
+                                 
+                             case 1:
+                                 if(_histogram[i]<0.041097)
+                                 {
+                                     _histogram[i]=0;
+                                 }
+                                 else if(_histogram[i]<0.0979065)
+                                 {
+                                     _histogram[i]=1;
+                                 }
+                                 else if(_histogram[i]<0.154093)
+                                 {
+                                     _histogram[i]=2;
+                                 }
+                                 else if(_histogram[i]<0.2128515)
+                                 {
+                                     _histogram[i]=3;
+                                 }
+                                 else if(_histogram[i]<0.2789795)
+                                 {
+                                     _histogram[i]=4;
+                                 }
+                                 else if(_histogram[i]<0.3631455)
+                                 {
+                                     _histogram[i]=5;
+                                 }
+                                 else if(_histogram[i]<0.4880235)
+                                 {
+                                     _histogram[i]=6;
+                                 }
+                                 else
+                                 {
+                                     _histogram[i]=7;
+                                 }
+                                 break;
+                                 
+                             case 2:
+                                 if(_histogram[i]<0.0150225)
+                                 {
+                                     _histogram[i]=0;
+                                 }
+                                 else if(_histogram[i]<0.036356)
+                                 {
+                                     _histogram[i]=1;
+                                 }
+                                 else if(_histogram[i]<0.0576895)
+                                 {
+                                     _histogram[i]=2;
+                                 }
+                                 else if(_histogram[i]<0.0809025)
+                                 {
+                                     _histogram[i]=3;
+                                 }
+                                 else if(_histogram[i]<0.108388)
+                                 {
+                                     _histogram[i]=4;
+                                 }
+                                 else if(_histogram[i]<0.1424975)
+                                 {
+                                     _histogram[i]=5;
+                                 }
+                                 else if(_histogram[i]<0.1952325)
+                                 {
+                                     _histogram[i]=6;
+                                 }
+                                 else
+                                 {
+                                     _histogram[i]=7;
+                                 }
+                                 break;
+                                 
+                             case 3:
+                                 if(_histogram[i]<0.015049)
+                                 {
+                                     _histogram[i]=0;
+                                 }
+                                 else if(_histogram[i]<0.036078)
+                                 {
+                                     _histogram[i]=1;
+                                 }
+                                 else if(_histogram[i]<0.0566975)
+                                 {
+                                     _histogram[i]=2;
+                                 }
+                                 else if(_histogram[i]<0.078409)
+                                 {
+                                     _histogram[i]=3;
+                                 }
+                                 else if(_histogram[i]<0.102523)
+                                 {
+                                     _histogram[i]=4;
+                                 }
+                                 else if(_histogram[i]<0.1336475)
+                                 {
+                                     _histogram[i]=5;
+                                 }
+                                 else if(_histogram[i]<0.1848245)
+                                 {
+                                     _histogram[i]=6;
+                                 }
+                                 else
+                                 {
+                                     _histogram[i]=7;
+                                 }
+                                 break;
+                                 
+                             case 4:
+                                 if(_histogram[i]<0.0292225)
+                                 {
+                                     _histogram[i]=0;
+                                 }
+                                 else if(_histogram[i]<0.0801585)
+                                 {
+                                     _histogram[i]=1;
+                                 }
+                                 else if(_histogram[i]<0.1374535)
+                                 {
+                                     _histogram[i]=2;
+                                 }
+                                 else if(_histogram[i]<0.1952415)
+                                 {
+                                     _histogram[i]=3;
+                                 }
+                                 else if(_histogram[i]<0.2549585)
+                                 {
+                                     _histogram[i]=4;
+                                 }
+                                 else if(_histogram[i]<0.321033)
+                                 {
+                                     _histogram[i]=5;
+                                 }
+                                 else if(_histogram[i]<0.4036735)
+                                 {
+                                     _histogram[i]=6;
+                                 }
+                                 else
+                                 {
+                                     _histogram[i]=7;
+                                 }
+                                 break;
+                         }
+                     }
+                }
+            }
+        };
+        
+        
+        //! \brief Calculates the result of the dissimilarity measure proposed by MPEG-7 between two texture edge histogram descriptors before quantization process
+        //!
+        //! \param[in] h1 : Histogram values for texture edge histogram descriptor 1 before quantization process
+        //! \param[in] h2 : Histogram values for texture edge histogram descriptor 2 before quantization process
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_edge_histogram( const std::vector<float64>& h1, const std::vector<float64>& h2)
+        {
+            
+            float64 dist = 0.0;
+            std::vector<float64> h1_global;
+            h1_global.resize(5);
+            std::vector<float64> h2_global;
+            h2_global.resize(5);
+            for(uint8 ii=0; ii<16; ii++)
+            {
+                for(uint8 jj=0; jj<5; jj++)
+                {
+                    h1_global[jj] = h1_global[jj] + h1[ii*5+jj];
+                    h2_global[jj] = h2_global[jj] + h2[ii*5+jj];
+                }
+            }
+            
+            //Normalize global histogram
+            for(uint8 ii=0; ii<5; ii++)
+            {
+                h1_global[ii]=h1_global[ii]/16.0;
+                h2_global[ii]=h2_global[ii]/16.0;
+            }
+
+            
+            std::vector<float64> h1_semiglobal;
+            h1_semiglobal.resize(65);
+            for(uint8 ii=0; ii<20; ii++)
+            {
+                for(uint8 jj=0; jj<4; jj++)
+                {
+                    h1_semiglobal[ii] = h1_semiglobal[ii]+h1[20*jj+ii];
+                }
+            }
+            for(uint8 ii=20; ii<40; ii++)
+            {
+                uint8 aux = ((ii-20)/5)*20;
+                for(uint8 jj=0; jj<4; jj++)
+                {
+                    
+                    h1_semiglobal[ii] = h1_semiglobal[ii]+h1[aux+5*jj];
+                }
+            }
+            
+            h1_semiglobal[40] = h1[0]+h1[5]+h1[20]+h1[25];
+            h1_semiglobal[41] = h1[1]+h1[6]+h1[21]+h1[26];
+            h1_semiglobal[42] = h1[2]+h1[7]+h1[22]+h1[27];
+            h1_semiglobal[43] = h1[3]+h1[8]+h1[23]+h1[28];
+            h1_semiglobal[44] = h1[4]+h1[9]+h1[24]+h1[29];
+            
+            h1_semiglobal[45] = h1[10]+h1[15]+h1[30]+h1[35];
+            h1_semiglobal[46] = h1[11]+h1[16]+h1[31]+h1[36];
+            h1_semiglobal[47] = h1[12]+h1[17]+h1[32]+h1[37];
+            h1_semiglobal[48] = h1[13]+h1[18]+h1[33]+h1[38];
+            h1_semiglobal[49] = h1[14]+h1[19]+h1[34]+h1[39];
+            
+            h1_semiglobal[50] = h1[40]+h1[45]+h1[60]+h1[65];
+            h1_semiglobal[51] = h1[41]+h1[46]+h1[61]+h1[66];
+            h1_semiglobal[52] = h1[42]+h1[47]+h1[62]+h1[67];
+            h1_semiglobal[53] = h1[43]+h1[48]+h1[63]+h1[68];
+            h1_semiglobal[54] = h1[44]+h1[49]+h1[64]+h1[69];
+            
+            h1_semiglobal[55] = h1[50]+h1[55]+h1[70]+h1[75];
+            h1_semiglobal[56] = h1[51]+h1[56]+h1[71]+h1[76];
+            h1_semiglobal[57] = h1[52]+h1[57]+h1[72]+h1[77];
+            h1_semiglobal[58] = h1[53]+h1[58]+h1[73]+h1[78];
+            h1_semiglobal[59] = h1[54]+h1[59]+h1[74]+h1[79];
+            
+            h1_semiglobal[60] = h1[25]+h1[30]+h1[45]+h1[50];
+            h1_semiglobal[61] = h1[26]+h1[31]+h1[46]+h1[51];
+            h1_semiglobal[62] = h1[27]+h1[32]+h1[47]+h1[52];
+            h1_semiglobal[63] = h1[28]+h1[33]+h1[48]+h1[53];
+            h1_semiglobal[64] = h1[29]+h1[34]+h1[49]+h1[54];
+            
+            
+            std::vector<float64> h2_semiglobal;
+            h2_semiglobal.resize(65);
+            for(uint8 ii=0; ii<20; ii++)
+            {
+                for(uint8 jj=0; jj<4; jj++)
+                {
+                    h2_semiglobal[ii] = h2_semiglobal[ii]+h2[20*jj+ii];
+                }
+            }
+            for(uint8 ii=20; ii<40; ii++)
+            {
+                uint8 aux = ((ii-20)/5)*20;
+                for(uint8 jj=0; jj<4; jj++)
+                {
+                    
+                    h2_semiglobal[ii] = h2_semiglobal[ii]+h2[aux+5*jj];
+                }
+            }
+            
+            h2_semiglobal[40] = h2[0]+h2[5]+h2[20]+h2[25];
+            h2_semiglobal[41] = h2[1]+h2[6]+h2[21]+h2[26];
+            h2_semiglobal[42] = h2[2]+h2[7]+h2[22]+h2[27];
+            h2_semiglobal[43] = h2[3]+h2[8]+h2[23]+h2[28];
+            h2_semiglobal[44] = h2[4]+h2[9]+h2[24]+h2[29];
+            
+            h2_semiglobal[45] = h2[10]+h2[15]+h2[30]+h2[35];
+            h2_semiglobal[46] = h2[11]+h2[16]+h2[31]+h2[36];
+            h2_semiglobal[47] = h2[12]+h2[17]+h2[32]+h2[37];
+            h2_semiglobal[48] = h2[13]+h2[18]+h2[33]+h2[38];
+            h2_semiglobal[49] = h2[14]+h2[19]+h2[34]+h2[39];
+            
+            h2_semiglobal[50] = h2[40]+h2[45]+h2[60]+h2[65];
+            h2_semiglobal[51] = h2[41]+h2[46]+h2[61]+h2[66];
+            h2_semiglobal[52] = h2[42]+h2[47]+h2[62]+h2[67];
+            h2_semiglobal[53] = h2[43]+h2[48]+h2[63]+h2[68];
+            h2_semiglobal[54] = h2[44]+h2[49]+h2[64]+h2[69];
+            
+            h2_semiglobal[55] = h2[50]+h2[55]+h2[70]+h2[75];
+            h2_semiglobal[56] = h2[51]+h2[56]+h2[71]+h2[76];
+            h2_semiglobal[57] = h2[52]+h2[57]+h2[72]+h2[77];
+            h2_semiglobal[58] = h2[53]+h2[58]+h2[73]+h2[78];
+            h2_semiglobal[59] = h2[54]+h2[59]+h2[74]+h2[79];
+            
+            h2_semiglobal[60] = h2[25]+h2[30]+h2[45]+h2[50];
+            h2_semiglobal[61] = h2[26]+h2[31]+h2[46]+h2[51];
+            h2_semiglobal[62] = h2[27]+h2[32]+h2[47]+h2[52];
+            h2_semiglobal[63] = h2[28]+h2[33]+h2[48]+h2[53];
+            h2_semiglobal[64] = h2[29]+h2[34]+h2[49]+h2[54];
+            
+            //Normalize each subset histogram
+            for(uint8 ii=0; ii<65; ii++)
+            {
+                h1_semiglobal[ii]=h1_semiglobal[ii]/4.0;
+                h2_semiglobal[ii]=h2_semiglobal[ii]/4.0;
+            }
+            
+            for(uint8 ii=0; ii<80; ii++)
+            {
+                dist = dist + std::abs(h1[ii]-h2[ii]);
+            }
+            for(uint8 ii = 0; ii < 5; ii++)
+            {
+                dist = dist + 5*std::abs(h1_global[ii]-h2_global[ii]);
+            }
+            for(uint8 ii=0; ii<65; ii++)
+            {
+                dist = dist + std::abs(h1_semiglobal[ii]-h2_semiglobal[ii]);
+            }
+            
+            return dist;
+        }
+        
+        
+        //! \brief Calculates the result of the dissimilarity measure proposed by MPEG-7 between two texture edge histogram descriptors after quantization process (or extracted from an XML file)
+        //!
+        //! \param[in] h1_q : Histogram values for texture edge histogram descriptor 1 after quantization process (or extracted from an XML file)
+        //! \param[in] h2_q : Histogram values for texture edge histogram descriptor 2 after quantization process (or extracted from an XML file)
+        //!
+        //! \return The value of the dissimilarity measure
+        float64 dist_edge_histogram( const std::vector<uint32>& h1_q, const std::vector<uint32>& h2_q)
+        {
+            
+        	std::vector<float64> h1;
+        	h1.resize(80);
+        	for(uint8 ii=0; ii<16; ii++)
+        	{
+        		switch(h1_q[ii*5])
+        		{
+        			case 0:
+        				h1[ii*5]=0.010867;
+        				break;
+        			case 1:
+        				h1[ii*5]=0.057915;
+        				break;
+        			case 2:
+        				h1[ii*5]=0.099526;
+        				break;
+        			case 3:
+        				h1[ii*5]=0.144849;
+        				break;
+        			case 4:
+        				h1[ii*5]=0.195573;
+        				break;
+        			case 5:
+        				h1[ii*5]=0.260504;
+        				break;
+        			case 6:
+        				h1[ii*5]=0.358031;
+        				break;
+        			case 7:
+        				h1[ii*5]=0.530128;
+        				break;
+        		}
+        		switch(h1_q[ii*5+1])
+        		{
+        			case 0:
+        				h1[ii*5+1]=0.012266;
+        				break;
+        			case 1:
+        				h1[ii*5+1]=0.069934;
+        				break;
+        			case 2:
+        				h1[ii*5+1]=0.125879;
+        				break;
+        			case 3:
+        				h1[ii*5+1]=0.182307;
+        				break;
+        			case 4:
+        				h1[ii*5+1]=0.243396;
+        				break;
+        			case 5:
+        				h1[ii*5+1]=0.314563;
+        				break;
+        			case 6:
+        				h1[ii*5+1]=0.411728;
+        				break;
+        			case 7:
+        				h1[ii*5+1]=0.564319;
+        				break;
+        		}
+        		switch(h1_q[ii*5+2])
+        		{
+        			case 0:
+        				h1[ii*5+2]=0.004193;
+        				break;
+        			case 1:
+        				h1[ii*5+2]=0.025852;
+        				break;
+        			case 2:
+        				h1[ii*5+2]=0.046860;
+        				break;
+        			case 3:
+        				h1[ii*5+2]=0.068519;
+        				break;
+        			case 4:
+        				h1[ii*5+2]=0.093286;
+        				break;
+        			case 5:
+        				h1[ii*5+2]=0.123490;
+        				break;
+        			case 6:
+        				h1[ii*5+2]=0.161505;
+        				break;
+        			case 7:
+        				h1[ii*5+2]=0.228960;
+        				break;
+        		}
+        		switch(h1_q[ii*5+3])
+        		{
+        			case 0:
+        				h1[ii*5+3]=0.004174;
+        				break;
+        			case 1:
+        				h1[ii*5+3]=0.025924;
+        				break;
+        			case 2:
+        				h1[ii*5+3]=0.046232;
+        				break;
+        			case 3:
+        				h1[ii*5+3]=0.067163;
+        				break;
+        			case 4:
+        				h1[ii*5+3]=0.089655;
+        				break;
+        			case 5:
+        				h1[ii*5+3]=0.115391;
+        				break;
+        			case 6:
+        				h1[ii*5+3]=0.151904;
+        				break;
+        			case 7:
+        				h1[ii*5+3]=0.217745;
+        				break;
+        		}
+        		switch(h1_q[ii*5+4])
+        		{
+        			case 0:
+        				h1[ii*5+4]=0.006778;
+        				break;
+        			case 1:
+        				h1[ii*5+4]=0.051667;
+        				break;
+        			case 2:
+        				h1[ii*5+4]=0.108650;
+        				break;
+        			case 3:
+        				h1[ii*5+4]=0.166257;
+        				break;
+        			case 4:
+        				h1[ii*5+4]=0.224226;
+        				break;
+        			case 5:
+        				h1[ii*5+4]=0.285691;
+        				break;
+        			case 6:
+        				h1[ii*5+4]=0.356375;
+        				break;
+        			case 7:
+        				h1[ii*5+4]=0.450972;
+        				break;
+        		}
+        	}
+        	
+        	std::vector<float64> h2;
+        	h2.resize(80);
+        	for(uint8 ii=0; ii<16; ii++)
+        	{
+        		switch(h2_q[ii*5])
+        		{
+        			case 0:
+        				h2[ii*5]=0.010867;
+        				break;
+        			case 1:
+        				h2[ii*5]=0.057915;
+        				break;
+        			case 2:
+        				h2[ii*5]=0.099526;
+        				break;
+        			case 3:
+        				h2[ii*5]=0.144849;
+        				break;
+        			case 4:
+        				h2[ii*5]=0.195573;
+        				break;
+        			case 5:
+        				h2[ii*5]=0.260504;
+        				break;
+        			case 6:
+        				h2[ii*5]=0.358031;
+        				break;
+        			case 7:
+        				h2[ii*5]=0.530128;
+        				break;
+        		}
+        		switch(h2_q[ii*5+1])
+        		{
+        			case 0:
+        				h2[ii*5+1]=0.012266;
+        				break;
+        			case 1:
+        				h2[ii*5+1]=0.069934;
+        				break;
+        			case 2:
+        				h2[ii*5+1]=0.125879;
+        				break;
+        			case 3:
+        				h2[ii*5+1]=0.182307;
+        				break;
+        			case 4:
+        				h2[ii*5+1]=0.243396;
+        				break;
+        			case 5:
+        				h2[ii*5+1]=0.314563;
+        				break;
+        			case 6:
+        				h2[ii*5+1]=0.411728;
+        				break;
+        			case 7:
+        				h2[ii*5+1]=0.564319;
+        				break;
+        		}
+        		switch(h2_q[ii*5+2])
+        		{
+        			case 0:
+        				h2[ii*5+2]=0.004193;
+        				break;
+        			case 1:
+        				h2[ii*5+2]=0.025852;
+        				break;
+        			case 2:
+        				h2[ii*5+2]=0.046860;
+        				break;
+        			case 3:
+        				h2[ii*5+2]=0.068519;
+        				break;
+        			case 4:
+        				h2[ii*5+2]=0.093286;
+        				break;
+        			case 5:
+        				h2[ii*5+2]=0.123490;
+        				break;
+        			case 6:
+        				h2[ii*5+2]=0.161505;
+        				break;
+        			case 7:
+        				h2[ii*5+2]=0.228960;
+        				break;
+        		}
+        		switch(h2_q[ii*5+3])
+        		{
+        			case 0:
+        				h2[ii*5+3]=0.004174;
+        				break;
+        			case 1:
+        				h2[ii*5+3]=0.025924;
+        				break;
+        			case 2:
+        				h2[ii*5+3]=0.046232;
+        				break;
+        			case 3:
+        				h2[ii*5+3]=0.067163;
+        				break;
+        			case 4:
+        				h2[ii*5+3]=0.089655;
+        				break;
+        			case 5:
+        				h2[ii*5+3]=0.115391;
+        				break;
+        			case 6:
+        				h2[ii*5+3]=0.151904;
+        				break;
+        			case 7:
+        				h2[ii*5+3]=0.217745;
+        				break;
+        		}
+        		switch(h2_q[ii*5+4])
+        		{
+        			case 0:
+        				h2[ii*5+4]=0.006778;
+        				break;
+        			case 1:
+        				h2[ii*5+4]=0.051667;
+        				break;
+        			case 2:
+        				h2[ii*5+4]=0.108650;
+        				break;
+        			case 3:
+        				h2[ii*5+4]=0.166257;
+        				break;
+        			case 4:
+        				h2[ii*5+4]=0.224226;
+        				break;
+        			case 5:
+        				h2[ii*5+4]=0.285691;
+        				break;
+        			case 6:
+        				h2[ii*5+4]=0.356375;
+        				break;
+        			case 7:
+        				h2[ii*5+4]=0.450972;
+        				break;
+        		}
+        	}
+        	
+        	float64 dist = 0.0;
+            std::vector<float64> h1_global;
+            h1_global.resize(5);
+            std::vector<float64> h2_global;
+            h2_global.resize(5);
+            for(uint8 ii=0; ii<16; ii++)
+            {
+                for(uint8 jj=0; jj<5; jj++)
+                {
+                    h1_global[jj] = h1_global[jj] + h1[ii*5+jj];
+                    h2_global[jj] = h2_global[jj] + h2[ii*5+jj];
+                }
+            }
+            
+            //Normalize global histogram
+            for(uint8 ii=0; ii<5; ii++)
+            {
+                h1_global[ii]=h1_global[ii]/16.0;
+                h2_global[ii]=h2_global[ii]/16.0;
+            }
+
+            
+            std::vector<float64> h1_semiglobal;
+            h1_semiglobal.resize(65);
+            for(uint8 ii=0; ii<20; ii++)
+            {
+                for(uint8 jj=0; jj<4; jj++)
+                {
+                    h1_semiglobal[ii] = h1_semiglobal[ii]+h1[20*jj+ii];
+                }
+            }
+            for(uint8 ii=20; ii<40; ii++)
+            {
+                uint8 aux = ((ii-20)/5)*20;
+                for(uint8 jj=0; jj<4; jj++)
+                {
+                    
+                    h1_semiglobal[ii] = h1_semiglobal[ii]+h1[aux+5*jj];
+                }
+            }
+            
+            h1_semiglobal[40] = h1[0]+h1[5]+h1[20]+h1[25];
+            h1_semiglobal[41] = h1[1]+h1[6]+h1[21]+h1[26];
+            h1_semiglobal[42] = h1[2]+h1[7]+h1[22]+h1[27];
+            h1_semiglobal[43] = h1[3]+h1[8]+h1[23]+h1[28];
+            h1_semiglobal[44] = h1[4]+h1[9]+h1[24]+h1[29];
+            
+            h1_semiglobal[45] = h1[10]+h1[15]+h1[30]+h1[35];
+            h1_semiglobal[46] = h1[11]+h1[16]+h1[31]+h1[36];
+            h1_semiglobal[47] = h1[12]+h1[17]+h1[32]+h1[37];
+            h1_semiglobal[48] = h1[13]+h1[18]+h1[33]+h1[38];
+            h1_semiglobal[49] = h1[14]+h1[19]+h1[34]+h1[39];
+            
+            h1_semiglobal[50] = h1[40]+h1[45]+h1[60]+h1[65];
+            h1_semiglobal[51] = h1[41]+h1[46]+h1[61]+h1[66];
+            h1_semiglobal[52] = h1[42]+h1[47]+h1[62]+h1[67];
+            h1_semiglobal[53] = h1[43]+h1[48]+h1[63]+h1[68];
+            h1_semiglobal[54] = h1[44]+h1[49]+h1[64]+h1[69];
+            
+            h1_semiglobal[55] = h1[50]+h1[55]+h1[70]+h1[75];
+            h1_semiglobal[56] = h1[51]+h1[56]+h1[71]+h1[76];
+            h1_semiglobal[57] = h1[52]+h1[57]+h1[72]+h1[77];
+            h1_semiglobal[58] = h1[53]+h1[58]+h1[73]+h1[78];
+            h1_semiglobal[59] = h1[54]+h1[59]+h1[74]+h1[79];
+            
+            h1_semiglobal[60] = h1[25]+h1[30]+h1[45]+h1[50];
+            h1_semiglobal[61] = h1[26]+h1[31]+h1[46]+h1[51];
+            h1_semiglobal[62] = h1[27]+h1[32]+h1[47]+h1[52];
+            h1_semiglobal[63] = h1[28]+h1[33]+h1[48]+h1[53];
+            h1_semiglobal[64] = h1[29]+h1[34]+h1[49]+h1[54];
+            
+            
+            std::vector<float64> h2_semiglobal;
+            h2_semiglobal.resize(65);
+            for(uint8 ii=0; ii<20; ii++)
+            {
+                for(uint8 jj=0; jj<4; jj++)
+                {
+                    h2_semiglobal[ii] = h2_semiglobal[ii]+h2[20*jj+ii];
+                }
+            }
+            for(uint8 ii=20; ii<40; ii++)
+            {
+                uint8 aux = ((ii-20)/5)*20;
+                for(uint8 jj=0; jj<4; jj++)
+                {
+                    
+                    h2_semiglobal[ii] = h2_semiglobal[ii]+h2[aux+5*jj];
+                }
+            }
+            
+            h2_semiglobal[40] = h2[0]+h2[5]+h2[20]+h2[25];
+            h2_semiglobal[41] = h2[1]+h2[6]+h2[21]+h2[26];
+            h2_semiglobal[42] = h2[2]+h2[7]+h2[22]+h2[27];
+            h2_semiglobal[43] = h2[3]+h2[8]+h2[23]+h2[28];
+            h2_semiglobal[44] = h2[4]+h2[9]+h2[24]+h2[29];
+            
+            h2_semiglobal[45] = h2[10]+h2[15]+h2[30]+h2[35];
+            h2_semiglobal[46] = h2[11]+h2[16]+h2[31]+h2[36];
+            h2_semiglobal[47] = h2[12]+h2[17]+h2[32]+h2[37];
+            h2_semiglobal[48] = h2[13]+h2[18]+h2[33]+h2[38];
+            h2_semiglobal[49] = h2[14]+h2[19]+h2[34]+h2[39];
+            
+            h2_semiglobal[50] = h2[40]+h2[45]+h2[60]+h2[65];
+            h2_semiglobal[51] = h2[41]+h2[46]+h2[61]+h2[66];
+            h2_semiglobal[52] = h2[42]+h2[47]+h2[62]+h2[67];
+            h2_semiglobal[53] = h2[43]+h2[48]+h2[63]+h2[68];
+            h2_semiglobal[54] = h2[44]+h2[49]+h2[64]+h2[69];
+            
+            h2_semiglobal[55] = h2[50]+h2[55]+h2[70]+h2[75];
+            h2_semiglobal[56] = h2[51]+h2[56]+h2[71]+h2[76];
+            h2_semiglobal[57] = h2[52]+h2[57]+h2[72]+h2[77];
+            h2_semiglobal[58] = h2[53]+h2[58]+h2[73]+h2[78];
+            h2_semiglobal[59] = h2[54]+h2[59]+h2[74]+h2[79];
+            
+            h2_semiglobal[60] = h2[25]+h2[30]+h2[45]+h2[50];
+            h2_semiglobal[61] = h2[26]+h2[31]+h2[46]+h2[51];
+            h2_semiglobal[62] = h2[27]+h2[32]+h2[47]+h2[52];
+            h2_semiglobal[63] = h2[28]+h2[33]+h2[48]+h2[53];
+            h2_semiglobal[64] = h2[29]+h2[34]+h2[49]+h2[54];
+            
+            //Normalize each subset histogram
+            for(uint8 ii=0; ii<65; ii++)
+            {
+                h1_semiglobal[ii]=h1_semiglobal[ii]/4.0;
+                h2_semiglobal[ii]=h2_semiglobal[ii]/4.0;
+            }
+            
+            for(uint8 ii=0; ii<80; ii++)
+            {
+                dist = dist + std::abs(h1[ii]-h2[ii]);
+            }
+            for(uint8 ii = 0; ii < 5; ii++)
+            {
+                dist = dist + 5*std::abs(h1_global[ii]-h2_global[ii]);
+            }
+            for(uint8 ii=0; ii<65; ii++)
+            {
+                dist = dist + std::abs(h1_semiglobal[ii]-h2_semiglobal[ii]);
+            }
+            
+            return dist;
+        }
+        
+    }
+}
+
+#endif

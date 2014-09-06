@@ -1,0 +1,43 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file minim.hpp
+//!
+//!  Minima and mosaic image creation
+//!
+
+#ifndef IMAGEPLUS_MORPHOLOGY_MINIM_HPP
+#define IMAGEPLUS_MORPHOLOGY_MINIM_HPP
+
+#include <imageplus/core.hpp>
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace morphology
+        {
+
+            //!
+            //! \brief Computation of local minima in 8 connectivity
+            //!
+            //! \author Josep Ramon Morros <ramon.morros@upc.edu>
+            //!
+            //! \date 05-3-2008
+            //!
+            //! \param[in] in:  Input image
+            //! \param[in] lab: Label image
+            //!
+            //! \return MultiArray with labeled minima
+            //!
+            template<typename T>
+            MultiArray<T,2> minlab8 (const MultiArray<T,2>& in, const MultiArray<T,2>& lab);
+        }
+    }
+}
+#endif
+

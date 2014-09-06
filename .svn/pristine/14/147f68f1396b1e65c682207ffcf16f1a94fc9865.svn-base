@@ -1,0 +1,106 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file lu_decomposition.cpp
+//!
+//!  LU decomposition
+//!
+
+#include <imageplus/core.hpp>
+
+#include <imageplus/math/numeric/lu_decomposition.hpp>
+
+#include <numeric/ublas_adaptors.hpp>
+
+#include <boost/numeric/ublas/triangular.hpp>
+#include <boost/numeric/ublas/lu.hpp>
+#include <boost/numeric/ublas/io.hpp>
+
+// for uint64 std::abs(int64)
+#include <imageplus/math.hpp>
+
+using namespace imageplus;
+using namespace imageplus::math::numeric;
+
+
+template<typename T>
+MultiArray<T,1> imageplus::math::numeric::lu_solve( const MultiArray<T,2>& in1, const MultiArray<T,1>& in2) throw (ImagePlusError)
+{
+    // Check dimensions
+    ASSERT( in1.dims(1) == in2.dims(0) && in1.dims(1) == in1.dims(1), "Matrix and vector dimensions mismatch." )
+    
+    UblasAdaptionMatrix<T> u1(const_cast<T*>(in1.data()), in1.dims(0), in1.dims(1));
+    UblasAdaptionVector<T> u2(const_cast<T*>(in2.data()), in2.dims(0));
+    
+    boost::numeric::ublas::vector<T> out(u2);
+    boost::numeric::ublas::matrix<T> A(u1); //avoided transposition of u1 since correct adaptor used
+    
+    // create a permutation matrix for the LU-factorization
+    typedef  boost::numeric::ublas::permutation_matrix<std::size_t> pmatrix;
+    pmatrix pm(A.size1());
+    
+    // perform LU-factorization
+    int64 res =  boost::numeric::ublas::lu_factorize(A,pm);
+    if ( res != 0 )
+    {
+        throw ImagePlusError("Error(lu_decomposition) : Singular Matrix"); 
+    }
+    // backsubstitute to get the solution
+    boost::numeric::ublas::lu_substitute(A, pm, out);
+    
+    return out;
+    
+}
+
+/** General matrix determinant.
+ * It uses lu_factorize in uBLAS.
+ */
+template<typename T>
+float64 imageplus::math::numeric::lu_det(const MultiArray<T,2>& m) throw(ImagePlusError)
+{
+    // Check dimensions
+    ASSERT(m.dims(1) == m.dims(0), "Matrix must be square.")
+
+    // create a working copy of the input
+    UblasAdaptionMatrix<T> u1(const_cast<T*>(m.data()), m.dims(0), m.dims(1));
+
+    boost::numeric::ublas::matrix<double> mLu(u1);
+    boost::numeric::ublas::permutation_matrix<std::size_t> pivots(m.dims(0));
+    boost::numeric::ublas::lu_factorize(mLu, pivots);
+
+    float64 det = 1.0;
+
+    for (size_type i=0; i < pivots.size(); ++i) 
+    {
+        if (pivots(i) != i)
+        {
+            det *= -1.0;
+        }
+
+        det *= mLu(i,i);
+    }
+
+    return det;
+} 
+
+
+
+namespace imageplus
+{
+    namespace math
+    {
+        namespace numeric
+        {
+            //template MultiArray<uint8,1>   lu_solve(const MultiArray<uint8,2>&,   const MultiArray<uint8,1>& ); <- boost 1.38 complains
+            //template MultiArray<int64,1>   lu_solve(const MultiArray<int64,2>&,   const MultiArray<int64,1>& ); <- boost 1.38 complains
+            template MultiArray<float64,1> lu_solve(const MultiArray<float64,2>&, const MultiArray<float64,1>& );
+    
+            template float64 lu_det(const MultiArray<uint8,2>&   m); 
+            template float64 lu_det(const MultiArray<int64,2>&   m); 
+            template float64 lu_det(const MultiArray<float64,2>& m); 
+        }
+    }
+}

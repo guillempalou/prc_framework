@@ -1,0 +1,133 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+/*!
+ * \file kalman_filter.test
+ */
+
+#include <iostream>
+#include <stdio.h>
+#include <imageplus/core.hpp>
+#include <cmath>
+#include <iostream>
+#include <fstream>
+
+#include <imageplus/filters/kalman.hpp>
+
+
+BOOST_AUTO_TEST_SUITE ( KalmanFilterSuite );
+
+using namespace imageplus;
+using namespace imageplus::filters;
+using namespace std;
+    
+BOOST_AUTO_TEST_CASE ( test_kalman_filter_example )
+{    
+	//initialize matrixes*********************************************************************************************************
+	
+	//State transition Matrix
+	MultiArray<float64, 2> A(4,4);
+	
+	
+	//Covariance matrix of the noise process w
+	MultiArray<float64, 2> Q(4,4);
+	
+	//Matrix for relating the state with the observation 			
+	MultiArray<float64, 2> H(4,2);
+	
+	//State vector (i.e. N= 4 --> x, y , Vx, Vy)
+//			boost::array <float64, N> _Xk;
+	MultiArray<float64, 1> Xk(4);
+	
+	//Error covariance matrix
+	MultiArray<float64, 2> P(4,4);
+	
+	//Covariance matrix of the observation noise v
+	MultiArray<float64, 2> R(2,2);
+    
+	//*********************************************************************************************************
+	for(uint32 i=0;i<4;i++)
+	{
+		Xk[i]=0;
+		for(uint32 j=0;j<4;j++)
+		{
+
+			A[j][i] = 0;
+
+			Q[i][j] = 0;
+			P[i][j] = 0;
+			
+
+			
+			if (i<2){
+				H[j][i]=0;
+				
+				if (j<2){
+					R[i][j]=0;
+					
+				}
+			}
+			
+
+			if (i==j){
+
+				Q[i][j]=0.0001;
+
+				P[i][j]=100;
+			}
+
+		}
+	}
+
+			
+	R[0][0]= 5;
+	R[0][1]= 0.00045;
+	R[1][0]= 0.00045;
+	R[1][1]= 8;
+	
+	H[0][0] = 1;
+	H[1][1] = 1;
+
+	A[0][0]= 1;
+	A[2][0]= 1;
+	A[1][1]= 1;
+	A[3][1]= 1;
+	A[2][2]= 1;
+	A[3][3]= 1;
+
+	//********************************************************************************************************************
+
+
+	Kalman kf_example(A,Q,H,R,P,Xk);
+
+	float64 z_x[10] = {100.9134,  108.2494,  120.6324,  130.6973,  140.8115,  150.6363,  161.3101,  170.3271 , 179.3270 , 189.8507};
+	float64 z_y[10] = {110.0975,  112.4733 , 114.2785 , 116.1169 , 117.4089 , 119.3453 , 120.9193 , 123.9523 , 126.3793 , 127.6696};
+	float64 xk [4] = {191.000000, 129.000000, 10.000000, 2.000000};
+
+	Coord<uint32, 4> coord_aux;
+
+	MultiArray<float64, 1> coord_kalman(2);
+
+	for (uint32 ii=0; ii<10; ii++)
+	{
+		coord_kalman[0] = float64(z_x[ii]);
+		coord_kalman[1] = float64(z_y[ii]);
+
+		kf_example.kalman_process(coord_kalman);
+
+		coord_aux[0] = uint32( kf_example.Xk()[0]);
+		coord_aux[1] = uint32( kf_example.Xk()[1]);
+        coord_aux[2] = uint32( kf_example.Xk()[2]);
+	    coord_aux[3] = uint32( kf_example.Xk()[3]);
+	}
+
+    BOOST_CHECK_EQUAL( coord_aux[0] , xk[0] );    
+    BOOST_CHECK_EQUAL( coord_aux[1] , xk[1] );
+    BOOST_CHECK_EQUAL( coord_aux[2] , xk[2] );    
+    BOOST_CHECK_EQUAL( coord_aux[3] , xk[3] );
+
+}
+
+BOOST_AUTO_TEST_SUITE_END ();

@@ -1,0 +1,117 @@
+##############################################################################
+#                                                                            #
+# Copyright (C) 2007 UPC All Rights Reserved.                                #
+#                                                                            #
+# See COPYRIGHT file enclosed with this distribution.                        #
+#                                                                            #
+##############################################################################
+
+##############################################################################
+#                                                                            #
+#  ImagePlus Build System - Tools                                            #
+#                                                                            #
+#  This build system is based on SCons (http://www.scons.org/)               #
+#                                                                            #
+# This file builds all the tools and installs them.                          #
+#                                                                            #
+#  CREATED BY :  Albert Gil, UPC (agil@gps.tsc.upc.edu)                      #
+#                                                                            #
+##############################################################################
+
+Import('*')
+
+# To get the list of files
+import glob
+import os
+
+##
+## Create the tools environment
+##
+toolsEnv = env.Clone()
+
+##
+## Build the modules:
+##
+##   - Create a glob for all existing modules
+##   - Read the user list from the userListFile (if exists)
+##   - Remove modules in user.list
+##   - Execute the build script for each remaining module 
+##
+tools = list()
+
+
+# add only the module name to the "modules" list
+tools_with_path  = glob.glob(str(Dir(toolsPath))+os.sep+'*')
+
+for toolpath in tools_with_path:
+    tool = toolpath.replace(str(Dir(toolsPath))+ os.sep,'')
+    if os.path.exists(toolpath+os.sep+'src'):
+        tools.append(tool)
+    else:
+        tools_with_subpaths = glob.glob(toolpath+os.sep+'*')
+        for toolsuppath in tools_with_subpaths:
+            tool = toolsuppath.replace(str(Dir(toolsPath))+ os.sep,'')
+            tools.append(tool)
+
+# User configuration script
+tools_to_remove = list()
+if os.path.exists(str(userListFile)):
+    tools_to_remove.extend(SConscript(userListFile, 'env'))
+
+# remove undesired tools
+removed = list()
+if len(tools_to_remove) != 0:
+    for tool in tools_to_remove:
+        if tool in tools:
+            tools.remove(tool)
+            removed.append(tool) 
+    if len(removed) != 0:
+        print '\nThese tools will not be built: \n'
+        for tool in removed:
+            print tool
+        print '\nPlease, remove them from your user file to be able to build them (',userListFile,').\n'
+
+
+toolsInstalled = []
+
+for tool in tools:
+    toolName = os.path.basename(tool)
+    
+    ##
+    ## Alias
+    ##
+    Alias( toolName, toolsPath + tool )
+
+    ##
+    ## Export the module paths
+    ##
+    srcPath  = toolsPath + tool + '/src/'
+    objPath  = toolsPath + tool + '/obj/' + env['buildsuffix']
+    binPath  = toolsPath + tool + '/bin/' + env['buildsuffix']
+
+	##
+	## Add the src path to the CPPATH    
+    toolEnv = toolsEnv.Clone()
+    toolEnv['CPPPATH'] += [srcPath]
+    
+    ##
+    ## Process all tool sources
+    ##
+    objects = list()
+    sourceFiles = glob.glob(str(Dir(srcPath)) + os.sep +'*.cpp')
+    for source in sourceFiles:
+        src = source.replace('.cpp','')
+        src = src.replace(str(Dir(srcPath))+os.sep,'')
+        objects += toolEnv.Object( objPath+src, source)
+    
+    ##
+    ## Create the tool
+    ##     
+    bin = toolEnv.Program ( binPath+toolName, objects + library )
+    
+    ##
+    ## Install the tool to the bin directory (with a prefix) 
+    ##
+    toolsInstalled += InstallAs( toolsBinPath + 'iplus-' + toolName, bin )
+
+ 

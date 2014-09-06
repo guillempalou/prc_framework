@@ -1,0 +1,30 @@
+/*! \mainpage User Guide
+
+\section  contents  Table of Contents
+
+- \ref     intro
+- \subpage started    
+- \subpage builder
+- \subpage eclipse
+- \subpage validation
+- \subpage rules
+- \subpage lists
+
+
+\section intro   Introduction
+
+\b ImagePlus is the development and research platform of the 
+<a href="http://gps-tsc.upc.es/imatge/">Image Processing Group</a> of the <a href="http://www.upc.edu">UPC</a> written in the C++ language.\n
+It tries to improve \b SoftImage, the classic research platform of the group written in the C language.
+
+\subsection features  Main features
+
+- Cross-platform: Linux / Windows <small>(MinGW & MSVC)</small> / MacOSX <small>(darwin)</small>
+- 64 bits ready platform
+- Modular structure
+- Use of a Unit Test Framework based on the <a href="http://www.boost.org/libs/test">Boost Test Library</a> as a release validation system
+- Configurable build system based on <a href="http://www.scons.org/">SCons</a> that also allows to execute Unit Tests in build-time
+- Well formated documentation based on <a href="http://www.doxygen.org/">Doxygen</a>
+- Open to external libraries: <a href="http://www.boost.org/">Boost C++ Libraries</a>
+- Generic programming techniques
+*/

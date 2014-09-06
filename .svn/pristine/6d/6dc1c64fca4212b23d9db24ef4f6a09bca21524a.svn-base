@@ -1,0 +1,225 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file imavol.hpp
+//!
+//!  Interface for ImaVol class, base class of all images and volumes in ImagePlus
+//!
+
+#ifndef IMAGEPLUS_CORE_ITERATOR_HPP
+#define IMAGEPLUS_CORE_ITERATOR_HPP
+
+#include <imageplus/core/neighborhood.hpp>
+#include <imageplus/core/color.hpp>
+
+#include <deque>
+
+namespace imageplus
+{
+
+    //! enum type to define color spaces
+    enum ColorSpace {rgb, YUV, YUV422, YUV420, CIELab, Gray, Undefined};
+
+    /*!
+     * \cond SKIP_DOC
+     * 
+     * Internal class to to handle mutable and const iterators, within regions
+     * 
+     * This class allows us to use an ImaVol as a Region, that is, to iterate to the whole ImaVol. 
+     */
+    template< class RegionType, class ImaVolType, typename DataType, class PixelType >
+    class DataIteratorBase 
+    {
+    public:
+        typedef typename RegionType::const_position_iterator       position_iterator;
+
+        typedef typename ImaVolType::color_view        color_view;
+        //typedef typename ImaVolType::template ColorViewBase< DataType >     color_view;
+        typedef typename ImaVolType::const_color_view  const_color_view;
+        typedef typename ImaVolType::Color Color;
+        typedef ImaVolType imavol_type;
+        typedef DataType data_type;
+        
+        typedef PixelType pixel_type;
+        
+        //iterator traits
+        typedef std::forward_iterator_tag    iterator_category;
+        typedef color_view                 value_type;
+        typedef typename position_iterator::difference_type  difference_type;
+        typedef value_type*                pointer;
+        typedef value_type&                reference;
+
+        
+    /*
+     * Not private because we want to use it in Single channels iterators
+     */    
+    protected:
+        
+        ImaVolType*        _iv;
+        position_iterator    _it;
+        
+        
+    public:
+        
+        //DataIteratorBase( ImaVolType* const & iv , position_iterator it )
+        DataIteratorBase( ImaVolType* const iv , position_iterator it )
+                : _iv(iv), _it(it)
+        {
+        }
+
+        
+    public:
+
+        const ImaVolType* data() const
+        {
+            return _iv;
+        }
+        
+        DataIteratorBase& operator++() 
+        {
+            ++_it;
+            
+            return *this;
+        }
+        
+        bool operator!=(DataIteratorBase other) const 
+        {
+            return _it != other._it;
+        }
+
+        
+        pixel_type operator*()
+        {
+            return pixel_type(_iv,*_it);
+        }
+            
+        friend 
+        bool operator==(const DataIteratorBase& it1, const DataIteratorBase& it2)
+        {
+            return it1._it == it2._it;
+        }
+
+        ColorSpace color_space()
+        {
+            return _iv->color_space();
+        }
+
+    };
+
+ 
+    template<class RegionModel, class container_iterator>
+    class RegionIteratorBase : public std::iterator<std::forward_iterator_tag, typename RegionModel::CoordType> {
+            	
+    	typedef typename RegionModel::CoordType 	CoordType;
+    	typedef RegionModel*						RegionPointer;
+    	typedef typename RegionModel::ContainerType ContainerType;
+            public:
+            	RegionIteratorBase() {
+            	}
+            	
+            	RegionIteratorBase(const RegionIteratorBase& copy) 
+            			: _start_reg(copy._start_reg), _current_reg(copy._current_reg), _coord(copy._coord)
+            	{
+            		_end = copy._end;
+            		//std::cout << "Iterator for region " << _start_reg->id() << " is end: " << _end << " - " << this << std::endl;
+            	}
+
+            	RegionIteratorBase(RegionPointer const reg, bool pos_end = false) {
+            		_start_reg = reg;
+            		
+            		if (pos_end == false) {
+            			_current_reg = reg;
+            			if (_current_reg->size() == 0) {
+            				// Go to the first leave of the three            				
+            				while (_current_reg->size() == 0) _current_reg = _current_reg->parts()[0];
+            			}
+            			_coord = _current_reg->position_begin();
+            			
+            		}
+            		_end = pos_end;
+            		
+            		//std::cout << "Iterator for region " << reg->id() << " is end: " << _end << " - " << this << std::endl;
+            	}
+
+            	~RegionIteratorBase() {}
+
+            	RegionIteratorBase& operator=(const RegionIteratorBase& other) {
+            		_current_reg = other._current_reg;
+            		_coord = other._coord;
+            		_start_reg = other._start_reg;
+            		_end = other._end;
+            		//std::cout << "Copying constructor " << std::endl;
+            		return (*this);
+            	}
+
+            	bool operator==(const RegionIteratorBase& other) const {
+            		if (other._end == true) {
+            			return (_end && (other._start_reg == _start_reg));
+            		}
+            		bool x_eq = (*_coord)[0] == (*(other._coord))[0];
+            		bool y_eq = (*_coord)[1] == (*(other._coord))[1];
+            		return x_eq && y_eq;
+            	}
+
+            	bool operator!=(const RegionIteratorBase& other) const {
+            		//std::cout << "Comparing " << _end << " and " << other._end << " - " << this << "- " << &other << std::endl;
+            		//std::cout << "Starting regions " << _start_reg << " and " << other._start_reg << std::endl;
+            		//std::cout << "Coordinates " << (*_coord)[0] << "," << (*_coord)[1] << std::endl;
+            		//sleep(1);
+            		return !this->operator==(other);
+            	}
+
+            	RegionIteratorBase& operator++() {
+            		//std::cout << "Comparing " << (bool)_end << std::endl;
+            		//std::cout << "Coordinates " << _start_reg->id() << " " << (*_coord)[0] << "," << (*_coord)[1] << std::endl;
+            		//sleep(1);
+            		if (_end == true) return (*this);
+            		_coord++;
+            		
+            		//std::cout << "Coordinates " << (*_coord)[0] << "," << (*_coord)[1] << std::endl;
+            		//sleep(1);
+            		if (_coord == _current_reg->position_end()) {
+            			// Find the child of the first parent with a non-visited child
+            			if (_current_reg == _start_reg) _end = true;
+            			while (!_end) {
+            				if (!_current_reg->parent() && _current_reg->size() != 0) _end = true; else
+            				if (_current_reg->parent()->parts()[0] == _current_reg) {
+            					_current_reg = _current_reg->parent()->parts()[1];
+            					break;
+            				} else {
+            					_current_reg = _current_reg->parent();
+            					if (_current_reg == _start_reg) {
+            						_end = true;
+            						break;
+            					}
+            				}
+            			}
+            			// Get the first non-visited leave
+            			if (!_end) {
+            				while (_current_reg->size() == 0) _current_reg = _current_reg->parts()[0];
+            				_coord = (_current_reg)->position_begin();
+            			}
+            		}
+            		return (*this);
+            	}
+
+            	typename container_iterator::reference operator*() {
+            		return (*_coord);
+            	}
+
+            private:
+            	RegionPointer	_start_reg;
+            	RegionPointer	_current_reg;
+            	bool _end;
+            	container_iterator _coord;
+            };
+
+    /*!
+     * \endcond
+     */
+}
+
+#endif

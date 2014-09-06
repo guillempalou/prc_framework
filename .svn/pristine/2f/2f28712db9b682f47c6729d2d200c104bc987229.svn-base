@@ -1,0 +1,32 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//
+//  This file is used as a context check for the build system.
+//  It is compiled, linked and executed to check if local environment is 
+//  ready for building the software.
+//
+//  Author: Albert Gil, UPC <agil@gps.tsc.upc.edu>
+//
+//  Date: 30-9-2008
+//
+
+
+
+#include <iostream>
+#include <imageplus/toolbox/client.hpp>
+#include <smartroom/sf/utils/timestamp.hpp>
+
+using namespace std;
+
+
+int main(int ac, char **av) 
+{
+	// Create the smartflow client named capture
+    SFC::Client checkclient( "checkclient" );
+    Timestamp ts;
+    
+    return 0;
+}

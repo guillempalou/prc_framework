@@ -1,0 +1,57 @@
+// --------------------------------------------------------------
+// Copyright (C)
+// Universitat Politecnica de Catalunya (UPC) - Barcelona - Spain
+// --------------------------------------------------------------
+
+//!
+//!  \file robust_function.test
+//!
+//!  Tests for the math operations on BBox classs 
+//!
+
+#include <imageplus/math/numeric/robust_functions.hpp>
+#include <cmath>
+
+BOOST_AUTO_TEST_SUITE ( robust_functions );
+
+using namespace imageplus;
+using namespace imageplus::math;
+using namespace imageplus::math::numeric;
+
+
+BOOST_AUTO_TEST_CASE ( test_huber_function )
+{
+	float64 delta = 1;
+	HuberRobust hr(delta);
+	
+	Vector x(1);
+	
+	for (float64 i = -10; i <= 10; i+=0.1) {
+		float64 r = 0;
+		if (i< -delta || i > delta) r = fabs(i) - 0.5*delta; else r = 0.5*i*i;
+
+		x(0) = i;
+		
+		BOOST_CHECK_EQUAL(hr.value(x), r);
+	}
+}
+
+BOOST_AUTO_TEST_CASE (test_l1_robust) 
+{
+	float64 eps = 1e-4;
+	L1Robust l1(eps);
+	
+	Vector x(1);
+	
+	for (float64 i = -10; i <= 10; i+=0.1) {
+		float64 r = 0;
+		r = std::sqrt(i*i + eps);
+
+		x(0) = i;
+		
+		BOOST_CHECK_EQUAL(l1.value(x), r);
+	}
+}
+
+BOOST_AUTO_TEST_SUITE_END ();
+

@@ -1,0 +1,94 @@
+/*
+ * level_pruner.hpp
+ *
+ *  Created on: Dec 18, 2012
+ *      Author: gpalou
+ */
+
+#ifndef LEVEL_PRUNER_HPP_
+#define LEVEL_PRUNER_HPP_
+
+#include <imageplus/bpt/pruning/bpt_pruner.hpp>
+
+namespace imageplus {
+	namespace bpt {
+
+		//! Class that prunes the BPT at a certain level (if possible)
+		//! \param BPT: tree type
+		//! \param ImageModel : image type
+		template<class BPT, class ImageModel>
+		class LevelPruner : public BPTPruner<BPT,ImageModel> {
+
+			//! Base class
+			typedef BPTPruner<BPT,ImageModel> Pruner;
+
+			//! Region IDs
+			typedef typename Pruner::RegionsIDs RegionsIDs;
+
+		public:
+
+			//! constructor
+			//!\param[in] level: level to prune the BPT at
+			LevelPruner(float64 level) {_level = level;}
+
+			//! Sets the level to prune
+			//! \param[in] level : level
+			void set_level_threshold(float64 level) {_level = level;}
+
+			//! Patch function
+			//! \param[in] bpt: tree
+			//! \param[in] img: image
+			//! \param[in] reg_id: id of the root to begin to count (normally the root of the tree)
+			//! \param[in] num_of_regions : ignored
+			const RegionsIDs& find_pruned_regions(BPT& bpt, ImageModel& img, uint64 reg_id, uint64 num_of_regions) {
+				return find_pruned_regions(bpt,img,reg_id);
+			}
+
+			//! Functions that finds the regions to prune
+			//! \param[in] bpt: tree
+			//! \param[in] img: image
+			//! \param[in] reg_id: id of the root to begin to count (normally the root of the tree)
+			const RegionsIDs& find_pruned_regions(BPT& bpt, ImageModel& img, uint64 reg_id) {
+				int64 head = 1;
+				int64 tail = 0;
+
+				std::vector<uint64> regions;
+				std::vector<uint64> levels;
+
+				regions.push_back(reg_id);
+				levels.push_back(0);
+
+				while (head != tail) {
+					int64 id = regions[tail];
+
+					if (bpt[id].parts().size() == 0) { Pruner::_regions.insert(id); tail++; continue; }
+
+					int64 son1 = bpt[id].parts()[0]->label();
+					int64 son2 = bpt[id].parts()[1]->label();
+
+					if (levels[tail]+1 < _level) {
+						regions.push_back(son1);
+						regions.push_back(son2);
+						levels.push_back(levels[tail]+1);
+						levels.push_back(levels[tail]+1);
+						head++;
+						head++;
+					} else {
+						Pruner::_regions.insert(son1);
+						Pruner::_regions.insert(son2);
+					}
+
+					tail++;
+				}
+				return Pruner::_regions;
+			}
+
+		private:
+			//! level to prune
+			float64 _level;
+		};
+
+	}
+}
+
+#endif /* LEVEL_PRUNER_HPP_ */
